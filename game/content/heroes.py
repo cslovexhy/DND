@@ -32,21 +32,29 @@ def create_vistra(x: float, y: float) -> Hero:
 
 
 def create_quinn(x: float, y: float) -> Hero:
-    """Quinn — Human Cleric. Healer with support abilities."""
+    """Quinn — Human Cleric. Smite-based melee with Seal/Judgement combo system."""
     h = Hero("Quinn", "Human", "Cleric", x, y, hp=8, ac=16, speed=5, surge_value=4,
-             special_ability="Saving Grace: When ally on your tile drops to 0 HP, they regain 1 HP")
+             special_ability="Seal System: Seals buff Smite and empower Judgement")
     h.attack_damage = 25
     h.attack_range = 55
     h.attack_cooldown = 0.6
-    h.add_ability("Q", Ability("Sacred Flame", cooldown=2.5, damage=45, radius=0, range=200,
-                               effect="Ranged divine bolt",
+    # Skill 1: Smite — bread and butter melee, similar DPS to Fighter
+    h.add_ability("Q", Ability("Smite", cooldown=2.0, damage=50, radius=0, range=60,
+                               effect="Melee divine strike. Boosted by active Seal.",
                                power_type="at_will", color=CLERIC_COLOR))
-    h.add_ability("R", Ability("Healing Hymn", cooldown=10.0, damage=-100, radius=120,
-                               effect="Heal all allies within range for 100 HP",
-                               power_type="daily", color=(100, 255, 100)))
-    h.add_ability("E", Ability("Blade Barrier", cooldown=14.0, damage=60, radius=100,
-                               effect="Ring of blades damages enemies passing through",
-                               power_type="daily", color=(200, 200, 255)))
+    # Skill 2: Righteous Seal — buff that boosts Smite +25% for 10s, consumable by Judgement
+    h.add_ability("R", Ability("Righteous Seal", cooldown=10.0, damage=0, radius=0, range=0,
+                               effect="Buff: Smite deals +25% for 10s. Judgement consumes seal for bonus Smite damage.",
+                               power_type="utility", color=(255, 220, 80)))
+    # Skill 3: Judgement — ranged, consumes active Seal for bonus effect
+    h.add_ability("E", Ability("Judgement", cooldown=10.0, damage=30, radius=0, range=250,
+                               effect="Ranged holy bolt. Consumes Seal: +Smite damage on hit.",
+                               power_type="daily", color=(255, 255, 150)))
+    # Skill 4: Holy Light — self-heal but immobilizes for 2s
+    h.add_ability("F", Ability("Holy Light", cooldown=30.0, damage=-150, radius=0, range=0,
+                               effect="Immobilize self 2s. Heal for 150 HP (potion amount).",
+                               power_type="utility", color=(255, 255, 220),
+                               stun_duration=2.0))  # Using stun_duration to flag the immobilize
     return h
 
 

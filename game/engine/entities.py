@@ -217,12 +217,17 @@ class Hero(Entity):
 
         # Abilities
         self.abilities: dict[str, Ability] = {}
+        self.gcd = 0.0  # Global cooldown (1s between any two abilities)
+        self.GCD_DURATION = 1.0
 
         # Progression
         self.xp = 0
         self.gold = 0
         self.kills = 0
         self.level = 1
+
+        # Active buffs (name -> {remaining: float, data: dict})
+        self.buffs: dict[str, dict] = {}
 
         # Equipment (slot -> item)
         self.equipment: dict[str, dict] = {}
@@ -232,8 +237,15 @@ class Hero(Entity):
 
     def update(self, dt: float):
         super().update(dt)
+        self.gcd = max(0, self.gcd - dt)
         for ab in self.abilities.values():
             ab.update(dt)
+        # Update buffs
+        expired = [k for k, v in self.buffs.items() if v["remaining"] <= 0]
+        for k in expired:
+            del self.buffs[k]
+        for v in self.buffs.values():
+            v["remaining"] -= dt
 
     def use_ability(self, key: str, targets: list['Entity'],
                     target_pos: tuple = None) -> list[tuple[str, float]]:

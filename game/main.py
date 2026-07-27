@@ -308,8 +308,77 @@ def get_monster_at_screen(sx, sy):
     return None
 
 def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
-    """Cast an ability — handles AoE, single target, dash, stun, call-for-help."""
+    """Cast an ability — handles AoE, single target, dash, stun, call-for-help, and Quinn's Seal system."""
     global move_path, selected_target, dash_active, dash_target_x, dash_target_y, dash_stun_target, dash_stun_duration, dash_damage
+
+    # Global Cooldown check
+    if hero.gcd > 0:
+        return  # Can't cast anything during GCD
+
+    # === Quinn special: Righteous Seal (self-buff, no target needed) ===
+    if ab.name == "Righteous Seal":
+        ab.use()
+        hero.buffs["Righteous Seal"] = {"remaining": 10.0, "bonus": 0.25}
+        floating_texts.append(FloatingText(hero.x, hero.y - 30, "Seal Active!", (255, 220, 80)))
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        return
+
+    # === Quinn special: Holy Light (self-heal + immobilize self) ===
+    if ab.name == "Holy Light":
+        ab.use()
+        heal = hero.heal(150)
+        hero.apply_condition(Condition.IMMOBILIZED, 2.0)
+        floating_texts.append(FloatingText(hero.x, hero.y - 30, f"+{heal:.0f} HP", (255, 255, 150)))
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        return
+
+    # === Quinn special: Judgement (ranged, consumes Seal for bonus damage) ===
+    if ab.name == "Judgement":
+        if not clicked_monster:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
+            return
+        dist_to_target = hero.distance_to(clicked_monster)
+        if dist_to_target > ab.range:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "Too far!", (255, 100, 100)))
+            return
+        ab.use()
+        total_damage = ab.damage
+        # Consume Seal for bonus Smite damage
+        if "Righteous Seal" in hero.buffs:
+            total_damage += 50  # Bonus Smite-equivalent damage
+            del hero.buffs["Righteous Seal"]
+            floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 40, "Seal Consumed!", (255, 200, 50)))
+        dmg = clicked_monster.take_damage(total_damage)
+        floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", (255, 255, 150)))
+        call_for_help(clicked_monster, game_state.monsters, hero)
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        selected_target = None
+        return
+
+    # === Quinn special: Smite (boosted by Seal) ===
+    if ab.name == "Smite":
+        if not clicked_monster:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
+            return
+        dist_to_target = hero.distance_to(clicked_monster)
+        if dist_to_target > ab.range:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "Too far!", (255, 100, 100)))
+            return
+        ab.use()
+        bonus = 1.0 + (hero.buffs.get("Righteous Seal", {}).get("bonus", 0))
+        dmg = clicked_monster.take_damage(ab.damage * bonus)
+        color = (255, 230, 100) if bonus > 1.0 else WHITE
+        floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", color))
+        call_for_help(clicked_monster, game_state.monsters, hero)
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        selected_target = None
+        return
+
+    # === Standard ability handling ===
     if ab.radius > 0:
         # AoE — check if click location is within ability range
         dist_to_click = math.sqrt((wx - hero.x)**2 + (wy - hero.y)**2)
@@ -354,6 +423,7 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
         # No target clicked for single-target skill
         floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
         return
+    hero.gcd = hero.GCD_DURATION
     move_path = []
     selected_target = None
 
@@ -372,6 +442,7 @@ while running:
             if event.key == pygame.K_1: right_skill_idx = 0
             if event.key == pygame.K_2: right_skill_idx = 1
             if event.key == pygame.K_3: right_skill_idx = 2 if len(ability_keys) > 2 else right_skill_idx
+            if event.key == pygame.K_4: right_skill_idx = 3 if len(ability_keys) > 3 else right_skill_idx
             # Shift+1,2,3 = switch left-click skill
             mods = pygame.key.get_mods()
             if mods & pygame.KMOD_CTRL:
@@ -431,8 +502,14 @@ while running:
         msg = "VICTORY! You escaped the tunnel!" if victory else "DEFEATED..."
         t = title_font.render(msg, True, GOLD if victory else HP_RED)
         screen.blit(t, (WIDTH//2-t.get_width()//2, HEIGHT//2-20))
-        screen.blit(font.render("Press ESC to quit", True, GRAY), (WIDTH//2-50, HEIGHT//2+30))
+        stats = f"Time: {game_state.game_time:.1f}s  HP: {hero.hp:.0f}/{hero.max_hp}  Kills: {hero.kills}"
+        screen.blit(big_font.render(stats, True, WHITE), (WIDTH//2-150, HEIGHT//2+20))
+        screen.blit(font.render("Press ESC to quit (auto-closing in 5s)", True, GRAY), (WIDTH//2-100, HEIGHT//2+55))
         pygame.display.flip()
+        if auto_mode:
+            print(f"RESULT: {'VICTORY' if victory else 'DEFEATED'} time={game_state.game_time:.1f}s hp={hero.hp:.0f}/{hero.max_hp} kills={hero.kills}", flush=True)
+            pygame.time.wait(5000)
+            running = False
         continue
 
     # --- UPDATE ---
@@ -509,18 +586,11 @@ while running:
             ab_key = ai_action["use_ability"]
             ab = hero.abilities.get(ab_key)
             if ab and ab.is_ready():
-                if ab.radius > 0:
-                    pos = ai_action["ability_target_pos"] or (hero.x, hero.y)
-                    hits = hero.use_ability(ab_key, game_state.alive_monsters, target_pos=pos)
-                    effects.append(AoeRing(pos[0], pos[1], ab.radius, ab.color))
-                    for name, dmg in hits:
-                        floating_texts.append(FloatingText(pos[0], pos[1]-20, f"{dmg:.0f}", GOLD))
-                elif ai_action["ability_target_monster"]:
-                    target_m = ai_action["ability_target_monster"]
-                    hits = hero.use_ability(ab_key, [target_m])
-                    for name, dmg in hits:
-                        floating_texts.append(FloatingText(target_m.x, target_m.y-20, f"{dmg:.0f}", WHITE))
-                    call_for_help(target_m, game_state.monsters, hero)
+                target_m = ai_action.get("ability_target_monster")
+                # Route through _cast_ability for consistent handling (Quinn specials, etc.)
+                wx = target_m.x if target_m else hero.x
+                wy = target_m.y if target_m else hero.y
+                _cast_ability(ab_key, ab, wx, wy, target_m)
 
         elif ai_action["move_to"] and not move_path:
             tx, ty = ai_action["move_to"]
