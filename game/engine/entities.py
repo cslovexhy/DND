@@ -43,6 +43,8 @@ class Ability:
     effect: str = ""     # description of special effect
     power_type: str = "at_will"  # at_will, daily, utility
     color: tuple = (200, 200, 255)
+    is_dash: bool = False       # hero dashes to target on use
+    stun_duration: float = 0.0  # applies stun to target (seconds)
 
     def is_ready(self) -> bool:
         return self.remaining <= 0
