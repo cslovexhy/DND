@@ -201,14 +201,14 @@ class ClericAI(HeroAI):
         dist = self.hero.distance_to(self.target)
         hp_pct = self.hero.hp / self.hero.max_hp
 
-        # 1. Holy Light if below 30% HP
+        # 1. Holy Light if below 50% HP (use before potions since it's free)
         ab_f = self.hero.abilities.get("F")
-        if ab_f and ab_f.is_ready() and hp_pct < 0.30:
+        if ab_f and ab_f.is_ready() and hp_pct < 0.50:
             action["use_ability"] = "F"
             return action
 
-        # 2. Potion if below 40%
-        if hp_pct < 0.40:
+        # 2. Potion if below 30% and Holy Light not ready
+        if hp_pct < 0.30:
             action["use_potion"] = True
 
         # 3. Righteous Seal if not active

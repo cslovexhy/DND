@@ -327,9 +327,10 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
     # === Quinn special: Holy Light (self-heal + immobilize self) ===
     if ab.name == "Holy Light":
         ab.use()
-        heal = hero.heal(150)
+        # Start casting — immobilize for 2s, heal lands after cast finishes
         hero.apply_condition(Condition.IMMOBILIZED, 2.0)
-        floating_texts.append(FloatingText(hero.x, hero.y - 30, f"+{heal:.0f} HP", (255, 255, 150)))
+        hero.buffs["Holy Light Casting"] = {"remaining": 2.0, "heal": 150}
+        floating_texts.append(FloatingText(hero.x, hero.y - 30, "Casting...", (255, 255, 150)))
         hero.gcd = hero.GCD_DURATION
         move_path = []
         return
@@ -516,7 +517,18 @@ while running:
     game_state.update(dt)
     alive = game_state.alive_monsters
 
+    # Check Holy Light cast completion (heal lands after 2s channel)
+    if "Holy Light Casting" in hero.buffs and hero.buffs["Holy Light Casting"]["remaining"] <= 0:
+        heal_amount = hero.buffs["Holy Light Casting"]["heal"]
+        heal = hero.heal(heal_amount)
+        floating_texts.append(FloatingText(hero.x, hero.y - 30, f"+{heal:.0f} HP", (100, 255, 100)))
+        del hero.buffs["Holy Light Casting"]
+
     # Smooth movement along path
+    # Clear exploration path if AI is in combat
+    if ai_enabled and game_state.alive_monsters and move_path:
+        move_path = []
+
     if move_path and not dash_active:
         tx, ty = move_path[0]
         dx, dy = tx - hero.x, ty - hero.y

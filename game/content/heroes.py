@@ -39,7 +39,7 @@ def create_quinn(x: float, y: float) -> Hero:
     h.attack_range = 55
     h.attack_cooldown = 0.6
     # Skill 1: Smite — bread and butter melee, similar DPS to Fighter
-    h.add_ability("Q", Ability("Smite", cooldown=2.0, damage=50, radius=0, range=60,
+    h.add_ability("Q", Ability("Smite", cooldown=2.0, damage=50, radius=0, range=75,
                                effect="Melee divine strike. Boosted by active Seal.",
                                power_type="at_will", color=CLERIC_COLOR))
     # Skill 2: Righteous Seal — buff that boosts Smite +25% for 10s, consumable by Judgement
