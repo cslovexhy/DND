@@ -119,6 +119,14 @@ class AoeRing:
             pygame.draw.circle(surf, (*self.color,a//4), (r,r), r)
             s.blit(surf, (sx-r, sy-r))
 
+# === AUTO MODE (for testing) ===
+auto_mode = "--auto" in sys.argv
+auto_hero_idx = 0  # Default to Fighter for auto mode
+if auto_mode:
+    for i, arg in enumerate(sys.argv):
+        if arg == "--hero" and i + 1 < len(sys.argv):
+            auto_hero_idx = int(sys.argv[i + 1])
+
 # === HERO SELECT SCREEN ===
 def wrap_text(text, fnt, max_width):
     """Wrap text to fit within max_width pixels."""
@@ -141,6 +149,10 @@ selected_hero_idx = 0
 selecting = True
 PANEL_W = 160
 PANEL_H = 300
+
+if auto_mode:
+    selected_hero_idx = auto_hero_idx
+    selecting = False
 
 while selecting:
     for event in pygame.event.get():
@@ -243,6 +255,11 @@ dash_speed = 800.0  # pixels per second (very fast)
 dash_stun_target = None
 dash_stun_duration = 0.0
 dash_damage = 0.0  # damage dealt on arrival
+
+# Hero AI (toggle with TAB)
+from game.engine.hero_ai import create_hero_ai
+hero_ai = create_hero_ai(hero)
+ai_enabled = auto_mode  # Auto mode starts with AI on
 
 # Monster pool
 MONSTER_POOL = [
@@ -349,6 +366,8 @@ while running:
         if event.type == pygame.QUIT: running = False
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE: running = False
+            if event.key == pygame.K_TAB:
+                ai_enabled = not ai_enabled
             # 1,2,3 = switch right-click skill
             if event.key == pygame.K_1: right_skill_idx = 0
             if event.key == pygame.K_2: right_skill_idx = 1
@@ -456,6 +475,82 @@ while running:
             hero.x += (dx/dist) * min(spd, dist)
             hero.y += (dy/dist) * min(spd, dist)
             hero.facing_left = dx < 0
+
+    # === HERO AI (when enabled) ===
+    if ai_enabled and not dash_active:
+        ai_action = hero_ai.update(game_state.alive_monsters, dt, is_wall)
+        
+        # Debug log
+        if int(game_state.game_time * 2) != int((game_state.game_time - dt) * 2):  # Log every 0.5s
+            alive_count = len(game_state.alive_monsters)
+            target_dist = f" target_dist={hero.distance_to(hero_ai.target):.0f}" if hero_ai.target and hero_ai.target.alive else ""
+            action_name = ai_action['use_ability'] or ('DASH' if ai_action.get('dash') else ('MOVE' if ai_action.get('move_to') else ('BASIC_ATK' if ai_action.get('basic_attack') else ('EXPLORE' if not alive_count else 'IDLE'))))
+            print(f"[AI t={game_state.game_time:.1f}s] monsters={alive_count} hp={hero.hp:.0f}/{hero.max_hp} pos=({hero.x:.0f},{hero.y:.0f}) action={action_name}{target_dist}", flush=True)
+
+        if ai_action["use_potion"] and potions > 0 and hero.hp < hero.max_hp:
+            potions -= 1
+            heal = hero.heal(150)
+            floating_texts.append(FloatingText(hero.x, hero.y-30, f"+{heal:.0f}", (100,255,100)))
+
+        if ai_action["dash"]:
+            # Charge ability
+            tx, ty, target_m, dmg, stun = ai_action["dash"]
+            ab = hero.abilities.get("R")
+            if ab and ab.is_ready():
+                ab.use()
+                dash_target_x, dash_target_y = tx, ty
+                dash_active = True
+                dash_stun_target = target_m
+                dash_stun_duration = stun
+                dash_damage = dmg
+                call_for_help(target_m, game_state.monsters, hero)
+
+        elif ai_action["use_ability"]:
+            ab_key = ai_action["use_ability"]
+            ab = hero.abilities.get(ab_key)
+            if ab and ab.is_ready():
+                if ab.radius > 0:
+                    pos = ai_action["ability_target_pos"] or (hero.x, hero.y)
+                    hits = hero.use_ability(ab_key, game_state.alive_monsters, target_pos=pos)
+                    effects.append(AoeRing(pos[0], pos[1], ab.radius, ab.color))
+                    for name, dmg in hits:
+                        floating_texts.append(FloatingText(pos[0], pos[1]-20, f"{dmg:.0f}", GOLD))
+                elif ai_action["ability_target_monster"]:
+                    target_m = ai_action["ability_target_monster"]
+                    hits = hero.use_ability(ab_key, [target_m])
+                    for name, dmg in hits:
+                        floating_texts.append(FloatingText(target_m.x, target_m.y-20, f"{dmg:.0f}", WHITE))
+                    call_for_help(target_m, game_state.monsters, hero)
+
+        elif ai_action["move_to"] and not move_path:
+            tx, ty = ai_action["move_to"]
+            # Try direct movement first
+            old_x, old_y = hero.x, hero.y
+            hero.move_toward(tx, ty, dt, is_wall)
+            hero.facing_left = (tx - hero.x) < 0
+            # If stuck (didn't move), use pathfinding
+            if abs(hero.x - old_x) < 0.5 and abs(hero.y - old_y) < 0.5:
+                move_path = astar(dungeon, hero.x, hero.y, tx, ty)
+
+        elif ai_action.get("basic_attack"):
+            # Auto-attack when abilities on cooldown
+            target_m = ai_action["basic_attack"]
+            if target_m.alive and hero.distance_to(target_m) <= hero.attack_range:
+                dmg = hero.try_basic_attack(target_m)
+                if dmg:
+                    floating_texts.append(FloatingText(target_m.x, target_m.y-15, f"{dmg:.0f}", WHITE))
+                    call_for_help(target_m, game_state.monsters, hero)
+
+        else:
+            # No enemies and no action — explore! Move toward next unexplored room
+            for r in dungeon.rooms:
+                if not r.explored:
+                    target_x = r.center_x * TILE_SIZE
+                    target_y = r.center_y * TILE_SIZE
+                    # Use pathfinding for exploration
+                    if not move_path:
+                        move_path = astar(dungeon, hero.x, hero.y, target_x, target_y)
+                    break
 
     # Auto-attack selected target (only if in range — no auto-walk)
     if selected_target:
@@ -666,7 +761,10 @@ while running:
         pygame.draw.rect(screen, color, (rx, ry, 10, 8))
 
     # Controls help
-    screen.blit(font.render("LClick=Move/Select  Shift+LClick=Left Skill  RClick=Right Skill  1/2/3=Switch R  Ctrl+1/2/3=Switch L", True, (70,70,70)), (10, HEIGHT-18))
+    ai_label = "AI: ON (TAB=off)" if ai_enabled else "TAB=AI"
+    ai_color = (100, 255, 100) if ai_enabled else (80, 80, 80)
+    screen.blit(font.render(ai_label, True, ai_color), (WIDTH - 130, HEIGHT - 18))
+    screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill  1/2/3=Switch  F=Pot", True, (70,70,70)), (10, HEIGHT-18))
     pygame.display.flip()
 
 pygame.quit()
