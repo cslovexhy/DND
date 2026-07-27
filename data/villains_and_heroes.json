@@ -1,0 +1,302 @@
+{
+  "villains": [
+    {
+      "name": "Ashardalon, Red Dragon",
+      "ac": 16,
+      "hp": 12,
+      "attacks": [
+        {
+          "attack_name": "Tail Sweep",
+          "attack_bonus": "+10",
+          "damage": "1 and move the Hero 1 tile away from Ashardalon"
+        },
+        {
+          "attack_name": "Bite",
+          "attack_bonus": "+10",
+          "damage": "1, Dazed, and move the Hero to any square adjacent to Ashardalon"
+        }
+      ],
+      "experience": "Level 6 Villain",
+      "tactics": [
+        "If Ashardalon is adjacent to more than one Hero, Ashardalon attacks each adjacent Hero with a tail sweep.",
+        "If Ashardalon is within 1 tile of a Hero, Ashardalon attacks the farthest Hero within 1 tile with a grabbing bite.",
+        "Otherwise, Ashardalon moves 1 tile toward the Hero with the most Hit Points."
+      ],
+      "special_abilities": [
+        "When Ashardalon is encountered: Find the Ashardalon Breathes! Special Encounter Card and shuffle it into the top 3 cards of the Encounter Card deck.",
+        "Squeezing: Ashardalon can be placed over walls, but the center square that his miniature is on must be open."
+      ]
+    },
+    {
+      "name": "Bellax, Gauth",
+      "ac": 17,
+      "hp": 9,
+      "attacks": [
+        {
+          "attack_name": "Eye Ray (1-4 Anti-Magic)",
+          "attack_bonus": "+8",
+          "damage": "1 and the Hero discards 1 item of his or her choice"
+        },
+        {
+          "attack_name": "Eye Ray (5-8 Fire Ray)",
+          "attack_bonus": "+8",
+          "damage": "2 (Miss: 1 Damage)"
+        },
+        {
+          "attack_name": "Eye Ray (9-12 Exhaustion)",
+          "attack_bonus": "+8",
+          "damage": "1 and Dazed"
+        },
+        {
+          "attack_name": "Eye Ray (13-16 Poison)",
+          "attack_bonus": "+8",
+          "damage": "1 and Poisoned"
+        },
+        {
+          "attack_name": "Eye Ray (17-20 Telekinetic)",
+          "attack_bonus": "+8",
+          "damage": "1 and move the Hero 1 tile away from the gauth"
+        }
+      ],
+      "experience": "Level 6 Villain",
+      "tactics": [
+        "If the gauth is adjacent to a Hero, the gauth attacks that Hero with an eye ray and then moves to the closest square not adjacent to a Hero.",
+        "If the gauth is within 3 tiles of a Hero, it attacks the Hero with the most Hit Points within range with an eye ray.",
+        "Otherwise, the gauth moves 1 tile toward the closest Hero."
+      ],
+      "special_abilities": [
+        "Eye Ray: When the gauth attacks with an eye ray, roll the die and consult the table for the attack that is used against the Hero."
+      ]
+    },
+    {
+      "name": "Karash, Orc Shaman",
+      "ac": 14,
+      "hp": 7,
+      "attacks": [
+        {
+          "attack_name": "Windstorm",
+          "attack_bonus": "+8",
+          "damage": "1 and move the Hero 1 tile in the direction of the tile's triangle"
+        },
+        {
+          "attack_name": "Lightning",
+          "attack_bonus": "+8",
+          "damage": "1 and move the Hero 1 tile in the direction of the tile's triangle"
+        }
+      ],
+      "experience": "Level 5 Villain",
+      "tactics": [
+        "If the orc shaman is within 1 tile of a tile with more than 1 Hero, the shaman attacks each Hero on the tile with a primal windstorm.",
+        "If the orc shaman is within 1 tile of a single Hero, the shaman attacks the closest Hero with a bolt of lightning.",
+        "Otherwise, the orc shaman moves 1 tile toward the closest Hero."
+      ],
+      "special_abilities": []
+    },
+    {
+      "name": "Margrath, Duergar Captain",
+      "ac": 16,
+      "hp": 8,
+      "attacks": [
+        {
+          "attack_name": "Morning Star",
+          "attack_bonus": "+8",
+          "damage": "1 and move the Hero 1 tile away from the duergar"
+        },
+        {
+          "attack_name": "Quills",
+          "attack_bonus": "+8",
+          "damage": "1 and Poisoned"
+        }
+      ],
+      "experience": "Level 5 Villain",
+      "tactics": [
+        "If the duergar is adjacent to a Hero, it attacks the Hero with a morning star.",
+        "If the duergar is within 1 tile of a Hero, it attacks the Hero with a handful of poisoned quills, and then moves adjacent to that Hero.",
+        "Otherwise, the duergar moves 1 tile toward the closest Hero."
+      ],
+      "special_abilities": []
+    },
+    {
+      "name": "Meerak, Kobold Dragonlord",
+      "ac": 17,
+      "hp": 6,
+      "attacks": [
+        {
+          "attack_name": "Short Sword",
+          "attack_bonus": "+8",
+          "damage": "2"
+        }
+      ],
+      "experience": "Level 5 Villain",
+      "tactics": [
+        "If the kobold is adjacent to a Hero, it attacks that Hero with a short sword, and then the kobold moves to any square within 1 tile.",
+        "If the kobold is within 1 tile of a Hero, it moves adjacent to the closest Hero and attacks that Hero with a short sword.",
+        "Otherwise, move the kobold 1 tile toward the Hero with the most Hit Points."
+      ],
+      "special_abilities": []
+    },
+    {
+      "name": "Otyugh",
+      "ac": 14,
+      "hp": 10,
+      "attacks": [
+        {
+          "attack_name": "Bite",
+          "attack_bonus": "+12",
+          "damage": "3 (Miss: 1 Damage)"
+        },
+        {
+          "attack_name": "Tentacle",
+          "attack_bonus": "+10",
+          "damage": "2, Dazed, and move the Hero to any square adjacent to the otyugh"
+        }
+      ],
+      "experience": "Level 5 Villain",
+      "tactics": [
+        "If the otyugh is adjacent to a Hero, it attacks the adjacent Hero with the most Hit Points remaining with a crushing bite.",
+        "If the otyugh is within 2 tiles of a Hero, it attacks that Hero with a grabbing tentacle.",
+        "Otherwise, the otyugh moves 1 tile toward the closest Hero."
+      ],
+      "special_abilities": []
+    },
+    {
+      "name": "Rage Drake",
+      "ac": 13,
+      "hp": 6,
+      "attacks": [
+        {
+          "attack_name": "Bite",
+          "attack_bonus": "+8",
+          "damage": "1 and move the Hero 1 tile away from the Rage Drake"
+        },
+        {
+          "attack_name": "Charge",
+          "attack_bonus": "+10",
+          "damage": "1 and Dazed"
+        }
+      ],
+      "experience": "Level 5 Villain",
+      "tactics": [
+        "If the rage drake is reduced to 0 Hit Points, it becomes enraged. Flip over this card and consult the tactics section again.",
+        "If the rage drake is adjacent to a Hero, it attacks the Hero with a rending bite.",
+        "If the rage drake is within 1 tile of a Hero, it moves adjacent to the closest Hero and attacks with a raking charge.",
+        "Otherwise, the rage drake moves 1 tile toward the closest Hero."
+      ],
+      "special_abilities": [
+        "Enraged form: AC 15, HP 10. Attacks: Claws +10 (2 and move the Hero 2 tiles away from the rage drake), Charge +12 (3 and Dazed). Moves 2 tiles toward closest Hero."
+      ]
+    }
+  ],
+  "heroes": [
+    {
+      "name": "Vistra",
+      "race": "Dwarf",
+      "class": "Fighter",
+      "ac": 17,
+      "hp": 8,
+      "speed": 5,
+      "surge_value": "4 HP",
+      "special_ability": "CAST-IRON STOMACH: You get a +5 bonus to rolls to end the Poisoned condition.",
+      "powers_list": [
+        "Dwarven Resilience (Dwarf Daily) - Regain 4 Hit Points instead of moving",
+        "Charge (Fighter At-Will) - Move up to your speed, then attack one adjacent Monster. +8, 1 damage",
+        "Reaping Strike (Fighter At-Will) - Attack one adjacent Monster twice. +4, 1 damage",
+        "Sure Strike (Fighter At-Will) - Attack one adjacent Monster. +11, 1 damage",
+        "Comeback Strike (Fighter Daily) - Attack one adjacent Monster. If you hit, regain 2 HP. +7, 2 damage",
+        "Into the Fray (Fighter Daily) - Place your Hero adjacent to any Hero within 2 tiles. Attack one adjacent Monster. +7, 3 damage (Miss: 1)",
+        "Taunting Advance (Fighter Daily) - Move your speed. Choose a Monster within 2 tiles, place it adjacent and attack. +8, 3 damage (Miss: 1)",
+        "Inspiring Advice (Fighter Utility) - Reroll a missed attack for any Hero",
+        "One for the Team (Fighter Utility) - Resolve an Encounter Card as if you drew it",
+        "To Arms! (Fighter Utility) - When a new Monster is placed, you and one Hero on your tile can move your speed"
+      ]
+    },
+    {
+      "name": "Quinn",
+      "race": "Human",
+      "class": "Cleric",
+      "ac": 16,
+      "hp": 8,
+      "speed": 5,
+      "surge_value": "4 HP",
+      "special_ability": "SAVING GRACE: When you or any Hero on your tile regains 1 Hit Point or more, that Hero can also end one Condition currently in effect.",
+      "powers_list": [
+        "Healing Hymn (Cleric Utility) - You and one other Hero on your tile regain 2 Hit Points",
+        "Cleric's Shield (Cleric At-Will) - Attack one adjacent Monster. +6, 1 damage. Choose 1 Hero on your tile gains +2 AC",
+        "Righteous Advance (Cleric At-Will) - Attack one adjacent Monster. +6, 1 damage. One Hero on your tile moves 2 squares",
+        "Sacred Flame (Cleric At-Will) - Attack one Monster within 1 tile. +6, 1 damage. If hit, one Hero gains 1 HP",
+        "Blade Barrier (Cleric Daily) - Place 5 Blade Barrier tokens on a tile within 2 tiles. Deal 1 damage to Monsters placed on token squares",
+        "Cause Fear (Cleric Daily) - Allies on a tile within 1 tile make At-Will attacks with +2 bonus. Place remaining Monsters within 2 tiles",
+        "Wrathful Thunder (Cleric Daily) - Attack one adjacent Monster. +6, 3 damage (Miss: 1). Control a Monster on your tile",
+        "Astral Refuge (Utility) - Remove a Hero within 2 tiles, place them on any tile next Hero Phase",
+        "Command (Cleric Utility) - Place one Monster on your tile on a tile within 2 tiles of you",
+        "Perseverance (Cleric Utility) - Reduce Encounter Card cancel cost by number of Heroes on your tile"
+      ]
+    },
+    {
+      "name": "Keyleth",
+      "race": "Elf",
+      "class": "Paladin",
+      "ac": 17,
+      "hp": 8,
+      "speed": 6,
+      "surge_value": "4 HP",
+      "special_ability": "HEALING HANDS: When you or any Hero on your tile spends a healing surge, that Hero regains 1 additional Hit Point.",
+      "powers_list": [
+        "Lay on Hands (Paladin Utility) - One adjacent Hero regains 2 hit points",
+        "Divine Challenge (Paladin At-Will) - Choose a Monster within 1 tile, place it adjacent. Attack one adjacent Monster. +8, 1 damage",
+        "Holy Strike (Paladin At-Will) - Attack one adjacent Monster. +8, 1 damage. +1 damage if started adjacent",
+        "Valiant Strike (Paladin At-Will) - Attack one adjacent Monster. +8, 1 damage. +1 attack per adjacent Monster",
+        "Arcing Strike (Paladin Daily) - Attack one or two adjacent Monsters. +9, 3 damage (Miss: 1)",
+        "Benign Transposition (Paladin Daily) - Swap with a Hero within 2 tiles, then attack adjacent. +8, 3 damage (Miss: 1)",
+        "Righteous Smite (Paladin Daily) - Attack one adjacent Monster. +9, 3 damage (Miss: 1). All Heroes on tile regain 1 HP",
+        "Bravery (Paladin Utility) - When Monster within 1 tile activates, place adjacent and regain 1 HP",
+        "Noble Shield (Paladin Utility) - Become sole target of multi-Hero attack (auto-hit 20)",
+        "Virtue's Touch (Paladin Utility) - End one condition on an adjacent Hero"
+      ]
+    },
+    {
+      "name": "Tarak",
+      "race": "Half-Orc",
+      "class": "Rogue",
+      "ac": 14,
+      "hp": 8,
+      "speed": 6,
+      "surge_value": "4 HP",
+      "special_ability": "BRUTAL RECOVERY: When you or any Hero on your tile rolls a natural 20, you may recharge (flip over) Furious Assault.",
+      "powers_list": [
+        "Furious Assault (Half-Orc Utility) - When you hit a Monster, it takes +1 damage",
+        "Distracting Jab (Rogue At-Will) - Attack one adjacent Monster. +7, 1 damage. If hit, move Monster 1 square. After attack, move your speed",
+        "Lucky Strike (Rogue At-Will) - Attack one Monster within 1 tile. +7, 1 damage. Even roll: +1 damage",
+        "Positioning Shot (Rogue At-Will) - Attack one Monster within 2 tiles. +7, 1 damage. Place Monster on your tile or adjacent tile",
+        "Acrobatic Onslaught (Rogue Daily) - Attack one adjacent Monster. +7, 2 damage (Miss: 1). Then teleport 2 tiles and use At-Will",
+        "King's Castle (Rogue Daily) - Swap with a Hero within 1 tile. Attack 1 Monster within 2 tiles. +7, 3 damage (Miss: 1)",
+        "Tornado Strike (Rogue Daily) - Attack four times against any Monsters on your tile. +7, 1 damage each",
+        "Distant Diversion (Rogue Utility) - Place a Monster within 3 tiles onto an adjacent tile",
+        "Practiced Evasion (Rogue Utility) - Negate a Trap or Event Attack hit. Free Disable check if Trap",
+        "Tumbling Escape (Rogue Utility) - When hit by a Monster, the attack misses and move 1 tile"
+      ]
+    },
+    {
+      "name": "Heskan",
+      "race": "Dragonborn",
+      "class": "Wizard",
+      "ac": 14,
+      "hp": 6,
+      "speed": 6,
+      "surge_value": "3 HP",
+      "special_ability": "MAGE HAND: You can open any door on your Hero's tile, not just adjacent doors.",
+      "powers_list": [
+        "Hurled Breath (Dragonborn Daily) - Choose a tile within 2 tiles. Attack each Monster on that tile. +5, 1 damage. Does not count as attack action",
+        "Arc Lightning (Wizard At-Will) - Attack up to two Monsters on your tile or within 1 tile. +7, 1 damage",
+        "Hypnotism (Wizard At-Will) - Move a Monster within 1 tile 1 tile. If adjacent to another Monster, attack it. +9, 1 damage",
+        "Ray of Frost (Wizard At-Will) - Attack one Monster within 2 tiles. +7, 1 damage",
+        "Flaming Sphere (Wizard Daily) - Place 3 tokens within 1 tile. Move stack 1 tile instead of moving. Remove token to deal 1 damage to each Monster",
+        "Shock Sphere (Wizard Daily) - Choose a tile within 2 tiles. Attack each Monster. +9, 2 damage (Miss: 1)",
+        "Spectral Ram (Wizard Daily) - Attack one Monster within 2 tiles. +9, 3 damage (Miss: 1). Place Monster within 2 tiles of start",
+        "Invisibility (Wizard Utility) - Until next Hero Phase, don't count as closest Hero for tactics",
+        "Mirror Image (Wizard Utility) - Place 3 tokens. +2 AC per token. Remove 1 when Monster misses",
+        "Wizard Eye (Wizard Utility) - Place token within 1 tile. Move it instead of moving. Explore from its tile"
+      ]
+    }
+  ]
+}

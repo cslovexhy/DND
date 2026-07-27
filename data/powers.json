@@ -1,0 +1,472 @@
+[
+  {
+    "name": "Charge",
+    "class": "Fighter",
+    "type": "At-Will",
+    "attack_bonus": 8,
+    "damage": 1,
+    "range": "adjacent (after move)",
+    "effect": "Move up to your speed, then attack one adjacent Monster.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Comeback Strike",
+    "class": "Fighter",
+    "type": "Daily",
+    "attack_bonus": 7,
+    "damage": 2,
+    "range": "adjacent",
+    "effect": "Attack one adjacent Monster. If you hit, you regain 2 hit points. If you miss, do not flip this card over.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Inspiring Advice",
+    "class": "Fighter",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Fighter utility power that inspires allies.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Into the Fray",
+    "class": "Fighter",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Fighter daily power for aggressive engagement.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "One for the Team",
+    "class": "Fighter",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Fighter daily power focused on protecting allies.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Reaping Strike",
+    "class": "Fighter",
+    "type": "At-Will",
+    "attack_bonus": 4,
+    "damage": 1,
+    "range": "adjacent",
+    "effect": "Attack one adjacent Monster twice. You punctuate your scything attacks with wicked jabs and small cutting blows that slip through your enemy's defenses.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Sure Strike",
+    "class": "Fighter",
+    "type": "At-Will",
+    "attack_bonus": 11,
+    "damage": 1,
+    "range": "adjacent",
+    "effect": "Attack one adjacent Monster. You trade power for precision.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Taunting Advance",
+    "class": "Fighter",
+    "type": "At-Will",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Fighter at-will power for drawing enemy attention.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "To Arms!",
+    "class": "Fighter",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Fighter utility power that rallies allies.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Astral Refuge",
+    "class": "Cleric",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "self",
+    "effect": "Cleric utility power providing a protective refuge.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Blade Barrier",
+    "class": "Cleric",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": 1,
+    "range": "2 tiles",
+    "effect": "Choose a tile within 2 tiles of you. Place five Blade Barrier tokens on five different squares on that tile. When a Monster is placed on a square with a Blade Barrier token, remove that token and deal 1 damage to the Monster.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Cause Fear",
+    "class": "Cleric",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "1 tile",
+    "effect": "Choose a tile within 1 tile of you. Each ally on that tile adjacent to a Monster can make an At-Will attack with a +2 bonus to the Attack roll. After the attacks, place each Monster remaining on a tile within 2 tiles of you.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Cleric's Shield",
+    "class": "Cleric",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "self",
+    "effect": "Cleric utility power providing defensive shielding.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Command",
+    "class": "Cleric",
+    "type": "At-Will",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "1 tile",
+    "effect": "Cleric at-will power that commands enemies.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Healing Hymn",
+    "class": "Cleric",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "same tile",
+    "effect": "Use this power during your Hero Phase. You and one other Hero on your tile regain 2 Hit Points. You sing a soothing song that seals the wounds of you and your allies.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Perseverance",
+    "class": "Cleric",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "self",
+    "effect": "Cleric utility power providing endurance.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Righteous Advance",
+    "class": "Cleric",
+    "type": "At-Will",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Cleric at-will power combining attack with movement.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Sacred Flame",
+    "class": "Cleric",
+    "type": "At-Will",
+    "attack_bonus": 6,
+    "damage": 1,
+    "range": "1 tile",
+    "effect": "Attack one Monster within 1 tile of you. If you hit, choose yourself or one Hero on your tile. That Hero gains 1 Hit Point. Sacred light shines from above, searing a single enemy with holy radiance.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Wrathful Thunder",
+    "class": "Cleric",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Cleric daily power dealing thunder damage.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Arcing Strike",
+    "class": "Paladin",
+    "type": "At-Will",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Paladin at-will power with sweeping attack.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Benign Transposition",
+    "class": "Paladin",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "1 tile",
+    "effect": "Paladin utility power that swaps positions with an ally.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Bravery",
+    "class": "Paladin",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "self",
+    "effect": "Paladin utility power providing courage.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Divine Challenge",
+    "class": "Paladin",
+    "type": "At-Will",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Paladin at-will power that marks an enemy.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Holy Strike",
+    "class": "Paladin",
+    "type": "At-Will",
+    "attack_bonus": 8,
+    "damage": 1,
+    "range": "adjacent",
+    "effect": "Attack one adjacent Monster. If you started your Hero Phase adjacent to the Monster, deal +1 damage if you hit. You strike an enemy, igniting it with holy light.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Lay on Hands",
+    "class": "Paladin",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Paladin utility power that heals an ally.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Noble Shield",
+    "class": "Paladin",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Paladin utility power providing defensive protection.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Righteous Smite",
+    "class": "Paladin",
+    "type": "Daily",
+    "attack_bonus": 9,
+    "damage": 3,
+    "range": "adjacent",
+    "effect": "Attack one adjacent Monster. Hit or Miss: All Heroes on your tile regain 1 Hit Point. Miss: 1 Damage. Your righteous attack fills your party with preternatural resolve.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Valiant Strike",
+    "class": "Paladin",
+    "type": "At-Will",
+    "attack_bonus": 8,
+    "damage": 1,
+    "range": "adjacent",
+    "effect": "Attack one adjacent Monster. When making this attack, you get a +1 bonus to attack for each Monster adjacent to your Hero. The odds against you add strength to your attack.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Virtue's Touch",
+    "class": "Paladin",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Paladin daily power with healing touch.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Acrobatic Onslaught",
+    "class": "Rogue",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Rogue daily power with acrobatic attacks.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Distant Diversion",
+    "class": "Rogue",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "1 tile",
+    "effect": "Rogue utility power creating a distraction at range.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Distracting Jab",
+    "class": "Rogue",
+    "type": "At-Will",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Rogue at-will power that distracts enemies.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "King's Castle",
+    "class": "Rogue",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "same tile",
+    "effect": "Rogue utility power for repositioning.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Lucky Strike",
+    "class": "Rogue",
+    "type": "At-Will",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "adjacent",
+    "effect": "Rogue at-will power with lucky attack.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Positioning Shot",
+    "class": "Rogue",
+    "type": "At-Will",
+    "attack_bonus": 7,
+    "damage": 1,
+    "range": "2 tiles",
+    "effect": "Attack one Monster within 2 tiles of you. Hit or Miss: Place that Monster on any square on your tile or on an adjacent tile. To avoid your vicious attack, your enemy leaps exactly where you want it to be.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Practiced Evasion",
+    "class": "Rogue",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "self",
+    "effect": "Rogue utility power for evasion.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Tornado Strike",
+    "class": "Rogue",
+    "type": "Daily",
+    "attack_bonus": 7,
+    "damage": 1,
+    "range": "same tile",
+    "effect": "Attack four times. Each attack can be against any Monster on your tile. After the attacks, place your Hero on any square on your tile. Your weapon becomes a blur as you make swift, sweeping attacks.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Tumbling Escape",
+    "class": "Rogue",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "self",
+    "effect": "Rogue utility power for escaping danger.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Arc Lightning",
+    "class": "Wizard",
+    "type": "At-Will",
+    "attack_bonus": 7,
+    "damage": 1,
+    "range": "1 tile",
+    "effect": "Attack up to two Monsters. Each monster can be on your tile or any tile within 1 tile of you. Lightning leaps from your outstretched hands, blasting your foes.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Flaming Sphere",
+    "class": "Wizard",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": 1,
+    "range": "1 tile",
+    "effect": "Place 3 Flaming Sphere tokens in a stack on any square within 1 tile of you. Instead of moving during your Hero phase, you can move the Flaming Sphere stack 1 tile. At the end of your Hero Phase, you can remove 1 Flaming Sphere token and deal 1 damage to each Monster on that tile.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Hypnotism",
+    "class": "Wizard",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "1 tile",
+    "effect": "Wizard daily power that hypnotizes enemies.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Invisibility",
+    "class": "Wizard",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "self",
+    "effect": "Wizard utility power granting invisibility.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Mirror Image",
+    "class": "Wizard",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "self",
+    "effect": "Wizard utility power creating illusory duplicates for defense.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Ray of Frost",
+    "class": "Wizard",
+    "type": "At-Will",
+    "attack_bonus": 7,
+    "damage": 1,
+    "range": "2 tiles",
+    "effect": "Attack one Monster on your tile or on any tile within 2 tiles of you. A blistering ray of white frost streaks to your target, slowing its reactions.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Shock Sphere",
+    "class": "Wizard",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "1 tile",
+    "effect": "Wizard daily power creating an area of electrical damage.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Spectral Ram",
+    "class": "Wizard",
+    "type": "Daily",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "1 tile",
+    "effect": "Wizard daily power that rams enemies with spectral force.",
+    "source": "Wrath of Ashardalon"
+  },
+  {
+    "name": "Wizard Eye",
+    "class": "Wizard",
+    "type": "Utility",
+    "attack_bonus": null,
+    "damage": null,
+    "range": "1 tile",
+    "effect": "Wizard utility power for scouting ahead.",
+    "source": "Wrath of Ashardalon"
+  }
+]

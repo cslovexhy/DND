@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Scratch (debug images, safe to delete)
+scratch/
+
+# PDFs (too large for git, 296MB)
+pdfs/
+
+# Unused asset packs
+assets/kenney_rpg/
+
+# Zip files
+*.zip
+
+# IDE
+.idea/
+.vscode/
