@@ -61,7 +61,17 @@ Scraped the D&D Adventure System Wiki (ddadventuresystem.fandom.com) for complet
 │   └── 04_wrath_of_ashardalon_roadmap.md
 ├── docs/                      # Reference material
 │   └── game_reference.md      #   Extracted board game data (all 7 games)
-├── game/                      # Actual implementation (TODO)
+├── game/                      # Actual implementation
+│   ├── __init__.py
+│   ├── main.py                #   Entry point — hero select + game loop + rendering
+│   ├── engine/
+│   │   ├── entities.py        #   Entity/Hero/Monster classes, abilities, conditions
+│   │   ├── dungeon.py         #   Unified tile grid generator (rooms + corridors)
+│   │   ├── ai.py              #   Monster AI with aggro system (sense/call/leash)
+│   │   └── pathfinding.py     #   A* pathfinding on unified grid
+│   ├── content/
+│   │   └── heroes.py          #   All 5 heroes with stats and abilities
+│   └── rendering/             #   (future: separate renderer module)
 ├── pdfs/                      # Source PDFs (18 rulebooks + adventure books)
 ├── prototypes/                # Working demos/POCs
 │   ├── demo.py                #   Headless combat test
@@ -111,13 +121,38 @@ Scraped the D&D Adventure System Wiki (ddadventuresystem.fandom.com) for complet
 ---
 
 ## Next Steps (Implementation)
-1. **Architect proper game engine** — separate engine/ from rendering/
-2. **Multi-room dungeon generation** — connected rooms, doorways, fog of war, minimap
-3. **Hero selection screen** — pick from 5 heroes with unique abilities
-4. **Adventure 1: Escape the Tunnel** — full playthrough with objective, boss, win/lose
-5. **Monster AI variety** — ranged attacks, conditions (Poison, Daze), different behaviors
-6. **Loot & equipment system**
-7. **Campaign progression** — town phase, level up, advancement tokens
+1. **Play-test and fix/tweak the other 4 heroes** (Quinn, Keyleth, Tarak, Heskan) — balance abilities, ensure dash/range/healing all work
+2. **Polish Adventure 1** — boss room feel, victory screen, maybe add more monster variety per room
+3. **Loot & equipment system** — items drop, equip for stat boosts
+4. **Campaign progression** — town phase, level up, advancement tokens
+5. **More adventures** — Adventures 2-13 from Wrath of Ashardalon
+6. **Multiplayer** — WebSocket co-op
+
+---
+
+## Session 2 — 2026-07-26 (continued)
+
+### What was built:
+- **Unified dungeon system** — single tile grid, rooms connected by corridors, seamless movement
+- **Diablo 2 control scheme** — left/right click skill slots, 1/2/3 quick-switch, shift+click for left skill
+- **Aggro system** — sense range, call-for-help on attack, leash range, linked groups
+- **Proper attack ranges** — monsters stop at attack range (not 0), ranged monsters have cast time (0.5s freeze)
+- **Charge skill rework** — smooth dash animation over frames, damage + stun on arrival (not instant)
+- **Whirlwind skill** — true AoE melee hitting all enemies in range
+- **Range checking** — "Too far!" / "No target!" feedback on all abilities
+- **Hero select with mouse** — click panels to select, double-click to confirm
+- **Pathfinding click-to-move** — A* on unified grid
+
+### Key design decisions:
+- Left-click enemy = select only (no auto-walk). Auto-attack only if already in range.
+- Skills cast on right-click (primary combat action). Left-click is for movement/selection.
+- Dash abilities (Charge) deal damage ON ARRIVAL, not on cast — creates satisfying gap-closing moment.
+- Ranged monsters freeze 0.5s when shooting — gives player counterplay window to close gap.
+- Monsters don't aggro until hero enters sense range — allows careful pulling.
+
+### Commits:
+- `d5f205a` — Initial commit (all source material, design docs, prototypes, data)
+- `fbdd54a` — Playable Adventure 1 with Diablo 2 controls
 
 ---
 
