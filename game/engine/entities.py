@@ -34,10 +34,10 @@ class ActiveCondition:
 @dataclass
 class Ability:
     name: str
-    cooldown: float       # seconds
+    cooldown: float       # seconds (how often you can use this skill)
     remaining: float = 0.0
-    damage: float = 0.0
-    attack_bonus: int = 0
+    multiplier: float = 1.0   # damage = base_damage * multiplier + flat_bonus
+    flat_bonus: float = 0.0   # flat added damage
     radius: float = 0.0  # AoE radius (0 = single target)
     range: float = 50.0  # max range in pixels
     effect: str = ""     # description of special effect
@@ -45,6 +45,10 @@ class Ability:
     color: tuple = (200, 200, 255)
     is_dash: bool = False       # hero dashes to target on use
     stun_duration: float = 0.0  # applies stun to target (seconds)
+
+    def calc_damage(self, base_damage: float) -> float:
+        """Calculate skill damage from hero's base weapon damage."""
+        return base_damage * self.multiplier + self.flat_bonus
 
     def is_ready(self) -> bool:
         return self.remaining <= 0
@@ -74,12 +78,11 @@ class Entity:
         self.base_speed = speed * SPEED_SCALE  # pixels per second
         self.speed = self.base_speed
 
-        # Basic attack
-        self.attack_bonus = attack_bonus
-        self.attack_damage = attack_damage * HP_SCALE // 2  # scale damage too
+        # Weapon / Attack
+        self.base_damage = attack_damage * HP_SCALE // 2  # weapon base damage
+        self.weapon_speed = attack_cooldown  # seconds between swings
         self.attack_range = attack_range
-        self.attack_cooldown = attack_cooldown
-        self.attack_cd_remaining = 0.0
+        self.swing_timer = 0.0  # time until next swing is ready
 
         # State
         self.alive = True
@@ -179,27 +182,28 @@ class Entity:
     def update(self, dt: float):
         """Per-frame update."""
         self.flash_timer = max(0, self.flash_timer - dt)
-        self.attack_cd_remaining = max(0, self.attack_cd_remaining - dt)
+        self.swing_timer = max(0, self.swing_timer - dt)
         self.update_conditions(dt)
 
-    def can_attack(self) -> bool:
+    def can_swing(self) -> bool:
+        """Check if entity can swing (weapon timer ready)."""
         if not self.alive:
             return False
         if self.has_condition(Condition.STUNNED):
             return False
-        if self.has_condition(Condition.DAZED):
-            return False  # Dazed handled at higher level (move OR attack)
-        return self.attack_cd_remaining <= 0
+        if self.has_condition(Condition.IMMOBILIZED):
+            return False
+        return self.swing_timer <= 0
 
     def try_basic_attack(self, target: 'Entity') -> Optional[float]:
-        """Try to basic attack target. Returns damage dealt or None."""
-        if not self.can_attack():
+        """Swing weapon at target. Returns damage dealt or None."""
+        if not self.can_swing():
             return None
         if self.distance_to(target) > self.attack_range:
             return None
 
-        self.attack_cd_remaining = self.attack_cooldown
-        return target.take_damage(self.attack_damage)
+        self.swing_timer = self.weapon_speed
+        return target.take_damage(self.base_damage)
 
 
 class Hero(Entity):
@@ -249,15 +253,19 @@ class Hero(Entity):
 
     def use_ability(self, key: str, targets: list['Entity'],
                     target_pos: tuple = None) -> list[tuple[str, float]]:
-        """Use an ability. Returns list of (target_name, damage_dealt)."""
+        """Use an ability (consumes a swing). Returns list of (target_name, damage_dealt)."""
         ab = self.abilities.get(key)
         if not ab or not ab.is_ready():
             return []
         if self.has_condition(Condition.STUNNED):
             return []
+        if self.swing_timer > 0:
+            return []  # Can't use skill mid-swing
 
         hits = []
         ab.use()
+        self.swing_timer = self.weapon_speed  # Skill consumes a swing
+        skill_damage = ab.calc_damage(self.base_damage)
 
         if ab.radius > 0:
             # AoE - check all targets in radius
@@ -270,14 +278,14 @@ class Hero(Entity):
                 dx = t.x - center_x
                 dy = t.y - center_y
                 if math.sqrt(dx*dx + dy*dy) <= ab.radius:
-                    dmg = t.take_damage(ab.damage)
+                    dmg = t.take_damage(skill_damage)
                     hits.append((t.name, dmg))
         else:
             # Single target - closest in range
             in_range = [t for t in targets if t.alive and self.distance_to(t) <= ab.range]
             if in_range:
                 target = min(in_range, key=lambda t: self.distance_to(t))
-                dmg = target.take_damage(ab.damage)
+                dmg = target.take_damage(skill_damage)
                 hits.append((target.name, dmg))
 
         return hits

@@ -132,7 +132,7 @@ class FighterAI(HeroAI):
                     self.target.x - (dx/d) * 50,
                     self.target.y - (dy/d) * 50,
                     self.target,
-                    ab_r.damage,
+                    ab_r.calc_damage(self.hero.base_damage),
                     ab_r.stun_duration
                 )
             return action

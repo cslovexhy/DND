@@ -12,49 +12,55 @@ WIZARD_COLOR = (255, 130, 50)
 
 
 def create_vistra(x: float, y: float) -> Hero:
-    """Vistra — Dwarf Fighter. Tank with high AC and melee damage."""
+    """Vistra — Dwarf Fighter. 1H Sword + Shield — balanced speed and defense."""
     h = Hero("Vistra", "Dwarf", "Fighter", x, y, hp=8, ac=17, speed=5, surge_value=4,
              special_ability="Cast-Iron Stomach: Immune to Poison")
-    h.attack_damage = 30
-    h.attack_range = 55
-    h.attack_cooldown = 0.5
-    h.add_ability("Q", Ability("Reaping Strike", cooldown=2.0, damage=50, radius=70, range=70,
-                               effect="Melee sweep hitting all adjacent enemies",
+    # Weapon: 1H Sword + Shield — balanced
+    h.base_damage = 40
+    h.weapon_speed = 1.6  # 1.6s between swings
+    h.attack_range = 60
+    # Skills (damage = base_damage * multiplier + flat)
+    h.add_ability("Q", Ability("Reaping Strike", cooldown=2.0, multiplier=1.2, flat_bonus=0,
+                               radius=70, range=70,
+                               effect="Melee sweep hitting all adjacent enemies (120% weapon dmg)",
                                power_type="at_will", color=FIGHTER_COLOR))
-    h.add_ability("R", Ability("Charge", cooldown=8.0, damage=100, radius=0, range=250,
-                               effect="Dash to target, deal damage + stun 1.5s",
+    h.add_ability("R", Ability("Charge", cooldown=8.0, multiplier=2.0, flat_bonus=0,
+                               radius=0, range=250,
+                               effect="Dash to target (200% weapon dmg + stun 1.5s)",
                                power_type="daily", color=(255, 160, 50),
                                is_dash=True, stun_duration=1.5))
-    h.add_ability("E", Ability("Whirlwind", cooldown=10.0, damage=30, radius=70, range=70,
-                               effect="Spin attack hitting all enemies in melee range",
+    h.add_ability("E", Ability("Whirlwind", cooldown=10.0, multiplier=0.8, flat_bonus=0,
+                               radius=70, range=70,
+                               effect="Spin attack hitting everything in melee (80% weapon dmg)",
                                power_type="daily", color=(220, 220, 255)))
     return h
 
 
 def create_quinn(x: float, y: float) -> Hero:
-    """Quinn — Human Cleric. Smite-based melee with Seal/Judgement combo system."""
+    """Quinn — Human Cleric. 1H Mace + Shield — Seal/Smite combo."""
     h = Hero("Quinn", "Human", "Cleric", x, y, hp=8, ac=16, speed=5, surge_value=4,
              special_ability="Seal System: Seals buff Smite and empower Judgement")
-    h.attack_damage = 25
-    h.attack_range = 55
-    h.attack_cooldown = 0.6
-    # Skill 1: Smite — bread and butter melee, similar DPS to Fighter
-    h.add_ability("Q", Ability("Smite", cooldown=2.0, damage=50, radius=0, range=75,
-                               effect="Melee divine strike. Boosted by active Seal.",
+    # Weapon: 1H Mace + Shield — medium speed
+    h.base_damage = 40
+    h.weapon_speed = 1.6
+    h.attack_range = 60
+    # Skills (multiplier * base_damage + flat_bonus)
+    h.add_ability("Q", Ability("Smite", cooldown=2.0, multiplier=1.0, flat_bonus=30,
+                               radius=0, range=75,
+                               effect="Melee divine strike (100% + 30 holy). Boosted by Seal.",
                                power_type="at_will", color=CLERIC_COLOR))
-    # Skill 2: Righteous Seal — buff that boosts Smite +25% for 10s, consumable by Judgement
-    h.add_ability("R", Ability("Righteous Seal", cooldown=10.0, damage=0, radius=0, range=0,
-                               effect="Buff: Smite deals +25% for 10s. Judgement consumes seal for bonus Smite damage.",
+    h.add_ability("R", Ability("Righteous Seal", cooldown=10.0, multiplier=0, flat_bonus=0,
+                               radius=0, range=0,
+                               effect="Buff: Smite +25% for 10s. Consumed by Judgement.",
                                power_type="utility", color=(255, 220, 80)))
-    # Skill 3: Judgement — ranged, consumes active Seal for bonus effect
-    h.add_ability("E", Ability("Judgement", cooldown=10.0, damage=30, radius=0, range=250,
-                               effect="Ranged holy bolt. Consumes Seal: +Smite damage on hit.",
+    h.add_ability("E", Ability("Judgement", cooldown=10.0, multiplier=0.8, flat_bonus=0,
+                               radius=0, range=250,
+                               effect="Ranged holy bolt (80% weapon). Consumes Seal for +100% bonus.",
                                power_type="daily", color=(255, 255, 150)))
-    # Skill 4: Holy Light — self-heal but immobilizes for 2s
-    h.add_ability("F", Ability("Holy Light", cooldown=30.0, damage=-150, radius=0, range=0,
-                               effect="Immobilize self 2s. Heal for 150 HP (potion amount).",
-                               power_type="utility", color=(255, 255, 220),
-                               stun_duration=2.0))  # Using stun_duration to flag the immobilize
+    h.add_ability("F", Ability("Holy Light", cooldown=30.0, multiplier=0, flat_bonus=0,
+                               radius=0, range=0,
+                               effect="Channel 2s: heal 150 HP. Immobilizes during cast.",
+                               power_type="utility", color=(255, 255, 220)))
     return h
 
 

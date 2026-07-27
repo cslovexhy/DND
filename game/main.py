@@ -242,6 +242,9 @@ selected_target = None
 potions = 3
 victory = False
 
+# Queued ability cast (walk to range then fire)
+pending_cast = None  # (ab_key, ab, target_monster) or None
+
 # Skill slots (Diablo 2 style)
 ability_keys = list(hero.abilities.keys())  # ["Q", "R", "E"]
 left_skill_idx = 0    # Index into ability_keys for left-click skill
@@ -292,7 +295,7 @@ def spawn_monsters_for_room(room):
             m.on_hit_condition = mt["condition"]
         if mt.get("ranged"):
             m.ranged_attack_range = 250
-            m.ranged_attack_damage = m.attack_damage
+            m.ranged_attack_damage = m.base_damage
         setup_monster_aggro(m)
         game_state.monsters.append(m)
 
@@ -342,13 +345,13 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
             return
         dist_to_target = hero.distance_to(clicked_monster)
         if dist_to_target > ab.range:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "Too far!", (255, 100, 100)))
+            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
             return
         ab.use()
-        total_damage = ab.damage
-        # Consume Seal for bonus Smite damage
+        total_damage = ab.calc_damage(hero.base_damage)
+        # Consume Seal for bonus damage (doubles the damage)
         if "Righteous Seal" in hero.buffs:
-            total_damage += 50  # Bonus Smite-equivalent damage
+            total_damage += hero.base_damage  # Bonus full weapon damage
             del hero.buffs["Righteous Seal"]
             floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 40, "Seal Consumed!", (255, 200, 50)))
         dmg = clicked_monster.take_damage(total_damage)
@@ -366,11 +369,12 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
             return
         dist_to_target = hero.distance_to(clicked_monster)
         if dist_to_target > ab.range:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "Too far!", (255, 100, 100)))
+            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
             return
         ab.use()
         bonus = 1.0 + (hero.buffs.get("Righteous Seal", {}).get("bonus", 0))
-        dmg = clicked_monster.take_damage(ab.damage * bonus)
+        skill_dmg = ab.calc_damage(hero.base_damage) * bonus
+        dmg = clicked_monster.take_damage(skill_dmg)
         color = (255, 230, 100) if bonus > 1.0 else WHITE
         floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", color))
         call_for_help(clicked_monster, game_state.monsters, hero)
@@ -384,7 +388,7 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
         # AoE — check if click location is within ability range
         dist_to_click = math.sqrt((wx - hero.x)**2 + (wy - hero.y)**2)
         if dist_to_click > ab.range and ab.range > 0:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "Too far!", (255, 100, 100)))
+            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
             return
         hits = hero.use_ability(ab_key, game_state.alive_monsters, target_pos=(wx, wy))
         effects.append(AoeRing(wx, wy, ab.radius, ab.color))
@@ -394,7 +398,7 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
         # Single target — check range
         dist_to_target = hero.distance_to(clicked_monster)
         if dist_to_target > ab.range:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "Too far!", (255, 100, 100)))
+            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
             return
         # Dash abilities: delay damage until arrival
         if ab.is_dash:
@@ -409,7 +413,7 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
                 dash_stun_target = clicked_monster
                 dash_stun_duration = ab.stun_duration
                 # Store damage to apply on arrival
-                dash_damage = ab.damage
+                dash_damage = ab.calc_damage(hero.base_damage)
             call_for_help(clicked_monster, game_state.monsters, hero)
         else:
             # Non-dash single target: deal damage immediately
@@ -479,7 +483,7 @@ while running:
                         # Clicked right skill box — cycle right skill
                         right_skill_idx = (right_skill_idx + 1) % len(ability_keys)
                 elif clicked_monster:
-                    # Click enemy = select only (no walk)
+                    # Click enemy = select + walk to attack range
                     selected_target = clicked_monster
                     move_path = []
                 else:
@@ -615,13 +619,14 @@ while running:
                 move_path = astar(dungeon, hero.x, hero.y, tx, ty)
 
         elif ai_action.get("basic_attack"):
-            # Auto-attack when abilities on cooldown
+            # Weapon swing (no skill, just base damage) when abilities on CD
             target_m = ai_action["basic_attack"]
             if target_m.alive and hero.distance_to(target_m) <= hero.attack_range:
-                dmg = hero.try_basic_attack(target_m)
-                if dmg:
-                    floating_texts.append(FloatingText(target_m.x, target_m.y-15, f"{dmg:.0f}", WHITE))
-                    call_for_help(target_m, game_state.monsters, hero)
+                if hero.swing_timer <= 0:
+                    dmg = hero.try_basic_attack(target_m)
+                    if dmg:
+                        floating_texts.append(FloatingText(target_m.x, target_m.y-15, f"{dmg:.0f}", (180,180,180)))
+                        call_for_help(target_m, game_state.monsters, hero)
 
         else:
             # No enemies and no action — explore! Move toward next unexplored room
@@ -634,17 +639,33 @@ while running:
                         move_path = astar(dungeon, hero.x, hero.y, target_x, target_y)
                     break
 
-    # Auto-attack selected target (only if in range — no auto-walk)
-    if selected_target:
+    # Auto-attack selected target (walk to range, attack when close)
+    if selected_target and not ai_enabled:
         if not selected_target.alive:
             selected_target = None
+            pending_cast = None
         else:
             dist = hero.distance_to(selected_target)
-            if dist <= hero.attack_range:
-                dmg = hero.try_basic_attack(selected_target)
-                if dmg:
-                    floating_texts.append(FloatingText(selected_target.x, selected_target.y-15, f"{dmg:.0f}", WHITE))
-                    call_for_help(selected_target, game_state.monsters, hero)
+            # Check if we have a queued ability to fire
+            if pending_cast and dist <= pending_cast[1].range:
+                ab_key, ab, target_m = pending_cast
+                pending_cast = None
+                if ab.is_ready() and hero.gcd <= 0:
+                    _cast_ability(ab_key, ab, target_m.x, target_m.y, target_m)
+            elif dist <= hero.attack_range:
+                # In range — use left-click skill if ready, otherwise basic swing
+                ab_key = ability_keys[left_skill_idx]
+                ab = hero.abilities[ab_key]
+                if ab.is_ready() and hero.gcd <= 0 and hero.swing_timer <= 0:
+                    _cast_ability(ab_key, ab, selected_target.x, selected_target.y, selected_target)
+                elif hero.swing_timer <= 0:
+                    dmg = hero.try_basic_attack(selected_target)
+                    if dmg:
+                        floating_texts.append(FloatingText(selected_target.x, selected_target.y-15, f"{dmg:.0f}", (180,180,180)))
+                        call_for_help(selected_target, game_state.monsters, hero)
+            elif not (pygame.key.get_mods() & pygame.KMOD_SHIFT):
+                # Out of range and shift NOT held — walk toward target
+                hero.move_toward(selected_target.x, selected_target.y, dt, is_wall)
 
     # Room exploration — spawn monsters when hero enters new room
     new_room = dungeon.update_exploration(hero.x, hero.y)

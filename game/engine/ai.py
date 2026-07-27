@@ -171,11 +171,11 @@ def ai_ranged(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None
         monster.move_toward(target.x, target.y, dt, collision_fn)
     else:
         # In sweet spot, attack
-        if monster.attack_cd_remaining <= 0:
-            monster.attack_cd_remaining = monster.attack_cooldown
+        if monster.swing_timer <= 0:
+            monster.swing_timer = monster.weapon_speed
             # Cast time: freeze in place while shooting
             monster.apply_condition(Condition.IMMOBILIZED, 0.5)
-            dmg = target.take_damage(monster.attack_damage)
+            dmg = target.take_damage(monster.base_damage)
             if monster.on_hit_condition:
                 cond, dur = monster.on_hit_condition
                 target.apply_condition(cond, dur,
@@ -198,7 +198,7 @@ def ai_boss(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None):
 
     # Enrage at 30%
     if hp_pct < 0.3:
-        monster.attack_cooldown = max(0.6, monster.attack_cooldown * 0.98)
+        monster.weapon_speed = max(0.6, monster.weapon_speed * 0.98)
 
     # Switch to lowest HP target at 50%
     if hp_pct < 0.5:
