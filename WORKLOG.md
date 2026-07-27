@@ -153,6 +153,14 @@ Scraped the D&D Adventure System Wiki (ddadventuresystem.fandom.com) for complet
 ### Commits:
 - `d5f205a` — Initial commit (all source material, design docs, prototypes, data)
 - `fbdd54a` — Playable Adventure 1 with Diablo 2 controls
+- `b4c4ae4` — Update worklog
+- `ec79353` — Hero AI + automated testing infrastructure
+
+### Automated Testing Approach (documented in docs/automated_testing.md):
+- `python3 game/main.py --auto` runs the game with AI controlling the hero
+- Logs printed to stdout with flush (can capture to file)
+- Next steps: add --headless, --max-time, --seed, structured JSON logs, batch runner
+- Goal: run 100 simulations per hero, auto-tune difficulty to 60-80% win rate
 
 ---
 
