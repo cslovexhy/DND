@@ -321,7 +321,7 @@ class Monster(Entity):
 
         # Boss scaling
         if is_boss:
-            self.attack_cooldown *= 0.8  # bosses attack faster
+            self.weapon_speed *= 0.8  # bosses attack faster
 
 
 class GameState:

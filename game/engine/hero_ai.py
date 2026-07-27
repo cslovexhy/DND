@@ -111,9 +111,9 @@ class FighterAI(HeroAI):
         if self.should_use_potion(3):  # AI always "has" potions conceptually
             action["use_potion"] = True
 
-        # 2. Whirlwind (E) if 3+ enemies in melee range
+        # 2. Whirlwind (E) if 2+ enemies in melee range
         ab_e = self.hero.abilities.get("E")
-        if ab_e and ab_e.is_ready() and enemies_in_melee >= 3:
+        if ab_e and ab_e.is_ready() and enemies_in_melee >= 2:
             action["use_ability"] = "E"
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
             return action
@@ -246,10 +246,10 @@ class ClericAI(HeroAI):
 # Registry
 HERO_AI_CLASSES = {
     "Fighter": FighterAI,
-    "Cleric": ClericAI,
-    "Paladin": HeroAI,  # TODO
-    "Rogue": HeroAI,    # TODO
-    "Wizard": HeroAI,   # TODO
+    "Cleric": HeroAI,    # WIP
+    "Paladin": ClericAI,  # Keyleth uses Seal/Smite/Judgement
+    "Rogue": HeroAI,     # WIP
+    "Wizard": HeroAI,    # WIP
 }
 
 

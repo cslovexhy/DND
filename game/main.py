@@ -160,18 +160,27 @@ while selecting:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE: pygame.quit(); sys.exit()
             if event.key in (pygame.K_LEFT, pygame.K_a):
-                selected_hero_idx = (selected_hero_idx - 1) % len(ALL_HEROES)
+                for _ in range(len(ALL_HEROES)):
+                    selected_hero_idx = (selected_hero_idx - 1) % len(ALL_HEROES)
+                    if not ALL_HEROES[selected_hero_idx].get("wip"):
+                        break
             if event.key in (pygame.K_RIGHT, pygame.K_d):
-                selected_hero_idx = (selected_hero_idx + 1) % len(ALL_HEROES)
+                for _ in range(len(ALL_HEROES)):
+                    selected_hero_idx = (selected_hero_idx + 1) % len(ALL_HEROES)
+                    if not ALL_HEROES[selected_hero_idx].get("wip"):
+                        break
             if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                selecting = False
+                if not ALL_HEROES[selected_hero_idx].get("wip"):
+                    selecting = False
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx_click, my_click = event.pos
             for i in range(len(ALL_HEROES)):
                 px = 30 + i * (PANEL_W + 20)
                 py = 160
                 if px <= mx_click <= px + PANEL_W and py <= my_click <= py + PANEL_H:
-                    if selected_hero_idx == i:
+                    if ALL_HEROES[i].get("wip"):
+                        pass  # Can't select WIP heroes
+                    elif selected_hero_idx == i:
                         # Double-click same hero = confirm
                         selecting = False
                     else:
@@ -184,8 +193,12 @@ while selecting:
     for i, h_info in enumerate(ALL_HEROES):
         x = 30 + i * (PANEL_W + 20)
         y = 160
+        is_wip = h_info.get("wip", False)
         # Panel background
-        if i == selected_hero_idx:
+        if is_wip:
+            pygame.draw.rect(screen, (25, 25, 30), (x, y, PANEL_W, PANEL_H), 0, 6)
+            pygame.draw.rect(screen, (60, 60, 60), (x, y, PANEL_W, PANEL_H), 1, 6)
+        elif i == selected_hero_idx:
             pygame.draw.rect(screen, (60, 60, 100), (x, y, PANEL_W, PANEL_H), 0, 6)
             pygame.draw.rect(screen, GOLD, (x, y, PANEL_W, PANEL_H), 2, 6)
         else:
@@ -194,10 +207,18 @@ while selecting:
         # Sprite centered
         spr = HERO_SPRITES[h_info["sprite_key"]]
         big_spr = pygame.transform.scale(spr, (64, 64))
+        if is_wip:
+            big_spr.set_alpha(80)
         screen.blit(big_spr, (x + PANEL_W//2 - 32, y + 15))
 
+        # WIP banner
+        if is_wip:
+            wip_txt = big_font.render("WIP", True, (255, 100, 100))
+            screen.blit(wip_txt, (x + PANEL_W//2 - wip_txt.get_width()//2, y + 140))
+
         # Name
-        nt = big_font.render(h_info["name"], True, WHITE)
+        name_color = (100, 100, 100) if is_wip else WHITE
+        nt = big_font.render(h_info["name"], True, name_color)
         screen.blit(nt, (x + PANEL_W//2 - nt.get_width()//2, y + 85))
 
         # Race/Class
@@ -244,6 +265,9 @@ victory = False
 
 # Queued ability cast (walk to range then fire)
 pending_cast = None  # (ab_key, ab, target_monster) or None
+
+# Game speed (for AI observation)
+game_speed = 1.0  # 1x, 2x, 4x
 
 # Skill slots (Diablo 2 style)
 ability_keys = list(hero.abilities.keys())  # ["Q", "R", "E"]
@@ -435,7 +459,7 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
 # === MAIN GAME LOOP ===
 running = True
 while running:
-    dt = clock.tick(60) / 1000.0
+    dt = clock.tick(60) / 1000.0 * game_speed
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
@@ -443,6 +467,11 @@ while running:
             if event.key == pygame.K_ESCAPE: running = False
             if event.key == pygame.K_TAB:
                 ai_enabled = not ai_enabled
+            # Game speed: +/- to cycle 1x/2x/4x
+            if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
+                game_speed = min(game_speed * 2, 4.0)
+            if event.key == pygame.K_MINUS:
+                game_speed = max(game_speed / 2, 1.0)
             # 1,2,3 = switch right-click skill
             if event.key == pygame.K_1: right_skill_idx = 0
             if event.key == pygame.K_2: right_skill_idx = 1
@@ -866,7 +895,8 @@ while running:
     # Controls help
     ai_label = "AI: ON (TAB=off)" if ai_enabled else "TAB=AI"
     ai_color = (100, 255, 100) if ai_enabled else (80, 80, 80)
-    screen.blit(font.render(ai_label, True, ai_color), (WIDTH - 130, HEIGHT - 18))
+    speed_label = f" {game_speed:.0f}x (+/-)" if game_speed > 1 else ""
+    screen.blit(font.render(ai_label + speed_label, True, ai_color), (WIDTH - 160, HEIGHT - 18))
     screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill  1/2/3=Switch  F=Pot", True, (70,70,70)), (10, HEIGHT-18))
     pygame.display.flip()
 

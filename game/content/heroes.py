@@ -20,7 +20,7 @@ def create_vistra(x: float, y: float) -> Hero:
     h.weapon_speed = 1.6  # 1.6s between swings
     h.attack_range = 60
     # Skills (damage = base_damage * multiplier + flat)
-    h.add_ability("Q", Ability("Reaping Strike", cooldown=2.0, multiplier=1.2, flat_bonus=0,
+    h.add_ability("Q", Ability("Reaping Strike", cooldown=0, multiplier=1.2, flat_bonus=0,
                                radius=70, range=70,
                                effect="Melee sweep hitting all adjacent enemies (120% weapon dmg)",
                                power_type="at_will", color=FIGHTER_COLOR))
@@ -37,18 +37,31 @@ def create_vistra(x: float, y: float) -> Hero:
 
 
 def create_quinn(x: float, y: float) -> Hero:
-    """Quinn — Human Cleric. 1H Mace + Shield — Seal/Smite combo."""
+    """Quinn — Human Cleric. [WIP - kit being redesigned]"""
     h = Hero("Quinn", "Human", "Cleric", x, y, hp=8, ac=16, speed=5, surge_value=4,
-             special_ability="Seal System: Seals buff Smite and empower Judgement")
-    # Weapon: 1H Mace + Shield — medium speed
-    h.base_damage = 40
-    h.weapon_speed = 1.6
+             special_ability="[WIP]")
+    h.base_damage = 35
+    h.weapon_speed = 1.8
     h.attack_range = 60
-    # Skills (multiplier * base_damage + flat_bonus)
-    h.add_ability("Q", Ability("Smite", cooldown=2.0, multiplier=1.0, flat_bonus=30,
+    h.add_ability("Q", Ability("Strike", cooldown=0, multiplier=1.0, flat_bonus=0,
+                               radius=0, range=60,
+                               effect="[WIP] Basic melee",
+                               power_type="at_will", color=CLERIC_COLOR))
+    return h
+
+def create_keyleth(x: float, y: float) -> Hero:
+    """Keyleth — Elf Paladin. 2H Mace — Seal/Smite/Judgement holy warrior."""
+    h = Hero("Keyleth", "Elf", "Paladin", x, y, hp=8, ac=17, speed=6, surge_value=4,
+             special_ability="Seal System: Seals buff Smite and empower Judgement")
+    # Weapon: 2H Mace — slow, hard hits
+    h.base_damage = 55
+    h.weapon_speed = 2.2
+    h.attack_range = 60
+    # Skills
+    h.add_ability("Q", Ability("Smite", cooldown=0, multiplier=1.0, flat_bonus=30,
                                radius=0, range=75,
                                effect="Melee divine strike (100% + 30 holy). Boosted by Seal.",
-                               power_type="at_will", color=CLERIC_COLOR))
+                               power_type="at_will", color=PALADIN_COLOR))
     h.add_ability("R", Ability("Righteous Seal", cooldown=10.0, multiplier=0, flat_bonus=0,
                                radius=0, range=0,
                                effect="Buff: Smite +25% for 10s. Consumed by Judgement.",
@@ -62,26 +75,6 @@ def create_quinn(x: float, y: float) -> Hero:
                                effect="Channel 2s: heal 150 HP. Immobilizes during cast.",
                                power_type="utility", color=(255, 255, 220)))
     return h
-
-
-def create_keyleth(x: float, y: float) -> Hero:
-    """Keyleth — Elf Paladin. Tank/off-healer with divine smite."""
-    h = Hero("Keyleth", "Elf", "Paladin", x, y, hp=8, ac=17, speed=6, surge_value=4,
-             special_ability="Healing Hands: After using Daily power, heal adjacent ally 50 HP")
-    h.attack_damage = 28
-    h.attack_range = 55
-    h.attack_cooldown = 0.55
-    h.add_ability("Q", Ability("Holy Strike", cooldown=2.0, damage=48, radius=0, range=60,
-                               effect="Melee divine strike. Bonus damage to undead.",
-                               power_type="at_will", color=PALADIN_COLOR))
-    h.add_ability("R", Ability("Righteous Smite", cooldown=9.0, damage=90, radius=90,
-                               effect="Divine AoE smash. Heals self for 30% of damage.",
-                               power_type="daily", color=(255, 230, 100)))
-    h.add_ability("E", Ability("Lay on Hands", cooldown=15.0, damage=-150, radius=0, range=80,
-                               effect="Heal target ally for 150 HP",
-                               power_type="utility", color=(100, 255, 150)))
-    return h
-
 
 def create_tarak(x: float, y: float) -> Hero:
     """Tarak — Half-Orc Rogue. Fast melee DPS with burst and mobility."""
@@ -124,13 +117,13 @@ def create_heskan(x: float, y: float) -> Hero:
 # Hero registry for selection
 ALL_HEROES = [
     {"create": create_vistra, "name": "Vistra", "race": "Dwarf", "class": "Fighter",
-     "desc": "Tank — High armor, strong melee AoE", "sprite_key": "vistra"},
+     "desc": "Tank — 1H Sword+Shield, AoE melee", "sprite_key": "vistra", "wip": False},
     {"create": create_quinn, "name": "Quinn", "race": "Human", "class": "Cleric",
-     "desc": "Healer — Ranged attacks, party healing", "sprite_key": "quinn"},
+     "desc": "[WIP] Healer — kit being redesigned", "sprite_key": "quinn", "wip": True},
     {"create": create_keyleth, "name": "Keyleth", "race": "Elf", "class": "Paladin",
-     "desc": "Tank/Healer — Divine smites, off-healing", "sprite_key": "keyleth"},
+     "desc": "Holy Warrior — 2H Mace, Seal/Smite/Judgement", "sprite_key": "keyleth", "wip": False},
     {"create": create_tarak, "name": "Tarak", "race": "Half-Orc", "class": "Rogue",
-     "desc": "Melee DPS — Fast attacks, burst, mobility", "sprite_key": "tarak"},
+     "desc": "[WIP] Melee DPS — Fast attacks, burst", "sprite_key": "tarak", "wip": True},
     {"create": create_heskan, "name": "Heskan", "race": "Dragonborn", "class": "Wizard",
-     "desc": "Ranged DPS — AoE spells, crowd control", "sprite_key": "heskan"},
+     "desc": "[WIP] Ranged DPS — AoE spells", "sprite_key": "heskan", "wip": True},
 ]
