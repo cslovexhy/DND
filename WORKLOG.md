@@ -155,6 +155,29 @@ Scraped the D&D Adventure System Wiki (ddadventuresystem.fandom.com) for complet
 - `fbdd54a` — Playable Adventure 1 with Diablo 2 controls
 - `b4c4ae4` — Update worklog
 - `ec79353` — Hero AI + automated testing infrastructure
+- `80490a0` — 1s GCD, Quinn Seal/Smite/Judgement rework, ClericAI
+- `0627bfd` — Holy Light delayed heal, AI stops during combat, Smite range fix
+- `e817cc9` — Weapon-based damage system, remove hidden auto-attack
+- `a799249` — Keyleth Paladin kit, WIP hero gating, game speed control, boss crash fix
+
+### Late session progress (weapon rework + hero kits):
+- **Weapon-based damage system**: All damage from weapon swings. Skills use `multiplier × base_damage + flat_bonus`. No hidden auto-attack.
+- **Attack speed**: `weapon_speed` is the single swing timer. Skills fire on swings (cooldown=0 for basic skills, real CD for big ones).
+- **Fighter (Vistra)**: 1H Sword+Shield, 40 base, 1.6s. Reaping Strike (120% AoE), Charge (200% dash+stun), Whirlwind (80% AoE).
+- **Paladin (Keyleth)**: 2H Mace, 55 base, 2.2s. Smite (100%+30 holy), Seal (+25% buff), Judgement (ranged, consumes seal), Holy Light (2s channel heal).
+- **WIP heroes**: Quinn (Cleric), Tarak (Rogue), Heskan (Wizard) — dimmed in hero select, can't be chosen.
+- **Game speed**: +/- keys cycle 1x/2x/4x for fast AI observation.
+- **Walk-to-attack**: Left-click enemy = walk to + auto-attack. Shift+click = attack in place. No more "Too far!" — queues ability and walks.
+- **Boss crash fixed**: Last room no longer crashes (weapon_speed reference fix).
+
+### Key design decisions (this session):
+- Basic skills (Smite, Reaping Strike) have cooldown=0 — gated by weapon_speed only.
+- Big skills (Charge 8s, Whirlwind 10s, Judgement 10s, Holy Light 30s) have real cooldowns.
+- GCD (1s) prevents double-casting but allows weapon swings between CDs.
+- Holy Light: 2s channel (immobilized), heal lands AFTER cast — real tradeoff.
+- Seal/Judgement combo: Seal buffs Smite +25%, consumed by Judgement for bonus damage.
+- AI uses same _cast_ability path as player — consistent behavior.
+- Game speed multiplies dt — everything runs faster at 2x/4x, logs still consistent.
 
 ### Automated Testing Approach (documented in docs/automated_testing.md):
 - `python3 game/main.py --auto` runs the game with AI controlling the hero
