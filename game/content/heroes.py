@@ -37,16 +37,26 @@ def create_vistra(x: float, y: float) -> Hero:
 
 
 def create_quinn(x: float, y: float) -> Hero:
-    """Quinn — Human Cleric. [WIP - kit being redesigned]"""
+    """Quinn — Human Cleric. Ranged healer/support with projectile auto-attack."""
     h = Hero("Quinn", "Human", "Cleric", x, y, hp=8, ac=16, speed=5, surge_value=4,
-             special_ability="[WIP]")
-    h.base_damage = 35
-    h.weapon_speed = 1.8
-    h.attack_range = 60
-    h.add_ability("Q", Ability("Strike", cooldown=0, multiplier=1.0, flat_bonus=0,
-                               radius=0, range=60,
-                               effect="[WIP] Basic melee",
+             special_ability="Divine Warding: Protective wards and healing over time")
+    # Weapon: Wand — ranged, moderate speed (30 base / 1.2s = 25 dps)
+    h.base_damage = 30
+    h.weapon_speed = 1.2
+    h.attack_range = 200  # Ranged
+    # Skills
+    h.add_ability("Q", Ability("Wanding", cooldown=0, multiplier=1.0, flat_bonus=0,
+                               radius=0, range=200,
+                               effect="Ranged bolt (100% weapon dmg). Fires a projectile.",
                                power_type="at_will", color=CLERIC_COLOR))
+    h.add_ability("R", Ability("Wall", cooldown=15.0, multiplier=0, flat_bonus=0,
+                               radius=0, range=0,
+                               effect="Absorb shield on self. Absorbs potion-amount of damage.",
+                               power_type="utility", color=(100, 180, 255)))
+    h.add_ability("E", Ability("Renew", cooldown=16.0, multiplier=0, flat_bonus=0,
+                               radius=0, range=0,
+                               effect="Heal 50% potion-amount over 8s.",
+                               power_type="utility", color=(100, 255, 150)))
     return h
 
 def create_keyleth(x: float, y: float) -> Hero:
@@ -119,7 +129,7 @@ ALL_HEROES = [
     {"create": create_vistra, "name": "Vistra", "race": "Dwarf", "class": "Fighter",
      "desc": "Tank — 1H Sword+Shield, AoE melee", "sprite_key": "vistra", "wip": False},
     {"create": create_quinn, "name": "Quinn", "race": "Human", "class": "Cleric",
-     "desc": "[WIP] Healer — kit being redesigned", "sprite_key": "quinn", "wip": True},
+     "desc": "Healer — Ranged Wand, Ward, HoT", "sprite_key": "quinn", "wip": False},
     {"create": create_keyleth, "name": "Keyleth", "race": "Elf", "class": "Paladin",
      "desc": "Holy Warrior — 2H Mace, Seal/Smite/Judgement", "sprite_key": "keyleth", "wip": False},
     {"create": create_tarak, "name": "Tarak", "race": "Half-Orc", "class": "Rogue",

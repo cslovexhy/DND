@@ -14,7 +14,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from game.engine.entities import Hero, Monster, Ability, Condition, GameState
+from game.engine.entities import Hero, Monster, Ability, Condition, GameState, Projectile
 from game.engine.dungeon import UnifiedDungeon, RoomType, TILE_SIZE
 from game.engine.ai import run_monster_ai, setup_monster_aggro, call_for_help
 from game.engine.pathfinding import astar
@@ -93,6 +93,7 @@ BOSS_SPRITE = get_creature(9, 7, int(TILE_SIZE * 1.5))
 # === EFFECTS ===
 floating_texts = []
 effects = []
+projectiles = []  # Active projectiles (Wanding etc.)
 
 class FloatingText:
     def __init__(self, x, y, text, color):
@@ -341,6 +342,51 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
     # Global Cooldown check
     if hero.gcd > 0:
         return  # Can't cast anything during GCD
+
+    # === Quinn special: Wanding (ranged projectile auto-attack) ===
+    if ab.name == "Wanding":
+        if not clicked_monster:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
+            return
+        dist_to_target = hero.distance_to(clicked_monster)
+        if dist_to_target > ab.range:
+            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
+            return
+        if hero.swing_timer > 0:
+            return  # Gated by weapon speed
+        ab.use()
+        hero.swing_timer = hero.weapon_speed
+        proj_damage = ab.calc_damage(hero.base_damage)
+        proj = Projectile(x=hero.x, y=hero.y, target=clicked_monster,
+                          speed=500.0, damage=proj_damage,
+                          color=(255, 220, 100), source=hero)
+        projectiles.append(proj)
+        hero.gcd = hero.GCD_DURATION
+        # Don't clear selected_target — keep auto-attacking
+        move_path = []
+        return
+
+    # === Quinn special: Wall (absorb shield on self) ===
+    if ab.name == "Wall":
+        ab.use()
+        shield_amount = hero.surge_value  # Same as potion amount (200)
+        hero.absorb_shield = shield_amount
+        hero.buffs["Wall"] = {"remaining": 15.0}
+        floating_texts.append(FloatingText(hero.x, hero.y - 30, f"Wall +{shield_amount:.0f}!", (100, 200, 255)))
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        return
+
+    # === Quinn special: Renew (HoT on self) ===
+    if ab.name == "Renew":
+        ab.use()
+        hot_total = hero.surge_value * 0.5  # 50% of potion amount (100)
+        hot_duration = 8.0
+        hero.buffs["Renew"] = {"remaining": hot_duration, "hot_per_sec": hot_total / hot_duration}
+        floating_texts.append(FloatingText(hero.x, hero.y - 30, "Renew!", (100, 255, 150)))
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        return
 
     # === Quinn special: Righteous Seal (self-buff, no target needed) ===
     if ab.name == "Righteous Seal":
@@ -725,6 +771,24 @@ while running:
     effects = [e for e in effects if e.timer > 0]
     for e in effects: e.update(dt)
 
+    # Update projectiles
+    for proj in projectiles:
+        result = proj.update(dt)
+        if result is not None:
+            dmg, hit_target = result
+            floating_texts.append(FloatingText(hit_target.x, hit_target.y - 20, f"{dmg:.0f}", proj.color))
+            # Aggro on hit: directly aggro the hit monster + call for help
+            if hasattr(hit_target, 'aggro_state'):
+                from game.engine.ai import aggro_monster, call_for_help as cfh
+                if hit_target.aggro_state != "aggroed":
+                    aggro_monster(hit_target, hero, game_state.monsters)
+                cfh(hit_target, game_state.monsters, hero)
+    projectiles = [p for p in projectiles if p.alive]
+
+    # Expire Wall shield when buff expires
+    if "Wall" not in hero.buffs and hero.absorb_shield > 0:
+        hero.absorb_shield = 0
+
     # --- RENDER ---
     screen.fill(BG)
     cx, cy = hero.x, hero.y
@@ -821,6 +885,14 @@ while running:
         if m == selected_target:
             pygame.draw.circle(screen, GOLD, (sx+sw//2, sy+sh//2), sw//2+4, 2)
 
+    # Projectiles
+    for proj in projectiles:
+        psx = int(proj.x - cx + WIDTH//2)
+        psy = int(proj.y - cy + HEIGHT//2)
+        pygame.draw.circle(screen, proj.color, (psx, psy), int(proj.radius))
+        # Glow trail
+        pygame.draw.circle(screen, (*proj.color[:3], 100) if len(proj.color) == 4 else proj.color, (psx, psy), int(proj.radius) + 3, 1)
+
     # Hero
     spr = hero.sprite
     sw, sh = spr.get_size()
@@ -828,6 +900,28 @@ while running:
     sy = int(hero.y - cy + HEIGHT//2 - sh//2)
     s = pygame.transform.flip(spr, True, False) if hero.facing_left else spr
     screen.blit(s, (sx, sy))
+
+    # Wall bubble shield visual
+    if hero.absorb_shield > 0:
+        bubble_r = sw // 2 + 8
+        bubble_cx = sx + sw // 2
+        bubble_cy = sy + sh // 2
+        # Pulsing alpha
+        pulse = int(80 + 40 * math.sin(game_state.game_time * 4))
+        bubble_surf = pygame.Surface((bubble_r * 2 + 4, bubble_r * 2 + 4), pygame.SRCALPHA)
+        pygame.draw.circle(bubble_surf, (100, 180, 255, pulse), (bubble_r + 2, bubble_r + 2), bubble_r, 3)
+        pygame.draw.circle(bubble_surf, (100, 180, 255, pulse // 3), (bubble_r + 2, bubble_r + 2), bubble_r)
+        screen.blit(bubble_surf, (bubble_cx - bubble_r - 2, bubble_cy - bubble_r - 2))
+
+    # Renew visual (green sparkle indicator)
+    if "Renew" in hero.buffs:
+        renew_r = sw // 2 + 4
+        renew_cx = sx + sw // 2
+        renew_cy = sy + sh // 2
+        pulse_g = int(60 + 30 * math.sin(game_state.game_time * 6))
+        renew_surf = pygame.Surface((renew_r * 2 + 4, renew_r * 2 + 4), pygame.SRCALPHA)
+        pygame.draw.circle(renew_surf, (80, 255, 120, pulse_g), (renew_r + 2, renew_r + 2), renew_r, 2)
+        screen.blit(renew_surf, (renew_cx - renew_r - 2, renew_cy - renew_r - 2))
 
     # Floating text
     for t in floating_texts: t.draw(screen, cx, cy)

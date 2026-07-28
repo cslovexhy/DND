@@ -162,11 +162,103 @@ class FighterAI(HeroAI):
 
 class ClericAI(HeroAI):
     """
-    Quinn (Cleric) AI — Seal/Smite/Judgement rotation:
+    Quinn (Cleric) AI — Ranged wand attacker with self-sustain:
+    - Stay at range (~150-200px) and cast Wanding as auto-attack
+    - Use Wall (absorb shield) proactively when entering combat or taking damage
+    - Use Renew when below 70% HP for sustained healing
+    - Kite away from melee enemies if they get too close
+    - Pop potion below 30% HP
+    """
+
+    def pick_target(self, monsters):
+        alive = [m for m in monsters if m.alive]
+        if not alive:
+            return None
+        # Prioritize low HP targets to secure kills
+        low_hp = [m for m in alive if m.hp <= m.max_hp * 0.3]
+        if low_hp:
+            return min(low_hp, key=lambda m: self.hero.distance_to(m))
+        return min(alive, key=lambda m: self.hero.distance_to(m))
+
+    def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
+        action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
+                  "ability_target_monster": None, "use_potion": False, "dash": None}
+
+        alive = [m for m in monsters if m.alive]
+        if not alive:
+            return action
+
+        # GCD check
+        if self.hero.gcd > 0:
+            self.target = self.pick_target(alive)
+            # Kite if enemy too close
+            if self.target:
+                dist = self.hero.distance_to(self.target)
+                if dist < 80:
+                    # Move away from target
+                    dx = self.hero.x - self.target.x
+                    dy = self.hero.y - self.target.y
+                    d = math.sqrt(dx * dx + dy * dy)
+                    if d > 0:
+                        action["move_to"] = (self.hero.x + (dx / d) * 100, self.hero.y + (dy / d) * 100)
+            return action
+
+        self.target = self.pick_target(alive)
+        if not self.target:
+            return action
+
+        dist = self.hero.distance_to(self.target)
+        hp_pct = self.hero.hp / self.hero.max_hp
+
+        # 1. Potion if critically low
+        if hp_pct < 0.30:
+            action["use_potion"] = True
+
+        # 2. Wall if no shield active and enemies present
+        ab_r = self.hero.abilities.get("R")
+        if ab_r and ab_r.is_ready() and self.hero.absorb_shield <= 0:
+            action["use_ability"] = "R"
+            return action
+
+        # 3. Renew if below 70% HP and not already ticking
+        ab_e = self.hero.abilities.get("E")
+        if ab_e and ab_e.is_ready() and hp_pct < 0.70 and "Renew" not in self.hero.buffs:
+            action["use_ability"] = "E"
+            return action
+
+        # 4. Wanding (ranged auto-attack) if in range
+        ab_q = self.hero.abilities.get("Q")
+        if ab_q and ab_q.is_ready() and dist <= 200:
+            action["use_ability"] = "Q"
+            action["ability_target_monster"] = self.target
+            return action
+
+        # 5. Kite if too close
+        if dist < 80:
+            dx = self.hero.x - self.target.x
+            dy = self.hero.y - self.target.y
+            d = math.sqrt(dx * dx + dy * dy)
+            if d > 0:
+                action["move_to"] = (self.hero.x + (dx / d) * 100, self.hero.y + (dy / d) * 100)
+            return action
+
+        # 6. Move into wand range if too far
+        if dist > 190:
+            action["move_to"] = (self.target.x, self.target.y)
+        else:
+            # In range but abilities on CD — basic attack
+            action["basic_attack"] = self.target
+
+        return action
+
+
+class PaladinAI(HeroAI):
+    """
+    Keyleth (Paladin) AI — Seal/Smite/Judgement rotation:
     - Keep Righteous Seal up (buff uptime)
     - Smite as bread-and-butter (boosted by Seal)
     - Judgement on distant targets or to consume Seal before expiry
-    - Holy Light when below 30% HP
+    - Holy Light when below 50% HP
     """
 
     def pick_target(self, monsters):
@@ -188,7 +280,6 @@ class ClericAI(HeroAI):
 
         # GCD check — don't try abilities if on GCD
         if self.hero.gcd > 0:
-            # Just move toward target while waiting
             self.target = self.pick_target(alive)
             if self.target and self.hero.distance_to(self.target) > 50:
                 action["move_to"] = (self.target.x, self.target.y)
@@ -201,13 +292,13 @@ class ClericAI(HeroAI):
         dist = self.hero.distance_to(self.target)
         hp_pct = self.hero.hp / self.hero.max_hp
 
-        # 1. Holy Light if below 50% HP (use before potions since it's free)
+        # 1. Holy Light if below 50% HP
         ab_f = self.hero.abilities.get("F")
         if ab_f and ab_f.is_ready() and hp_pct < 0.50:
             action["use_ability"] = "F"
             return action
 
-        # 2. Potion if below 30% and Holy Light not ready
+        # 2. Potion if below 30%
         if hp_pct < 0.30:
             action["use_potion"] = True
 
@@ -246,10 +337,10 @@ class ClericAI(HeroAI):
 # Registry
 HERO_AI_CLASSES = {
     "Fighter": FighterAI,
-    "Cleric": HeroAI,    # WIP
-    "Paladin": ClericAI,  # Keyleth uses Seal/Smite/Judgement
-    "Rogue": HeroAI,     # WIP
-    "Wizard": HeroAI,    # WIP
+    "Cleric": ClericAI,   # Quinn — ranged wand + sustain
+    "Paladin": PaladinAI, # Keyleth — Seal/Smite/Judgement melee
+    "Rogue": HeroAI,      # WIP
+    "Wizard": HeroAI,     # WIP
 }
 
 

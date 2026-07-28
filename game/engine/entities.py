@@ -60,6 +60,37 @@ class Ability:
         self.remaining = max(0, self.remaining - dt)
 
 
+@dataclass
+class Projectile:
+    """A missile that travels from source to target, dealing damage on arrival."""
+    x: float
+    y: float
+    target: 'Entity' = None
+    speed: float = 500.0       # pixels per second
+    damage: float = 0.0
+    color: tuple = (255, 220, 100)
+    radius: float = 6.0        # visual radius
+    alive: bool = True
+    source: 'Entity' = None    # who fired it (for aggro)
+
+    def update(self, dt: float):
+        if not self.alive or not self.target or not self.target.alive:
+            self.alive = False
+            return None
+        dx = self.target.x - self.x
+        dy = self.target.y - self.y
+        dist = math.sqrt(dx * dx + dy * dy)
+        if dist < 15:
+            # Hit! Returns (damage_dealt, target) so caller can handle aggro
+            self.alive = False
+            dmg = self.target.take_damage(self.damage)
+            return (dmg, self.target)
+        move = min(self.speed * dt, dist)
+        self.x += (dx / dist) * move
+        self.y += (dy / dist) * move
+        return None
+
+
 class Entity:
     """Base class for all game entities (heroes and monsters)."""
 
@@ -88,6 +119,9 @@ class Entity:
         self.alive = True
         self.facing_left = False
         self.conditions: list[ActiveCondition] = []
+
+        # Absorb shield (Wall spell etc.)
+        self.absorb_shield = 0.0  # current shield HP remaining
 
         # Visual
         self.flash_timer = 0.0
@@ -134,7 +168,7 @@ class Entity:
         self.facing_left = dx < 0
 
     def take_damage(self, raw_damage: float, ignore_armor: bool = False) -> float:
-        """Apply damage after armor reduction. Returns actual damage dealt."""
+        """Apply damage after armor reduction. Shield absorbs first. Returns actual damage dealt."""
         if not self.alive:
             return 0
 
@@ -142,6 +176,16 @@ class Entity:
             actual = raw_damage
         else:
             actual = raw_damage * (1.0 - self.armor_reduction)
+
+        # Absorb shield absorbs damage before HP
+        if self.absorb_shield > 0:
+            if actual <= self.absorb_shield:
+                self.absorb_shield -= actual
+                self.flash_timer = 0.12
+                return actual  # All absorbed
+            else:
+                actual -= self.absorb_shield
+                self.absorb_shield = 0
 
         self.hp -= actual
         self.flash_timer = 0.12
@@ -245,11 +289,16 @@ class Hero(Entity):
         for ab in self.abilities.values():
             ab.update(dt)
         # Update buffs
+        for k, v in list(self.buffs.items()):
+            v["remaining"] -= dt
+            # HoT tick processing (heals each frame proportionally)
+            if "hot_per_sec" in v and v["remaining"] > -dt:
+                heal_tick = v["hot_per_sec"] * dt
+                self.heal(heal_tick)
+        # Remove expired buffs after decrement
         expired = [k for k, v in self.buffs.items() if v["remaining"] <= 0]
         for k in expired:
             del self.buffs[k]
-        for v in self.buffs.values():
-            v["remaining"] -= dt
 
     def use_ability(self, key: str, targets: list['Entity'],
                     target_pos: tuple = None) -> list[tuple[str, float]]:
