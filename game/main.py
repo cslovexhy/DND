@@ -289,6 +289,9 @@ frostbolt_channeling = False
 frostbolt_channel_timer = 0.0
 frostbolt_target = None  # Monster being targeted
 
+# Ambush walk-to state (Tarak)
+ambush_target = None  # Monster to ambush (walk toward, execute when in range)
+
 # Hero AI (toggle with TAB)
 from game.engine.hero_ai import create_hero_ai
 hero_ai = create_hero_ai(hero)
@@ -342,11 +345,95 @@ def get_monster_at_screen(sx, sy):
 
 def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
     """Cast an ability — handles AoE, single target, dash, stun, call-for-help, and Quinn's Seal system."""
-    global move_path, selected_target, dash_active, dash_target_x, dash_target_y, dash_stun_target, dash_stun_duration, dash_damage, frostbolt_channeling, frostbolt_channel_timer, frostbolt_target
+    global move_path, selected_target, dash_active, dash_target_x, dash_target_y, dash_stun_target, dash_stun_duration, dash_damage, frostbolt_channeling, frostbolt_channel_timer, frostbolt_target, ambush_target
 
     # Global Cooldown check
     if hero.gcd > 0:
         return  # Can't cast anything during GCD
+
+    # === Tarak special: Stab (fast melee, breaks stealth) ===
+    if ab.name == "Stab":
+        if not clicked_monster:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
+            return
+        dist_to_target = hero.distance_to(clicked_monster)
+        if dist_to_target > ab.range:
+            selected_target = clicked_monster
+            move_path = []
+            return
+        if hero.swing_timer > 0:
+            return  # Gated by weapon speed
+        ab.use()
+        hero.swing_timer = hero.weapon_speed
+        # Break stealth on attack
+        if hero.stealthed:
+            hero.stealthed = False
+            floating_texts.append(FloatingText(hero.x, hero.y - 40, "Stealth broken!", (200, 200, 200)))
+        dmg_amount = ab.calc_damage(hero.base_damage)
+        # Crit roll
+        hero.last_crit = random.random() < hero.crit_chance
+        if hero.last_crit:
+            dmg_amount *= hero.crit_multiplier
+        dmg = clicked_monster.take_damage(dmg_amount)
+        color = (255, 255, 50) if hero.last_crit else (180, 255, 180)
+        text = f"{dmg:.0f}!" if hero.last_crit else f"{dmg:.0f}"
+        floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 20, text, color))
+        call_for_help(clicked_monster, game_state.monsters, hero)
+        if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
+            from game.engine.ai import aggro_monster as _aggro
+            _aggro(clicked_monster, hero, game_state.monsters)
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        selected_target = clicked_monster  # Keep target for auto-attack
+        return
+
+    # === Tarak special: Stealth (go invisible) ===
+    if ab.name == "Stealth":
+        ab.use()
+        hero.stealthed = True
+        selected_target = None  # Stop auto-attack
+        # Drop aggro from all monsters targeting hero
+        for m in game_state.alive_monsters:
+            if hasattr(m, 'aggro_target') and m.aggro_target == hero:
+                from game.engine.ai import AggroState
+                m.aggro_state = AggroState.RESETTING
+                m.aggro_target = None
+        floating_texts.append(FloatingText(hero.x, hero.y - 30, "Stealth!", (100, 200, 100)))
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        return
+
+    # === Tarak special: Ambush (stealth-only burst) ===
+    if ab.name == "Ambush":
+        if not hero.stealthed:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "Must be stealthed!", (255, 150, 100)))
+            return
+        if not clicked_monster:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
+            return
+        dist_to_target = hero.distance_to(clicked_monster)
+        if dist_to_target > ab.range:
+            selected_target = clicked_monster
+            move_path = []
+            return
+        ab.use()
+        hero.swing_timer = hero.weapon_speed
+        # Break stealth
+        hero.stealthed = False
+        # Damage: 3x weapon + 20% target max HP
+        dmg_amount = ab.calc_damage(hero.base_damage) + clicked_monster.max_hp * 0.2
+        dmg = clicked_monster.take_damage(dmg_amount)
+        floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", (255, 50, 50)))
+        floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 40, "AMBUSH!", (255, 50, 50)))
+        effects.append(AoeRing(clicked_monster.x, clicked_monster.y, 40, (255, 50, 50)))
+        call_for_help(clicked_monster, game_state.monsters, hero)
+        if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
+            from game.engine.ai import aggro_monster as _aggro
+            _aggro(clicked_monster, hero, game_state.monsters)
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        selected_target = clicked_monster
+        return
 
     # === Heskan special: Fire Blast (instant ranged single target) ===
     if ab.name == "Fire Blast":
@@ -496,6 +583,10 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
             floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 40, "Seal Consumed!", (255, 200, 50)))
         dmg = clicked_monster.take_damage(total_damage)
         floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", (255, 255, 150)))
+        # Aggro the hit target + call for help
+        if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
+            from game.engine.ai import aggro_monster as _aggro
+            _aggro(clicked_monster, hero, game_state.monsters)
         call_for_help(clicked_monster, game_state.monsters, hero)
         hero.gcd = hero.GCD_DURATION
         move_path = []
@@ -511,7 +602,10 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
         if dist_to_target > ab.range:
             pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
             return
+        if hero.swing_timer > 0:
+            return  # Gated by weapon speed
         ab.use()
+        hero.swing_timer = hero.weapon_speed
         bonus = 1.0 + (hero.buffs.get("Righteous Seal", {}).get("bonus", 0))
         skill_dmg = ab.calc_damage(hero.base_damage) * bonus
         dmg = clicked_monster.take_damage(skill_dmg)
@@ -643,6 +737,7 @@ while running:
                         frostbolt_channeling = False
                         frostbolt_target = None
                         hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
+                        hero.swing_timer = 0.5  # Brief delay after cancel
                     selected_target = clicked_monster
                     move_path = []
                 else:
@@ -655,14 +750,24 @@ while running:
                     selected_target = None
 
             elif event.button == 3:  # Right-click = cast RIGHT skill
-                ab_key = ability_keys[right_skill_idx]
-                ab = hero.abilities[ab_key]
-                if ab.is_ready():
-                    _cast_ability(ab_key, ab, wx, wy, clicked_monster)
+                # Stealth + right-click enemy + Ambush on right slot = queue ambush walk-to
+                if hero.stealthed and clicked_monster and ability_keys[right_skill_idx] == "E":
+                    ab_ambush = hero.abilities.get("E")
+                    if ab_ambush and ab_ambush.is_ready():
+                        ambush_target = clicked_monster
+                        selected_target = None
+                        move_path = []
+                    else:
+                        floating_texts.append(FloatingText(hero.x, hero.y - 30, "Ambush on CD!", (255, 150, 100)))
                 else:
-                    # Skill on cooldown — just move instead
-                    move_path = astar(dungeon, hero.x, hero.y, wx, wy)
-                    selected_target = None
+                    ab_key = ability_keys[right_skill_idx]
+                    ab = hero.abilities[ab_key]
+                    if ab.is_ready():
+                        _cast_ability(ab_key, ab, wx, wy, clicked_monster)
+                    else:
+                        # Skill on cooldown — just move instead
+                        move_path = astar(dungeon, hero.x, hero.y, wx, wy)
+                        selected_target = None
 
     # --- End screen ---
     if victory or game_state.adventure_failed:
@@ -681,15 +786,15 @@ while running:
         continue
 
     # --- UPDATE ---
-    game_state.update(dt)
-    alive = game_state.alive_monsters
-
-    # Check Holy Light cast completion (heal lands after 2s channel)
-    if "Holy Light Casting" in hero.buffs and hero.buffs["Holy Light Casting"]["remaining"] <= 0:
+    # Check Holy Light cast completion BEFORE update (buff gets removed during update)
+    if "Holy Light Casting" in hero.buffs and hero.buffs["Holy Light Casting"]["remaining"] <= dt:
         heal_amount = hero.buffs["Holy Light Casting"]["heal"]
         heal = hero.heal(heal_amount)
         floating_texts.append(FloatingText(hero.x, hero.y - 30, f"+{heal:.0f} HP", (100, 255, 100)))
         del hero.buffs["Holy Light Casting"]
+
+    game_state.update(dt)
+    alive = game_state.alive_monsters
 
     # Frostbolt channel completion
     if frostbolt_channeling:
@@ -729,6 +834,8 @@ while running:
             move_path.pop(0)
         else:
             spd = hero.base_speed * dt
+            if hero.stealthed:
+                spd *= 0.6  # 60% move speed while stealthed
             hero.x += (dx/dist) * min(spd, dist)
             hero.y += (dy/dist) * min(spd, dist)
             hero.facing_left = dx < 0
@@ -765,8 +872,9 @@ while running:
         if int(game_state.game_time * 2) != int((game_state.game_time - dt) * 2):  # Log every 0.5s
             alive_count = len(game_state.alive_monsters)
             target_dist = f" target_dist={hero.distance_to(hero_ai.target):.0f}" if hero_ai.target and hero_ai.target.alive else ""
+            target_hp = f" boss_hp={hero_ai.target.hp:.0f}/{hero_ai.target.max_hp}" if hero_ai.target and hero_ai.target.alive else ""
             action_name = ai_action['use_ability'] or ('DASH' if ai_action.get('dash') else ('MOVE' if ai_action.get('move_to') else ('BASIC_ATK' if ai_action.get('basic_attack') else ('EXPLORE' if not alive_count else 'IDLE'))))
-            print(f"[AI t={game_state.game_time:.1f}s] monsters={alive_count} hp={hero.hp:.0f}/{hero.max_hp} pos=({hero.x:.0f},{hero.y:.0f}) action={action_name}{target_dist}", flush=True)
+            print(f"[AI t={game_state.game_time:.1f}s] monsters={alive_count} hp={hero.hp:.0f}/{hero.max_hp} pos=({hero.x:.0f},{hero.y:.0f}) action={action_name}{target_dist}{target_hp}", flush=True)
 
         if ai_action["use_potion"] and potions > 0 and hero.hp < hero.max_hp:
             potions -= 1
@@ -806,16 +914,6 @@ while running:
             if abs(hero.x - old_x) < 0.5 and abs(hero.y - old_y) < 0.5:
                 move_path = astar(dungeon, hero.x, hero.y, tx, ty)
 
-        elif ai_action.get("basic_attack"):
-            # Weapon swing (no skill, just base damage) when abilities on CD
-            target_m = ai_action["basic_attack"]
-            if target_m.alive and hero.distance_to(target_m) <= hero.attack_range:
-                if hero.swing_timer <= 0:
-                    dmg = hero.try_basic_attack(target_m)
-                    if dmg:
-                        floating_texts.append(FloatingText(target_m.x, target_m.y-15, f"{dmg:.0f}", (180,180,180)))
-                        call_for_help(target_m, game_state.monsters, hero)
-
         else:
             # No enemies and no action — explore! Move toward next unexplored room
             for r in dungeon.rooms:
@@ -827,8 +925,23 @@ while running:
                         move_path = astar(dungeon, hero.x, hero.y, target_x, target_y)
                     break
 
+    # Ambush walk-to: walk toward target in stealth, execute Ambush when in range
+    if ambush_target and not ai_enabled:
+        if not ambush_target.alive or not hero.stealthed:
+            ambush_target = None
+        else:
+            dist = hero.distance_to(ambush_target)
+            ab_ambush = hero.abilities.get("E")
+            if dist <= 55 and ab_ambush and ab_ambush.is_ready():
+                # In range — execute Ambush
+                _cast_ability("E", ab_ambush, ambush_target.x, ambush_target.y, ambush_target)
+                ambush_target = None
+            else:
+                # Walk toward target at stealth speed
+                hero.move_toward(ambush_target.x, ambush_target.y, dt, is_wall)
+
     # Auto-attack selected target (walk to range, attack when close)
-    if selected_target and not ai_enabled and not frostbolt_channeling:
+    if selected_target and not ai_enabled and not frostbolt_channeling and not hero.stealthed and not hero.has_condition(Condition.IMMOBILIZED):
         if not selected_target.alive:
             selected_target = None
             pending_cast = None
@@ -841,16 +954,11 @@ while running:
                 if ab.is_ready() and hero.gcd <= 0:
                     _cast_ability(ab_key, ab, target_m.x, target_m.y, target_m)
             elif dist <= hero.attack_range:
-                # In range — use left-click skill if ready, otherwise basic swing
+                # In range — use left-click skill
                 ab_key = ability_keys[left_skill_idx]
                 ab = hero.abilities[ab_key]
                 if ab.is_ready() and hero.gcd <= 0 and hero.swing_timer <= 0:
                     _cast_ability(ab_key, ab, selected_target.x, selected_target.y, selected_target)
-                elif hero.swing_timer <= 0:
-                    dmg = hero.try_basic_attack(selected_target)
-                    if dmg:
-                        floating_texts.append(FloatingText(selected_target.x, selected_target.y-15, f"{dmg:.0f}", (180,180,180)))
-                        call_for_help(selected_target, game_state.monsters, hero)
             elif not (pygame.key.get_mods() & pygame.KMOD_SHIFT):
                 # Out of range and shift NOT held — walk toward target
                 hero.move_toward(selected_target.x, selected_target.y, dt, is_wall)
@@ -865,6 +973,15 @@ while running:
         result = run_monster_ai(m, [hero], dt, is_wall, all_monsters=game_state.monsters)
         if result and result[0] in ("attack", "ranged_attack", "aoe_attack"):
             floating_texts.append(FloatingText(hero.x+random.randint(-10,10), hero.y-30, f"{result[2]:.0f}", HP_RED))
+        elif result and result[0] == "ranged_attack_projectile":
+            # Spawn visible projectile from monster to hero
+            target_hero = result[1]
+            proj_damage = result[2]
+            proj = Projectile(x=m.x, y=m.y, target=target_hero,
+                              speed=350.0, damage=proj_damage,
+                              color=(255, 80, 80), source=m)
+            proj.on_hit_condition = m.on_hit_condition  # Pass condition to apply on hit
+            projectiles.append(proj)
 
     # Kills
     for m in game_state.monsters:
@@ -889,17 +1006,28 @@ while running:
         result = proj.update(dt)
         if result is not None:
             dmg, hit_target = result
-            floating_texts.append(FloatingText(hit_target.x, hit_target.y - 20, f"{dmg:.0f}", proj.color))
-            # Aggro on hit: directly aggro the hit monster + call for help
-            if hasattr(hit_target, 'aggro_state'):
-                from game.engine.ai import aggro_monster, call_for_help as cfh
-                if hit_target.aggro_state != "aggroed":
-                    aggro_monster(hit_target, hero, game_state.monsters)
-                cfh(hit_target, game_state.monsters, hero)
-            # Frostbolt slow
-            if getattr(proj, 'apply_slow', False) and hit_target.alive:
-                hit_target.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.25)
-                floating_texts.append(FloatingText(hit_target.x, hit_target.y - 35, "SLOWED", (150, 200, 255)))
+            # Determine color based on who fired
+            if proj.source == hero:
+                floating_texts.append(FloatingText(hit_target.x, hit_target.y - 20, f"{dmg:.0f}", proj.color))
+                # Aggro on hit: directly aggro the hit monster + call for help
+                if hasattr(hit_target, 'aggro_state'):
+                    from game.engine.ai import aggro_monster, call_for_help as cfh
+                    if hit_target.aggro_state != "aggroed":
+                        aggro_monster(hit_target, hero, game_state.monsters)
+                    cfh(hit_target, game_state.monsters, hero)
+                # Frostbolt slow
+                if getattr(proj, 'apply_slow', False) and hit_target.alive:
+                    hit_target.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.25)
+                    floating_texts.append(FloatingText(hit_target.x, hit_target.y - 35, "SLOWED", (150, 200, 255)))
+            else:
+                # Monster projectile hitting hero
+                floating_texts.append(FloatingText(hit_target.x + random.randint(-10, 10), hit_target.y - 30, f"{dmg:.0f}", HP_RED))
+                # Apply on-hit condition if any
+                on_hit = getattr(proj, 'on_hit_condition', None)
+                if on_hit and hit_target.alive:
+                    cond, dur = on_hit
+                    hit_target.apply_condition(cond, dur,
+                                              tick_damage=10.0 if cond == Condition.POISONED else 0)
     projectiles = [p for p in projectiles if p.alive]
 
     # Expire Wall shield when buff expires
@@ -1023,7 +1151,20 @@ while running:
     sx = int(hero.x - cx + WIDTH//2 - sw//2)
     sy = int(hero.y - cy + HEIGHT//2 - sh//2)
     s = pygame.transform.flip(spr, True, False) if hero.facing_left else spr
+    if hero.stealthed:
+        s = s.copy()
+        s.set_alpha(100)  # Semi-transparent when stealthed
+    elif hero.has_condition(Condition.POISONED):
+        s = s.copy()
+        s.fill((0, 80, 0, 0), special_flags=pygame.BLEND_RGBA_ADD)  # Green tint
     screen.blit(s, (sx, sy))
+
+    # Poison drip visual
+    if hero.has_condition(Condition.POISONED):
+        pulse_p = int(60 + 30 * math.sin(game_state.game_time * 5))
+        poison_surf = pygame.Surface((sw + 6, sh + 6), pygame.SRCALPHA)
+        pygame.draw.circle(poison_surf, (50, 200, 50, pulse_p), (sw//2 + 3, sh//2 + 3), sw//2 + 3, 2)
+        screen.blit(poison_surf, (sx - 3, sy - 3))
 
     # Wall bubble shield visual
     if hero.absorb_shield > 0:

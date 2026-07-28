@@ -87,21 +87,27 @@ def create_keyleth(x: float, y: float) -> Hero:
     return h
 
 def create_tarak(x: float, y: float) -> Hero:
-    """Tarak — Half-Orc Rogue. Fast melee DPS with burst and mobility."""
+    """Tarak — Half-Orc Rogue. Fast melee assassin with stealth and burst."""
     h = Hero("Tarak", "Half-Orc", "Rogue", x, y, hp=8, ac=14, speed=6, surge_value=4,
-             special_ability="Brutal Recovery: Crit chance +10% when below 50% HP")
-    h.attack_damage = 35
-    h.attack_range = 50
-    h.attack_cooldown = 0.4
-    h.add_ability("Q", Ability("Positioning Shot", cooldown=2.0, damage=55, radius=0, range=50,
-                               effect="Quick stab + dash backward 3m",
+             special_ability="Stealth: Vanish from sight, Ambush from shadows")
+    # Weapon: Daggers — very fast (18.75 base / 0.5s = 37.5 dps, 1.5x fighter)
+    h.base_damage = 18.75
+    h.weapon_speed = 0.5
+    h.attack_range = 50  # Melee
+    h.crit_chance = 0.10  # 10% crit (double base)
+    # Skills
+    h.add_ability("Q", Ability("Stab", cooldown=0, multiplier=1.0, flat_bonus=0,
+                               radius=0, range=55,
+                               effect="Fast melee strike (100% weapon dmg).",
                                power_type="at_will", color=ROGUE_COLOR))
-    h.add_ability("R", Ability("Tornado Strike", cooldown=7.0, damage=70, radius=90,
-                               effect="Spin attack hitting all adjacent enemies",
-                               power_type="daily", color=(150, 255, 150)))
-    h.add_ability("E", Ability("Tumbling Escape", cooldown=5.0, damage=0, radius=0, range=0,
-                               effect="Dash 150px in move direction. Invincible during dash.",
-                               power_type="utility", color=(200, 255, 200)))
+    h.add_ability("R", Ability("Stealth", cooldown=6.0, multiplier=0, flat_bonus=0,
+                               radius=0, range=0,
+                               effect="Go invisible. 60% move speed. Mobs can't see you. Attack breaks stealth.",
+                               power_type="utility", color=(100, 180, 100)))
+    h.add_ability("E", Ability("Ambush", cooldown=0, multiplier=5.0, flat_bonus=0,
+                               radius=0, range=55,
+                               effect="Stealth only. 5x weapon dmg + 20% target max HP.",
+                               power_type="daily", color=(255, 50, 50)))
     return h
 
 
@@ -138,7 +144,7 @@ ALL_HEROES = [
     {"create": create_keyleth, "name": "Keyleth", "race": "Elf", "class": "Paladin",
      "desc": "Holy Warrior — 2H Mace, Seal/Smite/Judgement", "sprite_key": "keyleth", "wip": False},
     {"create": create_tarak, "name": "Tarak", "race": "Half-Orc", "class": "Rogue",
-     "desc": "[WIP] Melee DPS — Fast attacks, burst", "sprite_key": "tarak", "wip": True},
+     "desc": "Assassin — Fast Daggers, Stealth, Ambush", "sprite_key": "tarak", "wip": False},
     {"create": create_heskan, "name": "Heskan", "race": "Dragonborn", "class": "Wizard",
      "desc": "Caster — Channeled Frostbolt, AoE spells", "sprite_key": "heskan", "wip": False},
 ]

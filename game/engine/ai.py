@@ -29,6 +29,7 @@ def init_monster_aggro(monster: Monster, sense_range=180, call_range=120, leash_
     """Attach aggro data to a monster. Call after creating the monster."""
     monster.aggro_state = AggroState.IDLE
     monster.sense_range = sense_range        # Detection radius (pixels)
+    monster.stealth_sense_range = sense_range * 0.1  # Detection radius vs stealthed hero (10% default)
     monster.call_range = call_range          # Call-for-help radius when attacked
     monster.leash_range = leash_range        # Max chase distance from spawn
     monster.spawn_x = monster.x             # Remember where it spawned
@@ -54,7 +55,6 @@ def check_aggro(monster: Monster, heroes: list[Hero], all_monsters: list[Monster
         dy = monster.spawn_y - monster.y
         if math.sqrt(dx*dx + dy*dy) < 20:
             monster.aggro_state = AggroState.IDLE
-            monster.hp = monster.max_hp  # Reset HP on full reset
         return
 
     # IDLE: check sense range
@@ -62,15 +62,21 @@ def check_aggro(monster: Monster, heroes: list[Hero], all_monsters: list[Monster
         if not hero.alive:
             continue
         dist = monster.distance_to(hero)
-        if dist <= monster.sense_range:
+        # Use stealth sense range if hero is stealthed
+        effective_sense = monster.stealth_sense_range if getattr(hero, 'stealthed', False) else monster.sense_range
+        if dist <= effective_sense:
             aggro_monster(monster, hero, all_monsters)
             break
 
 
 def aggro_monster(monster: Monster, target: Hero, all_monsters: list[Monster]):
-    """Aggro a monster and optionally its linked group."""
+    """Aggro a monster and optionally its linked group. Breaks stealth."""
     monster.aggro_state = AggroState.AGGROED
     monster.aggro_target = target
+
+    # Break stealth if hero is stealthed and detected
+    if getattr(target, 'stealthed', False):
+        target.stealthed = False
 
     # Pull linked group
     if monster.group_id is not None:
@@ -175,12 +181,8 @@ def ai_ranged(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None
             monster.swing_timer = monster.weapon_speed
             # Cast time: freeze in place while shooting
             monster.apply_condition(Condition.IMMOBILIZED, 0.5)
-            dmg = target.take_damage(monster.base_damage)
-            if monster.on_hit_condition:
-                cond, dur = monster.on_hit_condition
-                target.apply_condition(cond, dur,
-                                       tick_damage=10.0 if cond == Condition.POISONED else 0)
-            return ("ranged_attack", target, dmg)
+            # Return signal to spawn projectile (damage applied on hit)
+            return ("ranged_attack_projectile", target, monster.base_damage)
 
     return ("move", target, 0)
 

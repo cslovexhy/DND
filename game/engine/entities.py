@@ -116,6 +116,9 @@ class Entity:
         self.weapon_speed = attack_cooldown  # seconds between swings
         self.attack_range = attack_range
         self.swing_timer = 0.0  # time until next swing is ready
+        self.crit_chance = 0.05   # 5% base crit chance
+        self.crit_multiplier = 2.0  # crits deal 2x damage
+        self.last_crit = False  # whether last attack was a crit
 
         # State
         self.alive = True
@@ -156,6 +159,8 @@ class Entity:
             slow_cond = next((c for c in self.conditions if c.condition == Condition.SLOWED), None)
             slow_factor = getattr(slow_cond, 'slow_factor', 0.5) if slow_cond else 0.5
             effective_speed *= slow_factor
+        if getattr(self, 'stealthed', False):
+            effective_speed *= 0.6
 
         move_dist = min(effective_speed * dt, dist)
         nx = self.x + (dx/dist) * move_dist
@@ -255,7 +260,12 @@ class Entity:
             return None
 
         self.swing_timer = self.weapon_speed
-        return target.take_damage(self.base_damage)
+        import random
+        damage = self.base_damage
+        self.last_crit = random.random() < self.crit_chance
+        if self.last_crit:
+            damage *= self.crit_multiplier
+        return target.take_damage(damage)
 
 
 class Hero(Entity):
@@ -273,8 +283,8 @@ class Hero(Entity):
 
         # Abilities
         self.abilities: dict[str, Ability] = {}
-        self.gcd = 0.0  # Global cooldown (1s between any two abilities)
-        self.GCD_DURATION = 1.0
+        self.gcd = 0.0  # Global cooldown (disabled)
+        self.GCD_DURATION = 0.0
 
         # Progression
         self.xp = 0
@@ -284,6 +294,9 @@ class Hero(Entity):
 
         # Active buffs (name -> {remaining: float, data: dict})
         self.buffs: dict[str, dict] = {}
+
+        # Stealth state (Rogue)
+        self.stealthed: bool = False
 
         # Equipment (slot -> item)
         self.equipment: dict[str, dict] = {}

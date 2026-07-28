@@ -427,11 +427,100 @@ class WizardAI(HeroAI):
         return action
 
 
+class RogueAI(HeroAI):
+    """
+    Tarak (Rogue) AI — Stealth assassin:
+    - Stealth when no enemies aggroed on hero
+    - Ambush opener from stealth (massive burst)
+    - Stab as bread-and-butter melee
+    - Stay in melee range of target
+    - Pop potion below 35% HP
+    """
+
+    def pick_target(self, monsters):
+        alive = [m for m in monsters if m.alive]
+        if not alive:
+            return None
+        # Prioritize low HP targets to secure kills
+        low_hp = [m for m in alive if m.hp <= m.max_hp * 0.3]
+        if low_hp:
+            return min(low_hp, key=lambda m: self.hero.distance_to(m))
+        return min(alive, key=lambda m: self.hero.distance_to(m))
+
+    def is_in_combat(self, monsters):
+        """Check if any monster is targeting the hero."""
+        for m in monsters:
+            if m.alive and hasattr(m, 'aggro_target') and m.aggro_target == self.hero:
+                return True
+        return False
+
+    def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
+        action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
+                  "ability_target_monster": None, "use_potion": False, "dash": None}
+
+        alive = [m for m in monsters if m.alive]
+        if not alive:
+            return action
+
+        if self.hero.gcd > 0:
+            self.target = self.pick_target(alive)
+            if self.target and self.hero.distance_to(self.target) > 50:
+                action["move_to"] = (self.target.x, self.target.y)
+            return action
+
+        self.target = self.pick_target(alive)
+        if not self.target:
+            return action
+
+        dist = self.hero.distance_to(self.target)
+        hp_pct = self.hero.hp / self.hero.max_hp
+
+        # 1. Potion if low
+        if hp_pct < 0.35:
+            action["use_potion"] = True
+
+        # 2. Stealth if not already stealthed and CD ready
+        ab_r = self.hero.abilities.get("R")
+        ab_e = self.hero.abilities.get("E")
+        if ab_r and ab_r.is_ready() and not self.hero.stealthed:
+            action["use_ability"] = "R"
+            return action
+
+        # 3. Ambush from stealth when in range
+        if ab_e and ab_e.is_ready() and self.hero.stealthed and dist <= 55:
+            action["use_ability"] = "E"
+            action["ability_target_monster"] = self.target
+            return action
+
+        # 3b. Stealthed with Ambush ready but out of range — walk to target
+        if ab_e and ab_e.is_ready() and self.hero.stealthed and dist > 55:
+            action["move_to"] = (self.target.x, self.target.y)
+            return action
+
+        # 4. Walk to target if out of range (stealth or not)
+        if dist > 50:
+            action["move_to"] = (self.target.x, self.target.y)
+            return action
+
+        # 5. Stab in melee (only if not stealthed — auto-attack is disabled in stealth)
+        ab_q = self.hero.abilities.get("Q")
+        if ab_q and ab_q.is_ready() and not self.hero.stealthed and dist <= 55:
+            action["use_ability"] = "Q"
+            action["ability_target_monster"] = self.target
+            return action
+
+        # 6. Basic attack fallback
+        if not self.hero.stealthed:
+            action["basic_attack"] = self.target
+
+        return action
+
+
 HERO_AI_CLASSES = {
     "Fighter": FighterAI,
     "Cleric": ClericAI,   # Quinn — ranged wand + sustain
     "Paladin": PaladinAI, # Keyleth — Seal/Smite/Judgement melee
-    "Rogue": HeroAI,      # WIP
+    "Rogue": RogueAI,     # Tarak — stealth assassin
     "Wizard": WizardAI,   # Heskan — channeled frostbolt + burst
 }
 
