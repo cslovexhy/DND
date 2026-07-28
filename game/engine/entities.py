@@ -191,14 +191,14 @@ class Entity:
         if self.absorb_shield > 0:
             if actual <= self.absorb_shield:
                 self.absorb_shield -= actual
-                self.flash_timer = 0.12
+                self.flash_timer = 0.06
                 return actual  # All absorbed
             else:
                 actual -= self.absorb_shield
                 self.absorb_shield = 0
 
         self.hp -= actual
-        self.flash_timer = 0.12
+        self.flash_timer = 0.06
 
         if self.hp <= 0:
             self.hp = 0
@@ -283,8 +283,8 @@ class Hero(Entity):
 
         # Abilities
         self.abilities: dict[str, Ability] = {}
-        self.gcd = 0.0  # Global cooldown (disabled)
-        self.GCD_DURATION = 0.0
+        self.gcd = 0.0  # Global cooldown
+        self.GCD_DURATION = 0.5
 
         # Progression
         self.xp = 0

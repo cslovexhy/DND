@@ -194,3 +194,62 @@ Scraped the D&D Adventure System Wiki (ddadventuresystem.fandom.com) for complet
 - **CC0 sprite packs** — Kenney Tiny Dungeon + Clint Bellanger Tiny Creatures
 - **Bosses = 1.5× size + color tint** to differentiate from regular monsters
 - **Research first, build second** — always gather all info before implementing
+
+---
+
+## Session 3 — 2026-07-27/28
+
+### All 5 Heroes Completed
+- **Quinn (Cleric)**: Wanding (ranged projectile auto, 200px, 25 DPS), Wall (absorb shield 200HP, 15s CD), Renew (HoT 100HP/8s, 16s CD). First projectile system with travel time + on-hit aggro.
+- **Heskan (Wizard)**: Frostbolt (channeled 1.2s, immobile, 260px range, 30 DPS = 120% base, 25% slow 3s), Fire Blast (instant nuke 8s CD), Frost Nova (AoE 120px freeze 4s + 25% dmg, 12s CD). Cast bar visual.
+- **Tarak (Rogue)**: Stab (0.5s fast melee, 37.5 DPS = 1.5x fighter), Stealth (6s CD, drops aggro, 60% move speed, mobs 10% sense range), Ambush (stealth-only, 5x dmg + 20% mob max HP, 0 CD gated by stealth). Right-click walk-to-ambush. 10% crit (2x).
+
+### New Systems
+- **Projectile system**: `Projectile` class in entities.py — travels source→target, damage on arrival, aggro on hit
+- **Absorb shield**: Entity.take_damage checks shield before HP, visual blue bubble
+- **HoT (heal over time)**: `hot_per_sec` in buffs, ticks each frame
+- **FROZEN condition**: Blocks move + attack, blue tint + ice ring visual
+- **SLOWED**: Variable `slow_factor` via ActiveCondition (Frostbolt = 0.25)
+- **Crit system**: 5% base all heroes, 2x damage. Tarak 10%.
+- **Monster ranged projectiles**: Visible red projectiles from ranged mobs
+- **AI Companions**: F1-F4 summons other heroes as AI-controlled allies. Full ability handlers for all classes. Monsters target all heroes. Companions explore/fight independently.
+
+### Combat System Changes
+- **GCD**: Restored at 0.5s (was removed then added back — needed to prevent ability spam)
+- **Removed hidden auto-attack**: All damage through skill 1 abilities only
+- **Smite swing_timer gate**: Fixed infinite-cast bug when GCD was removed
+- **AoE ring fix**: Only shows when damage actually lands (was spawning every frame)
+- **Monsters no longer heal on aggro reset**
+- **Frostbolt**: Channel can't be interrupted by movement, ESC/click cancels, bolt chases target regardless of range post-cast
+- **Holy Light**: Fixed heal not firing (buff expired before check)
+- **Judgement**: Fixed not triggering aggro
+- **Stealth**: Breaks when mob detects via stealth_sense_range, breaks on aggro
+
+### AI Improvements
+- **ClericAI**: Targets lowest HP ally with Wall/Renew, kites at range
+- **WizardAI**: Turret at range, Fire Blast on CD, Frost Nova when mobbed
+- **RogueAI**: Stealth→walk→Ambush→Stab cycle, only stealths when meaningful
+- **FighterAI**: Uses Charge on CD (not just gap close), always Reaping Strike in melee
+- **PaladinAI**: Preserved as separate class from ClericAI
+- **Companion AI**: Full ability routing for all 5 classes, pathfinding exploration, ally healing
+
+### Visuals Added
+- Frostbolt cast bar (blue progress bar above hero)
+- Stealth semi-transparency (player + companions)
+- Poison green tint + ring on affected hero
+- Frozen blue tint + ice ring on monsters
+- Companion HP bars (blue) + name tags
+- Companion hit flash (subtle red instead of blinding white)
+
+### Known Issues / Next Session
+- **Refactor needed**: `_cast_ability` is player-only — companions duplicate ability logic. Should extract caster-agnostic ability execution function.
+- **Companion Tarak**: Stealth→Ambush timing still slightly janky (0.5s GCD delay)
+- **No Whirlwind handling** for companion Fighter (uses Reaping Strike + Charge only)
+- **Loot & equipment system** still TODO
+- **Campaign progression** (town phase, level up) still TODO
+
+### Commits
+- `0cb3267` — Quinn Cleric kit (Wanding, Wall, Renew)
+- `789c7a1` — Heskan Wizard kit (Frostbolt, Fire Blast, Frost Nova)
+- `e5ddb69` — Tarak Rogue kit + major combat fixes
+- `(pending)` — AI companions + combat polish

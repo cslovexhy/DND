@@ -118,9 +118,9 @@ class FighterAI(HeroAI):
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
             return action
 
-        # 3. Charge (R) if target is far away (>150px) or target is ranged
+        # 3. Charge (R) if CD ready — use as gap closer or damage nuke
         ab_r = self.hero.abilities.get("R")
-        if ab_r and ab_r.is_ready() and dist > 150:
+        if ab_r and ab_r.is_ready() and self.target:
             action["use_ability"] = "R"
             action["ability_target_monster"] = self.target
             # Request dash
@@ -162,13 +162,23 @@ class FighterAI(HeroAI):
 
 class ClericAI(HeroAI):
     """
-    Quinn (Cleric) AI — Ranged wand attacker with self-sustain:
+    Quinn (Cleric) AI — Ranged wand attacker with ally support:
+    - Wall and Renew target lowest HP ally (including self)
     - Stay at range (~150-200px) and cast Wanding as auto-attack
-    - Use Wall (absorb shield) proactively when entering combat or taking damage
-    - Use Renew when below 70% HP for sustained healing
     - Kite away from melee enemies if they get too close
     - Pop potion below 30% HP
     """
+
+    def __init__(self, hero):
+        super().__init__(hero)
+        self.allies = []  # Set externally to list of all hero entities
+
+    def _find_lowest_hp_ally(self):
+        """Find the ally (including self) with lowest HP percentage."""
+        candidates = [h for h in self.allies if h.alive] if self.allies else [self.hero]
+        if not candidates:
+            return self.hero
+        return min(candidates, key=lambda h: h.hp / h.max_hp)
 
     def pick_target(self, monsters):
         alive = [m for m in monsters if m.alive]
@@ -214,17 +224,24 @@ class ClericAI(HeroAI):
         if hp_pct < 0.30:
             action["use_potion"] = True
 
-        # 2. Wall if no shield active and enemies present
+        # 2. Wall on lowest HP ally (or self) if no shield on them
         ab_r = self.hero.abilities.get("R")
-        if ab_r and ab_r.is_ready() and self.hero.absorb_shield <= 0:
-            action["use_ability"] = "R"
-            return action
+        if ab_r and ab_r.is_ready():
+            # Find lowest HP ally (including self) that doesn't have a shield
+            wall_target = self._find_lowest_hp_ally()
+            if wall_target and wall_target.absorb_shield <= 0 and wall_target.hp < wall_target.max_hp * 0.8:
+                action["use_ability"] = "R"
+                action["ability_target_ally"] = wall_target
+                return action
 
-        # 3. Renew if below 70% HP and not already ticking
+        # 3. Renew on lowest HP ally if below 70% and not already ticking
         ab_e = self.hero.abilities.get("E")
-        if ab_e and ab_e.is_ready() and hp_pct < 0.70 and "Renew" not in self.hero.buffs:
-            action["use_ability"] = "E"
-            return action
+        if ab_e and ab_e.is_ready():
+            renew_target = self._find_lowest_hp_ally()
+            if renew_target and renew_target.hp < renew_target.max_hp * 0.70 and "Renew" not in renew_target.buffs:
+                action["use_ability"] = "E"
+                action["ability_target_ally"] = renew_target
+                return action
 
         # 4. Wanding (ranged auto-attack) if in range
         ab_q = self.hero.abilities.get("Q")
