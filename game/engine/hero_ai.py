@@ -335,12 +335,104 @@ class PaladinAI(HeroAI):
 
 
 # Registry
+class WizardAI(HeroAI):
+    """
+    Heskan (Wizard) AI — Channeled turret with burst and CC:
+    - Stay at max range (~250px) and channel Frostbolt as primary
+    - Fire Blast for instant damage when available
+    - Frost Nova when 2+ enemies get close (emergency CC)
+    - Kite away from enemies that are too close
+    - Pop potion below 30% HP
+    """
+
+    def pick_target(self, monsters):
+        alive = [m for m in monsters if m.alive]
+        if not alive:
+            return None
+        low_hp = [m for m in alive if m.hp <= m.max_hp * 0.3]
+        if low_hp:
+            return min(low_hp, key=lambda m: self.hero.distance_to(m))
+        return min(alive, key=lambda m: self.hero.distance_to(m))
+
+    def count_enemies_in_range(self, monsters, radius):
+        return sum(1 for m in monsters if m.alive and self.hero.distance_to(m) <= radius)
+
+    def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
+        action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
+                  "ability_target_monster": None, "use_potion": False, "dash": None}
+
+        alive = [m for m in monsters if m.alive]
+        if not alive:
+            return action
+
+        if self.hero.gcd > 0:
+            return action
+
+        # Don't act if channeling (immobilized)
+        if self.hero.has_condition(Condition.IMMOBILIZED):
+            return action
+
+        self.target = self.pick_target(alive)
+        if not self.target:
+            return action
+
+        dist = self.hero.distance_to(self.target)
+        hp_pct = self.hero.hp / self.hero.max_hp
+        enemies_close = self.count_enemies_in_range(alive, 120)
+
+        # 1. Potion if critically low
+        if hp_pct < 0.30:
+            action["use_potion"] = True
+
+        # 2. Frost Nova if 2+ enemies within 120px
+        ab_e = self.hero.abilities.get("E")
+        if ab_e and ab_e.is_ready() and enemies_close >= 2:
+            action["use_ability"] = "E"
+            action["ability_target_pos"] = (self.hero.x, self.hero.y)
+            return action
+
+        # 3. Frost Nova if 1 enemy close and low HP
+        if ab_e and ab_e.is_ready() and enemies_close >= 1 and hp_pct < 0.50:
+            action["use_ability"] = "E"
+            action["ability_target_pos"] = (self.hero.x, self.hero.y)
+            return action
+
+        # 4. Fire Blast instant nuke when available
+        ab_r = self.hero.abilities.get("R")
+        if ab_r and ab_r.is_ready() and dist <= 260:
+            action["use_ability"] = "R"
+            action["ability_target_monster"] = self.target
+            return action
+
+        # 5. Frostbolt if in range
+        ab_q = self.hero.abilities.get("Q")
+        if ab_q and ab_q.is_ready() and dist <= 260:
+            action["use_ability"] = "Q"
+            action["ability_target_monster"] = self.target
+            return action
+
+        # 6. Kite if enemy too close
+        if dist < 100:
+            dx = self.hero.x - self.target.x
+            dy = self.hero.y - self.target.y
+            d = math.sqrt(dx * dx + dy * dy)
+            if d > 0:
+                action["move_to"] = (self.hero.x + (dx / d) * 120, self.hero.y + (dy / d) * 120)
+            return action
+
+        # 7. Move into range if too far
+        if dist > 250:
+            action["move_to"] = (self.target.x, self.target.y)
+
+        return action
+
+
 HERO_AI_CLASSES = {
     "Fighter": FighterAI,
     "Cleric": ClericAI,   # Quinn — ranged wand + sustain
     "Paladin": PaladinAI, # Keyleth — Seal/Smite/Judgement melee
     "Rogue": HeroAI,      # WIP
-    "Wizard": HeroAI,     # WIP
+    "Wizard": WizardAI,   # Heskan — channeled frostbolt + burst
 }
 
 

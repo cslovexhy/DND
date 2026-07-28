@@ -284,6 +284,11 @@ dash_stun_target = None
 dash_stun_duration = 0.0
 dash_damage = 0.0  # damage dealt on arrival
 
+# Frostbolt channel state (Heskan)
+frostbolt_channeling = False
+frostbolt_channel_timer = 0.0
+frostbolt_target = None  # Monster being targeted
+
 # Hero AI (toggle with TAB)
 from game.engine.hero_ai import create_hero_ai
 hero_ai = create_hero_ai(hero)
@@ -337,11 +342,76 @@ def get_monster_at_screen(sx, sy):
 
 def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
     """Cast an ability — handles AoE, single target, dash, stun, call-for-help, and Quinn's Seal system."""
-    global move_path, selected_target, dash_active, dash_target_x, dash_target_y, dash_stun_target, dash_stun_duration, dash_damage
+    global move_path, selected_target, dash_active, dash_target_x, dash_target_y, dash_stun_target, dash_stun_duration, dash_damage, frostbolt_channeling, frostbolt_channel_timer, frostbolt_target
 
     # Global Cooldown check
     if hero.gcd > 0:
         return  # Can't cast anything during GCD
+
+    # === Heskan special: Fire Blast (instant ranged single target) ===
+    if ab.name == "Fire Blast":
+        if not clicked_monster:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
+            return
+        dist_to_target = hero.distance_to(clicked_monster)
+        if dist_to_target > ab.range:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "Too far!", (255, 150, 100)))
+            return
+        ab.use()
+        dmg_amount = ab.calc_damage(hero.base_damage)
+        dmg = clicked_monster.take_damage(dmg_amount)
+        floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", (255, 130, 50)))
+        # Fire hit effect
+        effects.append(AoeRing(clicked_monster.x, clicked_monster.y, 30, (255, 100, 0)))
+        call_for_help(clicked_monster, game_state.monsters, hero)
+        if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
+            from game.engine.ai import aggro_monster as _aggro
+            _aggro(clicked_monster, hero, game_state.monsters)
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        return
+
+    # === Heskan special: Frost Nova (AoE freeze around self) ===
+    if ab.name == "Frost Nova":
+        ab.use()
+        dmg_amount = ab.calc_damage(hero.base_damage)  # 25% weapon
+        hit_count = 0
+        for m in game_state.alive_monsters:
+            if hero.distance_to(m) <= ab.radius:
+                dmg = m.take_damage(dmg_amount)
+                m.apply_condition(Condition.FROZEN, 4.0)
+                floating_texts.append(FloatingText(m.x, m.y - 20, f"{dmg:.0f}", (180, 220, 255)))
+                floating_texts.append(FloatingText(m.x, m.y - 35, "FROZEN", (150, 220, 255)))
+                hit_count += 1
+        effects.append(AoeRing(hero.x, hero.y, ab.radius, (150, 200, 255)))
+        if hit_count == 0:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No enemies in range!", (200, 200, 200)))
+        hero.gcd = hero.GCD_DURATION
+        move_path = []
+        return
+
+    # === Heskan special: Frostbolt (start channel — fires on completion) ===
+    if ab.name == "Frostbolt":
+        if frostbolt_channeling:
+            return  # Already channeling, wait for completion
+        if not clicked_monster:
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
+            return
+        dist_to_target = hero.distance_to(clicked_monster)
+        if dist_to_target > ab.range:
+            # Walk into range, then start channeling
+            selected_target = clicked_monster
+            move_path = []
+            return
+        # Start channeling (immobilize self for weapon_speed duration)
+        frostbolt_channeling = True
+        frostbolt_channel_timer = hero.weapon_speed
+        frostbolt_target = clicked_monster
+        selected_target = clicked_monster
+        hero.apply_condition(Condition.IMMOBILIZED, hero.weapon_speed)
+        ab.use()  # Put on cooldown at start of channel (expires when channel ends)
+        move_path = []
+        return
 
     # === Quinn special: Wanding (ranged projectile auto-attack) ===
     if ab.name == "Wanding":
@@ -510,7 +580,16 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE: running = False
+            if event.key == pygame.K_ESCAPE:
+                if frostbolt_channeling:
+                    # Cancel channel and stop auto-attack
+                    frostbolt_channeling = False
+                    frostbolt_channel_timer = 0
+                    frostbolt_target = None
+                    selected_target = None
+                    hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
+                else:
+                    running = False
             if event.key == pygame.K_TAB:
                 ai_enabled = not ai_enabled
             # Game speed: +/- to cycle 1x/2x/4x
@@ -559,10 +638,19 @@ while running:
                         right_skill_idx = (right_skill_idx + 1) % len(ability_keys)
                 elif clicked_monster:
                     # Click enemy = select + walk to attack range
+                    # Cancel any active channel
+                    if frostbolt_channeling:
+                        frostbolt_channeling = False
+                        frostbolt_target = None
+                        hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
                     selected_target = clicked_monster
                     move_path = []
                 else:
-                    # Click ground = move
+                    # Click ground = move (cancel channel)
+                    if frostbolt_channeling:
+                        frostbolt_channeling = False
+                        frostbolt_target = None
+                        hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
                     move_path = astar(dungeon, hero.x, hero.y, wx, wy)
                     selected_target = None
 
@@ -603,12 +691,37 @@ while running:
         floating_texts.append(FloatingText(hero.x, hero.y - 30, f"+{heal:.0f} HP", (100, 255, 100)))
         del hero.buffs["Holy Light Casting"]
 
+    # Frostbolt channel completion
+    if frostbolt_channeling:
+        frostbolt_channel_timer -= dt
+        if frostbolt_channel_timer <= 0:
+            frostbolt_channeling = False
+            # Fire projectile if target still alive (range doesn't matter — bolt chases)
+            if frostbolt_target and frostbolt_target.alive:
+                proj_damage = hero.base_damage  # 100% weapon
+                proj = Projectile(x=hero.x, y=hero.y, target=frostbolt_target,
+                                  speed=500.0, damage=proj_damage,
+                                  color=(150, 200, 255), source=hero)
+                proj.apply_slow = True  # Flag for slow on hit
+                projectiles.append(proj)
+            else:
+                # Target dead — stop
+                frostbolt_target = None
+                selected_target = None
+        # If target died mid-channel, cancel
+        elif frostbolt_target and not frostbolt_target.alive:
+            frostbolt_channeling = False
+            frostbolt_target = None
+            selected_target = None
+            # Remove immobilize early
+            hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
+
     # Smooth movement along path
     # Clear exploration path if AI is in combat
     if ai_enabled and game_state.alive_monsters and move_path:
         move_path = []
 
-    if move_path and not dash_active:
+    if move_path and not dash_active and not hero.has_condition(Condition.IMMOBILIZED):
         tx, ty = move_path[0]
         dx, dy = tx - hero.x, ty - hero.y
         dist = math.sqrt(dx*dx + dy*dy)
@@ -715,7 +828,7 @@ while running:
                     break
 
     # Auto-attack selected target (walk to range, attack when close)
-    if selected_target and not ai_enabled:
+    if selected_target and not ai_enabled and not frostbolt_channeling:
         if not selected_target.alive:
             selected_target = None
             pending_cast = None
@@ -783,6 +896,10 @@ while running:
                 if hit_target.aggro_state != "aggroed":
                     aggro_monster(hit_target, hero, game_state.monsters)
                 cfh(hit_target, game_state.monsters, hero)
+            # Frostbolt slow
+            if getattr(proj, 'apply_slow', False) and hit_target.alive:
+                hit_target.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.25)
+                floating_texts.append(FloatingText(hit_target.x, hit_target.y - 35, "SLOWED", (150, 200, 255)))
     projectiles = [p for p in projectiles if p.alive]
 
     # Expire Wall shield when buff expires
@@ -873,6 +990,13 @@ while running:
         if m.flash_timer > 0:
             f = s.copy(); f.fill((255,255,255,200), special_flags=pygame.BLEND_RGBA_ADD)
             screen.blit(f, (sx, sy))
+        elif m.has_condition(Condition.FROZEN):
+            f = s.copy(); f.fill((100,150,255,150), special_flags=pygame.BLEND_RGBA_ADD)
+            screen.blit(f, (sx, sy))
+            # Ice crystal indicator
+            ice_surf = pygame.Surface((sw + 8, sh + 8), pygame.SRCALPHA)
+            pygame.draw.circle(ice_surf, (150, 200, 255, 80), (sw//2 + 4, sh//2 + 4), sw//2 + 4, 2)
+            screen.blit(ice_surf, (sx - 4, sy - 4))
         else:
             screen.blit(s, (sx, sy))
         if m.hp < m.max_hp:
@@ -922,6 +1046,17 @@ while running:
         renew_surf = pygame.Surface((renew_r * 2 + 4, renew_r * 2 + 4), pygame.SRCALPHA)
         pygame.draw.circle(renew_surf, (80, 255, 120, pulse_g), (renew_r + 2, renew_r + 2), renew_r, 2)
         screen.blit(renew_surf, (renew_cx - renew_r - 2, renew_cy - renew_r - 2))
+
+    # Frostbolt channeling bar
+    if frostbolt_channeling:
+        bar_w = 40
+        bar_h = 5
+        bar_x = sx + sw // 2 - bar_w // 2
+        bar_y = sy - 14
+        progress = 1.0 - (frostbolt_channel_timer / hero.weapon_speed)
+        pygame.draw.rect(screen, (30, 30, 60), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
+        pygame.draw.rect(screen, (60, 60, 80), (bar_x, bar_y, bar_w, bar_h))
+        pygame.draw.rect(screen, (150, 200, 255), (bar_x, bar_y, int(bar_w * progress), bar_h))
 
     # Floating text
     for t in floating_texts: t.draw(screen, cx, cy)

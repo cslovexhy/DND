@@ -296,7 +296,7 @@ def run_monster_ai(monster: Monster, heroes: list[Hero], dt: float,
     """Run aggro check + AI for a monster."""
     if not monster.alive:
         return None
-    if monster.has_condition(Condition.STUNNED):
+    if monster.has_condition(Condition.STUNNED) or monster.has_condition(Condition.FROZEN):
         return None
     if not hasattr(monster, 'aggro_state'):
         setup_monster_aggro(monster)

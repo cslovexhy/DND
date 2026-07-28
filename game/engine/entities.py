@@ -21,6 +21,7 @@ class Condition(Enum):
     SLOWED = auto()     # Movement speed halved
     IMMOBILIZED = auto()  # Cannot move
     STUNNED = auto()    # Cannot move or act
+    FROZEN = auto()     # Cannot move or act (ice effect)
 
 
 @dataclass
@@ -29,6 +30,7 @@ class ActiveCondition:
     duration: float      # seconds remaining
     tick_damage: float = 0.0  # damage per second (for Poison)
     source: str = ""
+    slow_factor: float = 0.5  # speed multiplier when SLOWED (0.25 = 25% speed)
 
 
 @dataclass
@@ -145,12 +147,15 @@ class Entity:
             return
 
         # Check conditions
-        if self.has_condition(Condition.IMMOBILIZED) or self.has_condition(Condition.STUNNED):
+        if self.has_condition(Condition.IMMOBILIZED) or self.has_condition(Condition.STUNNED) or self.has_condition(Condition.FROZEN):
             return
         
         effective_speed = self.speed
         if self.has_condition(Condition.SLOWED):
-            effective_speed *= 0.5
+            # Use slow_factor from condition if set, else default 50%
+            slow_cond = next((c for c in self.conditions if c.condition == Condition.SLOWED), None)
+            slow_factor = getattr(slow_cond, 'slow_factor', 0.5) if slow_cond else 0.5
+            effective_speed *= slow_factor
 
         move_dist = min(effective_speed * dt, dist)
         nx = self.x + (dx/dist) * move_dist
@@ -208,11 +213,12 @@ class Entity:
         return any(c.condition == condition for c in self.conditions)
 
     def apply_condition(self, condition: Condition, duration: float,
-                        tick_damage: float = 0.0, source: str = ""):
+                        tick_damage: float = 0.0, source: str = "",
+                        slow_factor: float = 0.5):
         """Apply a condition. Replaces existing condition of same type."""
         # Remove existing
         self.conditions = [c for c in self.conditions if c.condition != condition]
-        self.conditions.append(ActiveCondition(condition, duration, tick_damage, source))
+        self.conditions.append(ActiveCondition(condition, duration, tick_damage, source, slow_factor))
 
     def update_conditions(self, dt: float):
         """Update condition timers, apply tick damage (poison)."""
@@ -234,6 +240,8 @@ class Entity:
         if not self.alive:
             return False
         if self.has_condition(Condition.STUNNED):
+            return False
+        if self.has_condition(Condition.FROZEN):
             return False
         if self.has_condition(Condition.IMMOBILIZED):
             return False

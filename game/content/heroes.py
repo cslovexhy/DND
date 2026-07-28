@@ -106,21 +106,26 @@ def create_tarak(x: float, y: float) -> Hero:
 
 
 def create_heskan(x: float, y: float) -> Hero:
-    """Heskan — Dragonborn Wizard. Ranged AoE damage dealer."""
+    """Heskan — Dragonborn Wizard. Channeled ranged DPS with crowd control."""
     h = Hero("Heskan", "Dragonborn", "Wizard", x, y, hp=6, ac=14, speed=6, surge_value=3,
-             special_ability="Mage Hand: Can pick up treasure from 1 tile away")
-    h.attack_damage = 20
-    h.attack_range = 200
-    h.attack_cooldown = 0.7
-    h.add_ability("Q", Ability("Ray of Frost", cooldown=2.0, damage=40, radius=0, range=250,
-                               effect="Ranged ice bolt. Slows target 2s.",
+             special_ability="Frostbolt Channel: Immobile while casting, slows enemies")
+    # Weapon: Staff — channeled ranged (36 base / 1.2s = 30 dps, 120% of baseline)
+    h.base_damage = 36
+    h.weapon_speed = 1.2
+    h.attack_range = 260  # Ranged (long range caster)
+    # Skills
+    h.add_ability("Q", Ability("Frostbolt", cooldown=1.2, multiplier=1.0, flat_bonus=0,
+                               radius=0, range=260,
+                               effect="Channeled ranged bolt. Immobile while casting. Slows 25% for 3s.",
                                power_type="at_will", color=(150, 200, 255)))
-    h.add_ability("R", Ability("Flaming Sphere", cooldown=8.0, damage=75, radius=90,
-                               effect="Fireball at target location",
-                               power_type="daily", color=WIZARD_COLOR))
-    h.add_ability("E", Ability("Arc Lightning", cooldown=10.0, damage=60, radius=0, range=200,
-                               effect="Chain lightning hitting up to 3 targets",
-                               power_type="daily", color=(100, 150, 255)))
+    h.add_ability("R", Ability("Fire Blast", cooldown=8.0, multiplier=1.0, flat_bonus=0,
+                               radius=0, range=260,
+                               effect="Instant ranged fire bolt. Same damage as Frostbolt.",
+                               power_type="daily", color=(255, 130, 50)))
+    h.add_ability("E", Ability("Frost Nova", cooldown=12.0, multiplier=0.25, flat_bonus=0,
+                               radius=120, range=0,
+                               effect="AoE freeze around self. 4s freeze + cold damage.",
+                               power_type="daily", color=(180, 220, 255)))
     return h
 
 
@@ -135,5 +140,5 @@ ALL_HEROES = [
     {"create": create_tarak, "name": "Tarak", "race": "Half-Orc", "class": "Rogue",
      "desc": "[WIP] Melee DPS — Fast attacks, burst", "sprite_key": "tarak", "wip": True},
     {"create": create_heskan, "name": "Heskan", "race": "Dragonborn", "class": "Wizard",
-     "desc": "[WIP] Ranged DPS — AoE spells", "sprite_key": "heskan", "wip": True},
+     "desc": "Caster — Channeled Frostbolt, AoE spells", "sprite_key": "heskan", "wip": False},
 ]
