@@ -253,3 +253,32 @@ Scraped the D&D Adventure System Wiki (ddadventuresystem.fandom.com) for complet
 - `789c7a1` — Heskan Wizard kit (Frostbolt, Fire Blast, Frost Nova)
 - `e5ddb69` — Tarak Rogue kit + major combat fixes
 - `(pending)` — AI companions + combat polish
+
+---
+
+## Session 4 — 2026-07-28
+
+### v2 Architecture Design
+
+Decided current repo is too entangled to incrementally refactor — will create a **new repo** with clean architecture, using current repo as reference.
+
+### Key Design Decisions:
+- **MVC strict separation**: Model (zero pygame), View (rendering only), Controller (input + AI intent)
+- **Characters unified**: Heroes and monsters share same base class, same stat system, same skill system
+- **Skills standalone**: Not tied to any character. Grouped by behavior (melee/ranged/buffs/mobility), not by hero class
+- **Skill-level AI**: Each skill has `ai_score()` — knows when it's smart to use itself. No per-character AI classes.
+- **One generic CombatAI**: Scores all equipped skills, picks best. Works for heroes AND monsters.
+- **AI operates at human-intent level**: AI produces same "intents" as mouse clicks, resolved through identical controller logic. Zero divergence between human and AI play.
+- **Flat skill composition**: ONE Skill base class + pluggable components (timing, targeting, delivery, effects). Subclass only for truly unique behavior.
+- **Auto-testing**: Headless model tests, batch balance simulations (100 runs/hero in <30s)
+- **Map system**: WoW-style zone maps, auto-generated from images, editable with dev tool
+- **Leveling**: XP tiered curve (1.3x/1.2x/1.1x), level-up grants only HP + damage, armor/crit from gear
+- **Input operations**: Carried forward from v1 (Diablo 2 scheme, walk-to-attack, ESC cancels, etc.)
+
+### Deliverable:
+- `design/05_refactoring_plan.md` — comprehensive architecture plan (500+ lines)
+- `shared_skill/` — copied dev utility skills for future use
+
+### Next Session:
+- Create new repo
+- Begin implementation: Model layer bottom-up
