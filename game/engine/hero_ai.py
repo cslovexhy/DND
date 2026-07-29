@@ -404,12 +404,14 @@ class WizardAI(HeroAI):
         # 2. Frost Nova if 2+ enemies within 120px
         ab_e = self.hero.abilities.get("E")
         if ab_e and ab_e.is_ready() and enemies_close >= 2:
+            print(f"[WIZARD_AI] {self.hero.name} FROST NOVA! enemies_close={enemies_close} hp_pct={hp_pct:.0%}", flush=True)
             action["use_ability"] = "E"
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
             return action
 
         # 3. Frost Nova if 1 enemy close and low HP
         if ab_e and ab_e.is_ready() and enemies_close >= 1 and hp_pct < 0.50:
+            print(f"[WIZARD_AI] {self.hero.name} FROST NOVA (low HP)! enemies_close={enemies_close} hp_pct={hp_pct:.0%}", flush=True)
             action["use_ability"] = "E"
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
             return action

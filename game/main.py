@@ -301,6 +301,20 @@ ai_enabled = auto_mode  # Auto mode starts with AI on
 companions = []  # list of (hero_obj, ai_obj) tuples
 available_companions = [h for i, h in enumerate(ALL_HEROES) if i != selected_hero_idx]
 
+# Auto-mode: summon first available companion and set 4x speed
+if auto_mode and available_companions:
+    # Pick Heskan if available, else first
+    comp_info = next((c for c in available_companions if c["name"] == "Heskan"), available_companions[0])
+    cx, cy = hero.x + random.randint(-40, 40), hero.y + random.randint(-40, 40)
+    comp = comp_info["create"](cx, cy)
+    comp.sprite = HERO_SPRITES[comp_info["sprite_key"]]
+    comp_ai = create_hero_ai(comp)
+    if hasattr(comp_ai, 'allies'):
+        comp_ai.allies = game_state.heroes
+    companions.append((comp, comp_ai))
+    game_state.heroes.append(comp)
+    game_speed = 4.0
+
 # Monster pool
 MONSTER_POOL = [
     {"name": "Kobold Dragonshield", "hp": 1, "ac": 16, "speed": 5, "atk": 7, "dmg": 1, "xp": 1},
@@ -315,11 +329,12 @@ def spawn_monsters_for_room(room):
     room.monsters_spawned = True
     if room.room_type == RoomType.QUEST:
         wx, wy = dungeon.get_spawn_world_pos(room.center_x, room.center_y)
-        boss = Monster("Meerak", "Reptile", wx, wy, hp=6, ac=17, speed=5,
-                       attack_bonus=8, attack_damage=1, experience=5, is_boss=True)
-        boss.sprite = BOSS_SPRITE
-        setup_monster_aggro(boss)
-        game_state.monsters.append(boss)
+        for offset in [(-60, 0), (0, 0), (60, 0)]:
+            boss = Monster("Meerak", "Reptile", wx + offset[0], wy + offset[1], hp=6, ac=17, speed=5,
+                           attack_bonus=8, attack_damage=1, experience=5, is_boss=True)
+            boss.sprite = BOSS_SPRITE
+            setup_monster_aggro(boss)
+            game_state.monsters.append(boss)
         return
     for sx, sy in room.monster_spawns:
         mt = random.choice(MONSTER_POOL)
@@ -396,9 +411,9 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
         ab.use()
         hero.stealthed = True
         selected_target = None  # Stop auto-attack
-        # Drop aggro from all monsters targeting hero
+        # Drop aggro from all monsters targeting hero (except bosses)
         for m in game_state.alive_monsters:
-            if hasattr(m, 'aggro_target') and m.aggro_target == hero:
+            if hasattr(m, 'aggro_target') and m.aggro_target == hero and not m.is_boss:
                 from game.engine.ai import AggroState
                 m.aggro_state = AggroState.RESETTING
                 m.aggro_target = None
@@ -900,6 +915,13 @@ while running:
             target_hp = f" boss_hp={hero_ai.target.hp:.0f}/{hero_ai.target.max_hp}" if hero_ai.target and hero_ai.target.alive else ""
             action_name = ai_action['use_ability'] or ('DASH' if ai_action.get('dash') else ('MOVE' if ai_action.get('move_to') else ('BASIC_ATK' if ai_action.get('basic_attack') else ('EXPLORE' if not alive_count else 'IDLE'))))
             print(f"[AI t={game_state.game_time:.1f}s] monsters={alive_count} hp={hero.hp:.0f}/{hero.max_hp} pos=({hero.x:.0f},{hero.y:.0f}) action={action_name}{target_dist}{target_hp}", flush=True)
+            # Log all alive units
+            for m in game_state.alive_monsters:
+                dist_to_hero = hero.distance_to(m)
+                print(f"  [MOB] {m.name} pos=({m.x:.0f},{m.y:.0f}) hp={m.hp:.0f}/{m.max_hp} dist={dist_to_hero:.0f} aggro={getattr(m, 'aggro_state', '?')}", flush=True)
+            for comp, _ in companions:
+                if comp.alive:
+                    print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist_to_hero={hero.distance_to(comp):.0f}", flush=True)
 
         if ai_action["use_potion"] and potions > 0 and hero.hp < hero.max_hp:
             potions -= 1
@@ -1011,7 +1033,7 @@ while running:
                 # Handle dash abilities (Charge) — just teleport + damage for companions
                 if comp_action.get("dash"):
                     tx, ty, dash_target, dash_dmg, dash_stun = comp_action["dash"]
-                    if dash_target and dash_target.alive:
+                    if dash_target and dash_target.alive and comp.distance_to(dash_target) <= 300:
                         ab.use()
                         comp.x, comp.y = tx, ty
                         dmg = dash_target.take_damage(dash_dmg)
@@ -1019,8 +1041,22 @@ while running:
                         if dash_stun > 0 and dash_target.alive:
                             dash_target.apply_condition(Condition.STUNNED, dash_stun)
                         call_for_help(dash_target, game_state.monsters, hero)
+                elif ab.name == "Frost Nova":
+                    # Heskan's AoE freeze — specific handler (bypasses swing_timer)
+                    ab.use()
+                    comp.gcd = comp.GCD_DURATION
+                    dmg_amount = ab.calc_damage(comp.base_damage)
+                    hit_count = 0
+                    for m in game_state.alive_monsters:
+                        if comp.distance_to(m) <= ab.radius:
+                            dmg = m.take_damage(dmg_amount)
+                            m.apply_condition(Condition.FROZEN, 4.0)
+                            floating_texts.append(FloatingText(m.x, m.y - 20, f"{dmg:.0f}", (180, 220, 255)))
+                            hit_count += 1
+                    print(f"[COMP_SKILL] {comp.name} Frost Nova hit {hit_count} targets", flush=True)
+                    effects.append(AoeRing(comp.x, comp.y, ab.radius, (150, 200, 255)))
                 elif ab.radius > 0:
-                    # AoE
+                    # AoE (generic)
                     hits = comp.use_ability(ab_key, game_state.alive_monsters, target_pos=(comp.x, comp.y))
                     if hits:
                         effects.append(AoeRing(comp.x, comp.y, ab.radius, ab.color))
@@ -1067,27 +1103,23 @@ while running:
                         ab.use()
                         dmg_amount = ab.calc_damage(comp.base_damage)
                         dmg = target_m.take_damage(dmg_amount)
+                        print(f"[COMP_SKILL] {comp.name} Fire Blast -> {target_m.name} for {dmg:.0f}", flush=True)
                         floating_texts.append(FloatingText(target_m.x, target_m.y - 20, f"{dmg:.0f}", (255, 130, 50)))
                         effects.append(AoeRing(target_m.x, target_m.y, 30, (255, 100, 0)))
-                elif ab.name == "Frost Nova":
-                    # Heskan's AoE freeze
-                    ab.use()
-                    dmg_amount = ab.calc_damage(comp.base_damage)
-                    for m in game_state.alive_monsters:
-                        if comp.distance_to(m) <= ab.radius:
-                            dmg = m.take_damage(dmg_amount)
-                            m.apply_condition(Condition.FROZEN, 4.0)
-                            floating_texts.append(FloatingText(m.x, m.y - 20, f"{dmg:.0f}", (180, 220, 255)))
-                    effects.append(AoeRing(comp.x, comp.y, ab.radius, (150, 200, 255)))
+                        # Aggro
+                        if hasattr(target_m, 'aggro_state') and target_m.aggro_state != "aggroed":
+                            from game.engine.ai import aggro_monster as _aggro
+                            _aggro(target_m, comp, game_state.monsters)
+                        call_for_help(target_m, game_state.monsters, comp)
                 elif ab.name == "Stealth":
                     # Tarak's stealth
                     ab.use()
                     comp.stealthed = True
                     comp.gcd = comp.GCD_DURATION
                     comp._stealth_time = 0.0  # Track how long stealthed
-                    # Drop aggro
+                    # Drop aggro (except bosses)
                     for m in game_state.alive_monsters:
-                        if hasattr(m, 'aggro_target') and m.aggro_target == comp:
+                        if hasattr(m, 'aggro_target') and m.aggro_target == comp and not m.is_boss:
                             from game.engine.ai import AggroState
                             m.aggro_state = AggroState.RESETTING
                             m.aggro_target = None
@@ -1112,6 +1144,10 @@ while running:
                         dmg_amount = ab.calc_damage(comp.base_damage)
                         dmg = target_m.take_damage(dmg_amount)
                         floating_texts.append(FloatingText(target_m.x, target_m.y - 20, f"{dmg:.0f}", (180, 255, 180)))
+                        call_for_help(target_m, game_state.monsters, comp)
+                        if hasattr(target_m, 'aggro_state') and target_m.aggro_state != "aggroed":
+                            from game.engine.ai import aggro_monster as _aggro
+                            _aggro(target_m, comp, game_state.monsters)
                         call_for_help(target_m, game_state.monsters, hero)
                 elif ab.name == "Smite" and target_m and target_m.alive:
                     # Keyleth's melee
@@ -1122,7 +1158,10 @@ while running:
                         dmg_amount = ab.calc_damage(comp.base_damage) * bonus
                         dmg = target_m.take_damage(dmg_amount)
                         floating_texts.append(FloatingText(target_m.x, target_m.y - 20, f"{dmg:.0f}", WHITE))
-                        call_for_help(target_m, game_state.monsters, hero)
+                        call_for_help(target_m, game_state.monsters, comp)
+                        if hasattr(target_m, 'aggro_state') and target_m.aggro_state != "aggroed":
+                            from game.engine.ai import aggro_monster as _aggro
+                            _aggro(target_m, comp, game_state.monsters)
                 elif ab.name == "Righteous Seal":
                     # Keyleth's self-buff
                     ab.use()
@@ -1163,20 +1202,18 @@ while running:
                     comp.move_toward(path[0][0], path[0][1], dt, is_wall)
 
         else:
-            # No combat action — explore toward next unexplored room
+            # No combat action — follow the hero
             dist_to_hero = comp.distance_to(hero)
-            for r in dungeon.rooms:
-                if not r.explored:
-                    target_x = r.center_x * TILE_SIZE
-                    target_y = r.center_y * TILE_SIZE
-                    if not hasattr(comp, '_follow_path') or not comp._follow_path:
-                        comp._follow_path = astar(dungeon, comp.x, comp.y, target_x, target_y)
-                    break
+            if dist_to_hero > 600:
+                # Too far — teleport to hero
+                comp.x = hero.x + random.randint(-50, 50)
+                comp.y = hero.y + random.randint(-50, 50)
+                comp._follow_path = None
+            elif dist_to_hero > 80:
+                # Recalculate path every time (hero moves)
+                comp._follow_path = astar(dungeon, comp.x, comp.y, hero.x, hero.y)
             else:
-                # All explored — follow hero loosely
-                if dist_to_hero > 150:
-                    if not hasattr(comp, '_follow_path') or not comp._follow_path:
-                        comp._follow_path = astar(dungeon, comp.x, comp.y, hero.x, hero.y)
+                comp._follow_path = None
 
             # Walk along path
             if hasattr(comp, '_follow_path') and comp._follow_path:
@@ -1228,7 +1265,11 @@ while running:
             hero.kills += 1
             floating_texts.append(FloatingText(m.x, m.y+10, f"+{m.experience}xp", GOLD))
             m.experience = 0
-            if m.is_boss: victory = True
+            if m.is_boss:
+                # Victory only when ALL bosses are dead
+                all_bosses_dead = all(not b.alive for b in game_state.monsters if b.is_boss)
+                if all_bosses_dead:
+                    victory = True
 
     if not hero.alive:
         game_state.check_hero_death(hero)
@@ -1244,14 +1285,16 @@ while running:
         if result is not None:
             dmg, hit_target = result
             # Determine color based on who fired
-            if proj.source == hero:
+            # Determine if source is a hero (player or companion)
+            source_is_hero = (proj.source == hero) or any(proj.source == c for c, _ in companions)
+            if source_is_hero:
                 floating_texts.append(FloatingText(hit_target.x, hit_target.y - 20, f"{dmg:.0f}", proj.color))
                 # Aggro on hit: directly aggro the hit monster + call for help
                 if hasattr(hit_target, 'aggro_state'):
                     from game.engine.ai import aggro_monster, call_for_help as cfh
                     if hit_target.aggro_state != "aggroed":
-                        aggro_monster(hit_target, hero, game_state.monsters)
-                    cfh(hit_target, game_state.monsters, hero)
+                        aggro_monster(hit_target, proj.source, game_state.monsters)
+                    cfh(hit_target, game_state.monsters, proj.source)
                 # Frostbolt slow
                 if getattr(proj, 'apply_slow', False) and hit_target.alive:
                     hit_target.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.25)
@@ -1270,6 +1313,14 @@ while running:
     # Expire Wall shield when buff expires
     if "Wall" not in hero.buffs and hero.absorb_shield > 0:
         hero.absorb_shield = 0
+
+    # --- FRAME LOG (always on, every frame) ---
+    print(f"[FRAME t={game_state.game_time:.2f}s] hero=({hero.x:.0f},{hero.y:.0f}) hp={hero.hp:.0f}/{hero.max_hp} monsters={len(game_state.alive_monsters)}", flush=True)
+    for m in game_state.alive_monsters:
+        print(f"  [MOB] {m.name} pos=({m.x:.0f},{m.y:.0f}) hp={m.hp:.0f}/{m.max_hp} dist={hero.distance_to(m):.0f} aggro={getattr(m, 'aggro_state', '?')}", flush=True)
+    for comp, _ in companions:
+        if comp.alive:
+            print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist={hero.distance_to(comp):.0f}", flush=True)
 
     # --- RENDER ---
     screen.fill(BG)

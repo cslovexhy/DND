@@ -44,7 +44,7 @@ def check_aggro(monster: Monster, heroes: list[Hero], all_monsters: list[Monster
         # Check leash
         dx = monster.x - monster.spawn_x
         dy = monster.y - monster.spawn_y
-        if math.sqrt(dx*dx + dy*dy) > monster.leash_range:
+        if not monster.is_boss and math.sqrt(dx*dx + dy*dy) > monster.leash_range:
             monster.aggro_state = AggroState.RESETTING
             monster.aggro_target = None
         return
