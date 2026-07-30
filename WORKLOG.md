@@ -282,3 +282,43 @@ Decided current repo is too entangled to incrementally refactor — will create 
 ### Next Session:
 - Create new repo
 - Begin implementation: Model layer bottom-up
+
+---
+
+## Session 5 — 2026-07-29/30
+
+### Map Editor Built
+- Created full **map editor** (`map_editor.py`) using Kenney Roguelike RPG spritesheet
+- Features: tile palette (scrollable), canvas with pan/zoom, 2 layers (ground + objects), walkability painting, flood fill, undo/redo, save/load with filename prompt
+- Controls: left-click paint, right-click erase, middle-click pan, arrow keys scroll, scroll zoom
+- Spawn system: press 3 for spawn mode, place hero start + monsters on map
+- All 10 monster types + 7 bosses + special markers (hero_start, chest, npc) available
+
+### First World Map: Northshire Church
+- Created `data/maps/northshire_church.json` — 40×30 tile map
+- Painted full ground layer using RPG tiles, marked walkability (1082 walkable, 118 blocked)
+- Placed 51 spawns: 18 grey wolves (forest area), 22 kobold dragonshields (church guards), 10 snakes (overgrown area), 1 hero start
+
+### Map Integrated with Game
+- Created `game/engine/world_map.py` — WorldMap class loads JSON maps, provides tile data + walkability + spawns
+- Duck-type compatible with UnifiedDungeon (is_wall, is_floor, get_start_pos) — pathfinding works unchanged
+- `python3 -m game.main --map` launches world map mode; without flag = original dungeon mode
+- RPG spritesheet tiles rendered with caching, all monsters spawned at game start
+- No fog of war in map mode (full visibility)
+
+### Art & Polish
+- Evaluated Kenney Roguelike RPG pack for overworld tiles (grass, water, trees, roads, buildings)
+- Swapped dungeon floor/wall to RPG tiles: (8,10) floor, (13,9) wall
+- Fixed Orc Archer projectile: red fireball → brown arrow with grey arrowhead
+- Renamed Cave Bear → **Grey Wolf** with new sprite (3,2) from Tiny Creatures
+- Added `--debug` flag to centralize logging (off by default, `--debug` enables frame/AI logs)
+
+### Commits
+- (pending)
+
+### Key Files Created/Modified
+- `map_editor.py` — standalone map editor tool (new)
+- `game/engine/world_map.py` — map loader for JSON maps (new)
+- `game/main.py` — world map mode, RPG tiles, arrow projectile, debug flag
+- `data/maps/northshire_church.json` — first hand-painted world map
+- `scratch/rpg_tile_viewer.py` — interactive spritesheet browser (dev tool)

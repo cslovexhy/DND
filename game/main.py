@@ -16,11 +16,23 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from game.engine.entities import Hero, Monster, Ability, Condition, GameState, Projectile
 from game.engine.dungeon import UnifiedDungeon, RoomType, TILE_SIZE
+from game.engine.world_map import WorldMap
 from game.engine.ai import run_monster_ai, setup_monster_aggro, call_for_help
 from game.engine.pathfinding import astar
 from game.content.heroes import ALL_HEROES
 
 os.chdir(os.path.dirname(os.path.dirname(__file__)))
+
+# === CLI ARGS ===
+USE_MAP = None  # Path to world map JSON, or None for dungeon mode
+DEBUG = "--debug" in sys.argv  # Pass --debug to enable frame/AI logging
+for i, arg in enumerate(sys.argv):
+    if arg == "--map" and i + 1 < len(sys.argv):
+        USE_MAP = sys.argv[i + 1]
+    elif arg == "--map" and i + 1 >= len(sys.argv):
+        USE_MAP = "data/maps/northshire_church.json"
+if "--map" in sys.argv and USE_MAP is None:
+    USE_MAP = "data/maps/northshire_church.json"
 
 # === INIT ===
 pygame.init()
@@ -47,6 +59,7 @@ DOOR_COLOR = (180, 140, 60)
 # === LOAD SPRITES ===
 TILE_SRC = 16
 dungeon_img = pygame.image.load("assets/kenney_dungeon/Tilemap/tilemap.png").convert_alpha()
+rpg_img = pygame.image.load("assets/kenney_rpg/Spritesheet/roguelikeSheet_transparent.png").convert_alpha()
 creature_img = pygame.image.load("assets/tiny_creatures/tiny-creatures/Tilemap/tilemap.png").convert_alpha()
 
 def get_dungeon_tile(col, row):
@@ -55,16 +68,32 @@ def get_dungeon_tile(col, row):
     s.blit(dungeon_img, (0,0), (x,y,TILE_SRC,TILE_SRC))
     return pygame.transform.scale(s, (TILE_SIZE, TILE_SIZE))
 
+def get_rpg_tile(col, row):
+    x, y = col*(TILE_SRC+1), row*(TILE_SRC+1)
+    s = pygame.Surface((TILE_SRC, TILE_SRC), pygame.SRCALPHA)
+    s.blit(rpg_img, (0,0), (x,y,TILE_SRC,TILE_SRC))
+    return pygame.transform.scale(s, (TILE_SIZE, TILE_SIZE))
+
+def get_rpg_tile_raw(col, row):
+    """Get a raw 16x16 tile surface (not scaled) for caching."""
+    x, y = col*(TILE_SRC+1), row*(TILE_SRC+1)
+    s = pygame.Surface((TILE_SRC, TILE_SRC), pygame.SRCALPHA)
+    s.blit(rpg_img, (0,0), (x,y,TILE_SRC,TILE_SRC))
+    return s
+
+# Cache for world map tile surfaces (scaled to TILE_SIZE)
+rpg_tile_cache = {}
+
 def get_creature(col, row, scale=TILE_SIZE):
     x, y = col*(TILE_SRC+1), row*(TILE_SRC+1)
     s = pygame.Surface((TILE_SRC, TILE_SRC), pygame.SRCALPHA)
     s.blit(creature_img, (0,0), (x,y,TILE_SRC,TILE_SRC))
     return pygame.transform.scale(s, (scale, scale))
 
-# Environment
-SPR_FLOOR = get_dungeon_tile(0, 0)
-SPR_FLOOR2 = get_dungeon_tile(1, 0)
-SPR_WALL = get_dungeon_tile(3, 0)
+# Environment (from Kenney Roguelike RPG)
+SPR_FLOOR = get_rpg_tile(8, 10)   # stone floor
+SPR_FLOOR2 = get_rpg_tile(8, 10)  # same for now
+SPR_WALL = get_rpg_tile(13, 9)    # wall
 
 # Hero sprites
 HERO_SPRITES = {
@@ -84,7 +113,7 @@ MONSTER_SPRITES = {
     "Human Cultist": get_creature(5, 7),
     "Duergar Guard": get_creature(4, 12),
     "Legion Devil": get_creature(8, 3),
-    "Cave Bear": get_creature(3, 17),
+    "Grey Wolf": get_creature(3, 2),
     "Grell": get_creature(5, 0),
     "Gibbering Mouther": get_creature(4, 8),
 }
@@ -245,10 +274,15 @@ while selecting:
 
 
 # === GAME SETUP ===
-dungeon = UnifiedDungeon()
-dungeon.generate(num_rooms=7, quest_room_name="Tunnel Exit")
-
-hero_wx, hero_wy = dungeon.get_start_pos()
+if USE_MAP:
+    world_map = WorldMap.load(USE_MAP)
+    dungeon = world_map  # Duck-type compatible (is_wall, is_floor, get_start_pos)
+    hero_wx, hero_wy = world_map.get_start_pos()
+else:
+    world_map = None
+    dungeon = UnifiedDungeon()
+    dungeon.generate(num_rooms=7, quest_room_name="Tunnel Exit")
+    hero_wx, hero_wy = dungeon.get_start_pos()
 hero_info = ALL_HEROES[selected_hero_idx]
 hero = hero_info["create"](hero_wx, hero_wy)
 hero.sprite = HERO_SPRITES[hero_info["sprite_key"]]
@@ -256,7 +290,10 @@ hero.sprite = HERO_SPRITES[hero_info["sprite_key"]]
 game_state = GameState()
 game_state.heroes.append(hero)
 game_state.life_tokens = 2
-game_state.objective_text = "Find the Tunnel Exit and defeat the Kobold Dragonlord!"
+if USE_MAP:
+    game_state.objective_text = "Explore Northshire and clear the area of monsters!"
+else:
+    game_state.objective_text = "Find the Tunnel Exit and defeat the Kobold Dragonlord!"
 
 # Movement state
 move_path = []
@@ -353,6 +390,52 @@ def spawn_monsters_for_room(room):
 
 def is_wall(wx, wy):
     return dungeon.is_wall(wx, wy)
+
+# World map monster stats lookup
+SPAWN_STATS = {
+    "kobold_dragonshield": {"name": "Kobold Dragonshield", "hp": 1, "ac": 16, "speed": 5, "atk": 7, "dmg": 1, "xp": 1},
+    "snake": {"name": "Snake", "hp": 1, "ac": 13, "speed": 6, "atk": 7, "dmg": 0, "xp": 1, "condition": (Condition.POISONED, 3.0)},
+    "orc_smasher": {"name": "Orc Smasher", "hp": 2, "ac": 15, "speed": 4, "atk": 9, "dmg": 1, "xp": 2},
+    "orc_archer": {"name": "Orc Archer", "hp": 1, "ac": 13, "speed": 4, "atk": 6, "dmg": 1, "xp": 1, "ranged": True},
+    "grey_wolf": {"name": "Grey Wolf", "hp": 2, "ac": 14, "speed": 5, "atk": 8, "dmg": 2, "xp": 2},
+    "duergar_guard": {"name": "Duergar Guard", "hp": 2, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 2},
+    "gibbering_mouther": {"name": "Gibbering Mouther", "hp": 2, "ac": 14, "speed": 3, "atk": 8, "dmg": 1, "xp": 3},
+    "grell": {"name": "Grell", "hp": 2, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 2, "condition": (Condition.POISONED, 3.0)},
+    "human_cultist": {"name": "Human Cultist", "hp": 1, "ac": 14, "speed": 5, "atk": 6, "dmg": 1, "xp": 1, "condition": (Condition.POISONED, 3.0)},
+    "legion_devil": {"name": "Legion Devil", "hp": 1, "ac": 16, "speed": 5, "atk": 11, "dmg": 1, "xp": 3},
+    "meerak": {"name": "Meerak", "hp": 6, "ac": 17, "speed": 5, "atk": 8, "dmg": 1, "xp": 5, "boss": True},
+    "ashardalon": {"name": "Ashardalon", "hp": 12, "ac": 16, "speed": 4, "atk": 10, "dmg": 2, "xp": 10, "boss": True},
+    "bellax": {"name": "Bellax", "hp": 9, "ac": 17, "speed": 4, "atk": 8, "dmg": 2, "xp": 8, "boss": True},
+    "karash": {"name": "Karash", "hp": 5, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 5, "boss": True},
+    "margrath": {"name": "Margrath", "hp": 5, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 5, "boss": True},
+    "rage_drake": {"name": "Rage Drake", "hp": 5, "ac": 15, "speed": 6, "atk": 9, "dmg": 2, "xp": 5, "boss": True},
+    "otyugh": {"name": "Otyugh", "hp": 5, "ac": 14, "speed": 3, "atk": 8, "dmg": 2, "xp": 5, "boss": True},
+}
+
+def spawn_world_map_monsters():
+    """Spawn all monsters from world map spawn data."""
+    for sp in world_map.get_monster_spawns():
+        mt = SPAWN_STATS.get(sp.type)
+        if mt is None:
+            continue
+        wx, wy = world_map.get_spawn_world_pos(sp.x, sp.y)
+        is_boss = mt.get("boss", False)
+        m = Monster(mt["name"], "Monster", wx, wy,
+                    hp=mt["hp"], ac=mt["ac"], speed=mt["speed"],
+                    attack_bonus=mt["atk"], attack_damage=mt["dmg"],
+                    experience=mt["xp"], is_boss=is_boss)
+        m.sprite = BOSS_SPRITE if is_boss else MONSTER_SPRITES.get(mt["name"])
+        if mt.get("condition"):
+            m.on_hit_condition = mt["condition"]
+        if mt.get("ranged"):
+            m.ranged_attack_range = 250
+            m.ranged_attack_damage = m.base_damage
+        setup_monster_aggro(m)
+        game_state.monsters.append(m)
+
+# Spawn monsters for world map mode at start
+if USE_MAP:
+    spawn_world_map_monsters()
 
 def get_monster_at_screen(sx, sy):
     wx = sx + hero.x - WIDTH//2
@@ -909,7 +992,7 @@ while running:
         ai_action = hero_ai.update(game_state.alive_monsters, dt, is_wall)
         
         # Debug log
-        if int(game_state.game_time * 2) != int((game_state.game_time - dt) * 2):  # Log every 0.5s
+        if DEBUG and int(game_state.game_time * 2) != int((game_state.game_time - dt) * 2):  # Log every 0.5s
             alive_count = len(game_state.alive_monsters)
             target_dist = f" target_dist={hero.distance_to(hero_ai.target):.0f}" if hero_ai.target and hero_ai.target.alive else ""
             target_hp = f" boss_hp={hero_ai.target.hp:.0f}/{hero_ai.target.max_hp}" if hero_ai.target and hero_ai.target.alive else ""
@@ -963,14 +1046,15 @@ while running:
 
         else:
             # No enemies and no action — explore! Move toward next unexplored room
-            for r in dungeon.rooms:
-                if not r.explored:
-                    target_x = r.center_x * TILE_SIZE
-                    target_y = r.center_y * TILE_SIZE
-                    # Use pathfinding for exploration
-                    if not move_path:
-                        move_path = astar(dungeon, hero.x, hero.y, target_x, target_y)
-                    break
+            if not USE_MAP:
+                for r in dungeon.rooms:
+                    if not r.explored:
+                        target_x = r.center_x * TILE_SIZE
+                        target_y = r.center_y * TILE_SIZE
+                        # Use pathfinding for exploration
+                        if not move_path:
+                            move_path = astar(dungeon, hero.x, hero.y, target_x, target_y)
+                        break
 
     # Ambush walk-to: walk toward target in stealth, execute Ambush when in range
     if ambush_target and not ai_enabled:
@@ -1053,7 +1137,7 @@ while running:
                             m.apply_condition(Condition.FROZEN, 4.0)
                             floating_texts.append(FloatingText(m.x, m.y - 20, f"{dmg:.0f}", (180, 220, 255)))
                             hit_count += 1
-                    print(f"[COMP_SKILL] {comp.name} Frost Nova hit {hit_count} targets", flush=True)
+                    print(f"[COMP_SKILL] {comp.name} Frost Nova hit {hit_count} targets", flush=True) if DEBUG else None
                     effects.append(AoeRing(comp.x, comp.y, ab.radius, (150, 200, 255)))
                 elif ab.radius > 0:
                     # AoE (generic)
@@ -1103,7 +1187,7 @@ while running:
                         ab.use()
                         dmg_amount = ab.calc_damage(comp.base_damage)
                         dmg = target_m.take_damage(dmg_amount)
-                        print(f"[COMP_SKILL] {comp.name} Fire Blast -> {target_m.name} for {dmg:.0f}", flush=True)
+                        print(f"[COMP_SKILL] {comp.name} Fire Blast -> {target_m.name} for {dmg:.0f}", flush=True) if DEBUG else None
                         floating_texts.append(FloatingText(target_m.x, target_m.y - 20, f"{dmg:.0f}", (255, 130, 50)))
                         effects.append(AoeRing(target_m.x, target_m.y, 30, (255, 100, 0)))
                         # Aggro
@@ -1236,10 +1320,11 @@ while running:
                         comp._follow_path = None
                     comp.facing_left = (tx - comp.x) < 0
 
-    # Room exploration — spawn monsters when hero enters new room
-    new_room = dungeon.update_exploration(hero.x, hero.y)
-    if new_room:
-        spawn_monsters_for_room(new_room)
+    # Room exploration — spawn monsters when hero enters new room (dungeon mode only)
+    if not USE_MAP:
+        new_room = dungeon.update_exploration(hero.x, hero.y)
+        if new_room:
+            spawn_monsters_for_room(new_room)
 
     # Monster AI — all alive monsters with aggro system
     all_heroes = [h for h in game_state.heroes if h.alive]
@@ -1314,75 +1399,92 @@ while running:
     if "Wall" not in hero.buffs and hero.absorb_shield > 0:
         hero.absorb_shield = 0
 
-    # --- FRAME LOG (always on, every frame) ---
-    print(f"[FRAME t={game_state.game_time:.2f}s] hero=({hero.x:.0f},{hero.y:.0f}) hp={hero.hp:.0f}/{hero.max_hp} monsters={len(game_state.alive_monsters)}", flush=True)
-    for m in game_state.alive_monsters:
-        print(f"  [MOB] {m.name} pos=({m.x:.0f},{m.y:.0f}) hp={m.hp:.0f}/{m.max_hp} dist={hero.distance_to(m):.0f} aggro={getattr(m, 'aggro_state', '?')}", flush=True)
-    for comp, _ in companions:
-        if comp.alive:
-            print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist={hero.distance_to(comp):.0f}", flush=True)
+    # --- FRAME LOG ---
+    if DEBUG:
+        print(f"[FRAME t={game_state.game_time:.2f}s] hero=({hero.x:.0f},{hero.y:.0f}) hp={hero.hp:.0f}/{hero.max_hp} monsters={len(game_state.alive_monsters)}", flush=True)
+        for m in game_state.alive_monsters:
+            print(f"  [MOB] {m.name} pos=({m.x:.0f},{m.y:.0f}) hp={m.hp:.0f}/{m.max_hp} dist={hero.distance_to(m):.0f} aggro={getattr(m, 'aggro_state', '?')}", flush=True)
+        for comp, _ in companions:
+            if comp.alive:
+                print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist={hero.distance_to(comp):.0f}", flush=True)
 
     # --- RENDER ---
     screen.fill(BG)
     cx, cy = hero.x, hero.y
 
-    # Draw visible tiles (only explored rooms + corridors between them)
-    # Render window in tiles
+    # Draw visible tiles
     view_left = int((cx - WIDTH//2) // TILE_SIZE) - 1
     view_top = int((cy - HEIGHT//2) // TILE_SIZE) - 1
     view_right = view_left + WIDTH // TILE_SIZE + 3
     view_bottom = view_top + HEIGHT // TILE_SIZE + 3
 
-    for ty in range(max(0, view_top), min(dungeon.grid_h, view_bottom)):
-        for tx in range(max(0, view_left), min(dungeon.grid_w, view_right)):
-            # Fog of war: only draw if in an explored room or corridor adjacent to explored room
-            tile = dungeon.tiles[ty][tx]
-            if tile == "wall":
-                # Only draw walls adjacent to explored floor
-                visible = False
-                for ddy in range(-1, 2):
-                    for ddx in range(-1, 2):
-                        ntx, nty = tx+ddx, ty+ddy
-                        if 0 <= nty < dungeon.grid_h and 0 <= ntx < dungeon.grid_w:
-                            if dungeon.tiles[nty][ntx] == "floor":
-                                # Check if any explored room contains this neighbor
-                                for r in dungeon.rooms:
-                                    if r.explored and r.contains_tile(ntx, nty):
-                                        visible = True
-                                        break
-                                # Also show corridor walls if adjacent rooms explored
-                                if not visible:
+    if USE_MAP:
+        # World map rendering — draw tiles from spritesheet data
+        for ty in range(max(0, view_top), min(world_map.height, view_bottom)):
+            for tx in range(max(0, view_left), min(world_map.width, view_right)):
+                sx = int(tx * TILE_SIZE - cx + WIDTH//2)
+                sy = int(ty * TILE_SIZE - cy + HEIGHT//2)
+                # Ground layer
+                ground_tile = world_map.ground[ty][tx] if world_map.ground else None
+                if ground_tile:
+                    key = (ground_tile.col, ground_tile.row)
+                    if key not in rpg_tile_cache:
+                        rpg_tile_cache[key] = pygame.transform.scale(
+                            get_rpg_tile_raw(ground_tile.col, ground_tile.row), (TILE_SIZE, TILE_SIZE))
+                    screen.blit(rpg_tile_cache[key], (sx, sy))
+                # Objects layer
+                obj_tile = world_map.objects[ty][tx] if world_map.objects else None
+                if obj_tile:
+                    key = (obj_tile.col, obj_tile.row)
+                    if key not in rpg_tile_cache:
+                        rpg_tile_cache[key] = pygame.transform.scale(
+                            get_rpg_tile_raw(obj_tile.col, obj_tile.row), (TILE_SIZE, TILE_SIZE))
+                    screen.blit(rpg_tile_cache[key], (sx, sy))
+    else:
+        # Dungeon rendering (original fog-of-war system)
+        for ty in range(max(0, view_top), min(dungeon.grid_h, view_bottom)):
+            for tx in range(max(0, view_left), min(dungeon.grid_w, view_right)):
+                tile = dungeon.tiles[ty][tx]
+                if tile == "wall":
+                    visible = False
+                    for ddy in range(-1, 2):
+                        for ddx in range(-1, 2):
+                            ntx, nty = tx+ddx, ty+ddy
+                            if 0 <= nty < dungeon.grid_h and 0 <= ntx < dungeon.grid_w:
+                                if dungeon.tiles[nty][ntx] == "floor":
                                     for r in dungeon.rooms:
-                                        if r.explored:
-                                            # Show corridor region between explored rooms
-                                            if abs(ntx - r.center_x) < r.width and abs(nty - r.center_y) < r.height + 5:
-                                                visible = True
-                                                break
-                    if visible: break
-                if not visible:
-                    continue
-                sx = int(tx * TILE_SIZE - cx + WIDTH//2)
-                sy = int(ty * TILE_SIZE - cy + HEIGHT//2)
-                screen.blit(SPR_WALL, (sx, sy))
-            else:
-                # Floor: show if in explored room or in corridor between explored rooms
-                visible = False
-                for r in dungeon.rooms:
-                    if r.explored and r.contains_tile(tx, ty):
-                        visible = True
-                        break
-                # Corridor visibility: show if between two explored rooms
-                if not visible:
+                                        if r.explored and r.contains_tile(ntx, nty):
+                                            visible = True
+                                            break
+                                    if not visible:
+                                        for r in dungeon.rooms:
+                                            if r.explored:
+                                                if abs(ntx - r.center_x) < r.width and abs(nty - r.center_y) < r.height + 5:
+                                                    visible = True
+                                                    break
+                        if visible: break
+                    if not visible:
+                        continue
+                    sx = int(tx * TILE_SIZE - cx + WIDTH//2)
+                    sy = int(ty * TILE_SIZE - cy + HEIGHT//2)
+                    screen.blit(SPR_WALL, (sx, sy))
+                else:
+                    visible = False
                     for r in dungeon.rooms:
-                        if r.explored:
-                            if abs(tx - r.center_x) < r.width + 8 and abs(ty - r.center_y) < r.height + 4:
-                                visible = True
-                                break
-                if not visible:
-                    continue
-                sx = int(tx * TILE_SIZE - cx + WIDTH//2)
-                sy = int(ty * TILE_SIZE - cy + HEIGHT//2)
-                screen.blit(SPR_FLOOR if (tx+ty) % 5 != 0 else SPR_FLOOR2, (sx, sy))
+                        if r.explored and r.contains_tile(tx, ty):
+                            visible = True
+                            break
+                    if not visible:
+                        for r in dungeon.rooms:
+                            if r.explored:
+                                if abs(tx - r.center_x) < r.width + 8 and abs(ty - r.center_y) < r.height + 4:
+                                    visible = True
+                                    break
+                    if not visible:
+                        continue
+                    sx = int(tx * TILE_SIZE - cx + WIDTH//2)
+                    sy = int(ty * TILE_SIZE - cy + HEIGHT//2)
+                    screen.blit(SPR_FLOOR if (tx+ty) % 5 != 0 else SPR_FLOOR2, (sx, sy))
 
     # Move path dots
     for wp in move_path[:8]:
@@ -1459,9 +1561,33 @@ while running:
     for proj in projectiles:
         psx = int(proj.x - cx + WIDTH//2)
         psy = int(proj.y - cy + HEIGHT//2)
-        pygame.draw.circle(screen, proj.color, (psx, psy), int(proj.radius))
-        # Glow trail
-        pygame.draw.circle(screen, (*proj.color[:3], 100) if len(proj.color) == 4 else proj.color, (psx, psy), int(proj.radius) + 3, 1)
+        # Monster arrows: draw as a rotated arrow shape
+        if proj.color == (255, 80, 80) and proj.target and proj.target.alive:
+            import math as _math
+            dx = proj.target.x - proj.x
+            dy = proj.target.y - proj.y
+            dist = _math.sqrt(dx*dx + dy*dy)
+            if dist > 0:
+                # Arrow direction
+                nx, ny = dx/dist, dy/dist
+                # Perpendicular
+                px, py = -ny, nx
+                # Arrow shaft (line)
+                length = 14
+                shaft_start = (psx - nx*length//2, psy - ny*length//2)
+                shaft_end = (psx + nx*length//2, psy + ny*length//2)
+                pygame.draw.line(screen, (139, 90, 43), shaft_start, shaft_end, 2)
+                # Arrowhead (small triangle at front)
+                tip = (int(psx + nx*length//2 + nx*4), int(psy + ny*length//2 + ny*4))
+                left = (int(shaft_end[0] + px*3), int(shaft_end[1] + py*3))
+                right = (int(shaft_end[0] - px*3), int(shaft_end[1] - py*3))
+                pygame.draw.polygon(screen, (180, 180, 180), [tip, left, right])
+            else:
+                pygame.draw.circle(screen, proj.color, (psx, psy), int(proj.radius))
+        else:
+            pygame.draw.circle(screen, proj.color, (psx, psy), int(proj.radius))
+            # Glow trail
+            pygame.draw.circle(screen, (*proj.color[:3], 100) if len(proj.color) == 4 else proj.color, (psx, psy), int(proj.radius) + 3, 1)
 
     # Hero
     spr = hero.sprite
@@ -1566,19 +1692,23 @@ while running:
     screen.blit(font.render(f"R: {right_ab.name}", True, WHITE), (WIDTH//2 + 25, bar_y + 8))
 
     screen.blit(font.render(f"Kills: {hero.kills}  Gold: {hero.gold}", True, GOLD), (WIDTH-160, 20))
-    screen.blit(font.render(f"Room: {dungeon.current_room.name}", True, BLUE), (WIDTH-160, 40))
+    if USE_MAP:
+        screen.blit(font.render("Northshire Church", True, BLUE), (WIDTH-160, 40))
+    else:
+        screen.blit(font.render(f"Room: {dungeon.current_room.name}", True, BLUE), (WIDTH-160, 40))
     screen.blit(font.render(game_state.objective_text, True, (200,200,150)), (WIDTH//2-180, 10))
 
-    # Minimap
+    # Minimap (dungeon mode only)
     mm_x, mm_y = WIDTH-120, HEIGHT-100
-    pygame.draw.rect(screen, (30,30,40), (mm_x-5, mm_y-5, 110, 90))
-    for r in dungeon.rooms:
-        rx = mm_x + (r.gx - dungeon.rooms[0].gx) // 2 + 10
-        ry = mm_y + (r.gy - dungeon.rooms[0].gy) * 2 + 30
-        color = (50,50,60) if not r.explored else (100,100,140)
-        if r.room_type == RoomType.QUEST and r.explored: color = (200,50,50)
-        if r.id == dungeon.current_room_id: color = (100,200,255)
-        pygame.draw.rect(screen, color, (rx, ry, 10, 8))
+    if not USE_MAP:
+        pygame.draw.rect(screen, (30,30,40), (mm_x-5, mm_y-5, 110, 90))
+        for r in dungeon.rooms:
+            rx = mm_x + (r.gx - dungeon.rooms[0].gx) // 2 + 10
+            ry = mm_y + (r.gy - dungeon.rooms[0].gy) * 2 + 30
+            color = (50,50,60) if not r.explored else (100,100,140)
+            if r.room_type == RoomType.QUEST and r.explored: color = (200,50,50)
+            if r.id == dungeon.current_room_id: color = (100,200,255)
+            pygame.draw.rect(screen, color, (rx, ry, 10, 8))
 
     # Controls help
     ai_label = "AI: ON (TAB=off)" if ai_enabled else "TAB=AI"
