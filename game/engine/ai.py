@@ -12,10 +12,18 @@ Attack positioning:
 - All attacks have range > 0
 - Melee monsters stop at their attack range (~40-50px), not 0
 - Ranged monsters keep distance
+
+Patrol:
+- Each monster gets a randomized patrol route near its spawn (3-5 waypoints within patrol_radius)
+- While IDLE, monster walks the route in a loop at reduced speed
+- On aggro, drops patrol and fights
+- On reset (leash), walks back to spawn, then resumes patrol from nearest waypoint
 """
 import math
+import random
 from typing import Optional
 from .entities import Monster, Hero, Entity, Condition
+from .pathfinding import astar
 
 
 # === AGGRO STATE ===
@@ -37,6 +45,107 @@ def init_monster_aggro(monster: Monster, sense_range=180, call_range=120, leash_
     monster.group_id = group_id             # Linked group (pull one = pull all)
     monster.aggro_target = None             # Current target
 
+    # Patrol system
+    monster.patrol_route = []               # List of (x, y) waypoints
+    monster.patrol_index = 0                # Current waypoint index
+    monster.patrol_wait = 0.0               # Time to pause at waypoint
+    monster.patrol_speed_mult = 0.4         # Patrol at 40% speed
+
+
+def generate_patrol_route(monster: Monster, patrol_radius=80, num_waypoints=None, collision_fn=None):
+    """Generate a random patrol route around the monster's spawn point.
+    Call after the monster is placed and aggro is initialized."""
+    if num_waypoints is None:
+        num_waypoints = random.randint(3, 5)
+
+    route = []
+    for _ in range(num_waypoints):
+        # Generate random point within patrol_radius of spawn
+        angle = random.uniform(0, 2 * math.pi)
+        dist = random.uniform(patrol_radius * 0.3, patrol_radius)
+        wx = monster.spawn_x + math.cos(angle) * dist
+        wy = monster.spawn_y + math.sin(angle) * dist
+
+        # If collision function provided, skip blocked waypoints
+        if collision_fn and collision_fn(wx, wy):
+            continue
+        route.append((wx, wy))
+
+    # Always include spawn as a waypoint so they return to base
+    if route:
+        route.append((monster.spawn_x, monster.spawn_y))
+
+    monster.patrol_route = route
+    monster.patrol_index = 0
+    monster.patrol_wait = random.uniform(0.5, 2.0)  # Initial pause before starting
+
+
+def patrol_tick(monster: Monster, dt: float, collision_fn=None):
+    """Advance patrol movement. Called when monster is IDLE."""
+    if not monster.patrol_route:
+        return
+
+    # Waiting at waypoint
+    if monster.patrol_wait > 0:
+        monster.patrol_wait -= dt
+        return
+
+    # Move toward current waypoint at reduced speed
+    wx, wy = monster.patrol_route[monster.patrol_index]
+    dx = wx - monster.x
+    dy = wy - monster.y
+    dist = math.sqrt(dx * dx + dy * dy)
+
+    if dist < 8:
+        # Reached waypoint — pause then advance to next
+        monster.patrol_index = (monster.patrol_index + 1) % len(monster.patrol_route)
+        monster.patrol_wait = random.uniform(1.0, 3.0)
+    else:
+        # Check if direct path is blocked — skip waypoint if stuck
+        if collision_fn and collision_fn(wx, wy):
+            # Waypoint became invalid, skip it
+            monster.patrol_index = (monster.patrol_index + 1) % len(monster.patrol_route)
+            monster.patrol_wait = 0.5
+            return
+
+        # Move toward waypoint (use reduced speed)
+        orig_speed = monster.speed
+        monster.speed = orig_speed * monster.patrol_speed_mult
+        monster.move_toward(wx, wy, dt, collision_fn)
+        monster.speed = orig_speed
+
+        # Stuck detection: if barely moved after several frames, skip waypoint
+        if not hasattr(monster, '_patrol_stuck_check'):
+            monster._patrol_stuck_check = (monster.x, monster.y)
+            monster._patrol_stuck_timer = 0.0
+        monster._patrol_stuck_timer += dt
+        if monster._patrol_stuck_timer >= 1.0:
+            moved = math.sqrt((monster.x - monster._patrol_stuck_check[0])**2 +
+                              (monster.y - monster._patrol_stuck_check[1])**2)
+            if moved < 3:
+                # Stuck — skip this waypoint
+                monster.patrol_index = (monster.patrol_index + 1) % len(monster.patrol_route)
+                monster.patrol_wait = 0.5
+            monster._patrol_stuck_check = (monster.x, monster.y)
+            monster._patrol_stuck_timer = 0.0
+
+
+def resume_patrol_from_nearest(monster: Monster):
+    """After resetting from aggro, find the nearest patrol waypoint to resume from."""
+    if not monster.patrol_route:
+        return
+    best_idx = 0
+    best_dist = float('inf')
+    for i, (wx, wy) in enumerate(monster.patrol_route):
+        dx = monster.x - wx
+        dy = monster.y - wy
+        d = dx * dx + dy * dy
+        if d < best_dist:
+            best_dist = d
+            best_idx = i
+    monster.patrol_index = best_idx
+    monster.patrol_wait = random.uniform(0.5, 1.5)
+
 
 def check_aggro(monster: Monster, heroes: list[Hero], all_monsters: list[Monster]):
     """Check if monster should aggro based on sense range."""
@@ -55,6 +164,7 @@ def check_aggro(monster: Monster, heroes: list[Hero], all_monsters: list[Monster
         dy = monster.spawn_y - monster.y
         if math.sqrt(dx*dx + dy*dy) < 20:
             monster.aggro_state = AggroState.IDLE
+            resume_patrol_from_nearest(monster)
         return
 
     # IDLE: check sense range
@@ -107,7 +217,8 @@ def call_for_help(attacked_monster: Monster, all_monsters: list[Monster], target
 # === MOVEMENT WITH PROPER SPACING ===
 
 def move_to_attack_range(monster: Monster, target: Hero, dt: float, collision_fn=None):
-    """Move toward target but stop at attack range (not 0 distance)."""
+    """Move toward target but stop at attack range (not 0 distance).
+    Uses A* pathfinding to navigate around obstacles."""
     dist = monster.distance_to(target)
     desired_dist = monster.attack_range * 0.9  # Stop slightly inside attack range
 
@@ -123,7 +234,35 @@ def move_to_attack_range(monster: Monster, target: Hero, dt: float, collision_fn
             monster.move_toward(retreat_x, retreat_y, dt * 0.5, collision_fn)
         return True  # In range
     else:
-        monster.move_toward(target.x, target.y, dt, collision_fn)
+        # Use pathfinding if we have a dungeon reference and collision function
+        if collision_fn and hasattr(monster, '_nav_dungeon') and monster._nav_dungeon:
+            # Repath periodically (every 0.5s) or if no path
+            if not hasattr(monster, '_chase_path'):
+                monster._chase_path = []
+                monster._chase_repath_timer = 0
+            monster._chase_repath_timer -= dt
+            if monster._chase_repath_timer <= 0 or not monster._chase_path:
+                monster._chase_path = astar(monster._nav_dungeon, monster.x, monster.y,
+                                            target.x, target.y, max_steps=60)
+                monster._chase_repath_timer = 0.5
+
+            if monster._chase_path:
+                # Move toward next waypoint
+                wx, wy = monster._chase_path[0]
+                wpd = math.sqrt((wx - monster.x)**2 + (wy - monster.y)**2)
+                if wpd < 10:
+                    monster._chase_path.pop(0)
+                    if monster._chase_path:
+                        wx, wy = monster._chase_path[0]
+                    else:
+                        monster.move_toward(target.x, target.y, dt, collision_fn)
+                        return False
+                monster.move_toward(wx, wy, dt, collision_fn)
+            else:
+                # Fallback: direct movement
+                monster.move_toward(target.x, target.y, dt, collision_fn)
+        else:
+            monster.move_toward(target.x, target.y, dt, collision_fn)
         return False  # Not yet in range
 
 
@@ -285,12 +424,13 @@ ATTACK_RANGES = {
 }
 
 
-def setup_monster_aggro(monster: Monster):
+def setup_monster_aggro(monster: Monster, nav_dungeon=None):
     """Initialize aggro for a newly spawned monster."""
     sense = SENSE_RANGES.get(monster.name, 170)
     atk_range = ATTACK_RANGES.get(monster.name, 50)
     monster.attack_range = atk_range
     init_monster_aggro(monster, sense_range=sense, call_range=120, leash_range=500)
+    monster._nav_dungeon = nav_dungeon  # Reference for A* pathfinding
 
 
 def run_monster_ai(monster: Monster, heroes: list[Hero], dt: float,
@@ -311,8 +451,9 @@ def run_monster_ai(monster: Monster, heroes: list[Hero], dt: float,
         monster.move_toward(monster.spawn_x, monster.spawn_y, dt, collision_fn)
         return None
 
-    # If idle, do nothing
+    # If idle, patrol
     if monster.aggro_state == AggroState.IDLE:
+        patrol_tick(monster, dt, collision_fn)
         return None
 
     # Aggroed: run behavior

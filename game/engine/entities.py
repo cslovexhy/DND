@@ -12,7 +12,7 @@ from typing import Optional
 # Board game HP 1-12 → ARPG HP (×50 for granularity)
 HP_SCALE = 50
 # Board game Speed 5-7 → ARPG speed in pixels/sec
-SPEED_SCALE = 30  # speed 5 → 150 px/s, speed 6 → 180 px/s
+SPEED_SCALE = 30  # speed 5 → 150 px/s, speed 6 → 180 px/s (before CHAR_SCALE)
 
 
 class Condition(Enum):

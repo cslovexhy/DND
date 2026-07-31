@@ -322,3 +322,61 @@ Decided current repo is too entangled to incrementally refactor — will create 
 - `game/main.py` — world map mode, RPG tiles, arrow projectile, debug flag
 - `data/maps/northshire_church.json` — first hand-painted world map
 - `scratch/rpg_tile_viewer.py` — interactive spritesheet browser (dev tool)
+
+---
+
+## Session 6 — 2026-07-30
+
+### Map Editor Improvements
+- **Click-to-load files**: Load dialog now shows clickable file list (no more typing filenames)
+- **Top-left camera alignment**: Map aligns to top-left on startup and after loading (no manual scrolling)
+- **Sample/Eyedropper tool (E)**: Click any tile on canvas to pick it as current brush; palette auto-scrolls to match
+- **Walkability drag-paint**: Hold left-click in walkability mode to mass-apply (same as tile painting)
+
+### Northshire v2 Map
+- Duplicated `northshire_church.json` → `northshire.json` at 80×60 tiles (doubled width/height)
+- Original content preserved in top-left quadrant, rest is empty canvas for expansion
+- Game now defaults to `northshire.json`
+
+### Character Scale System
+- Added `CHAR_SCALE = 0.5` config in `game/main.py` — single knob controls character sprite size + movement speed
+- Characters 50% smaller, move 50% slower → map feels bigger
+- `BOSS_SCALE` derived from `CHAR_SCALE * 1.5`
+- All sprite loading functions (`get_dungeon_tile`, `get_creature`) use `CHAR_SIZE` 
+
+### Camera Zoom (scroll wheel)
+- Mouse scroll zooms in/out (0.5x – 2.0x, default 1.0x)
+- All rendering (tiles, characters, projectiles, effects, HP bars) scales with zoom
+- Click targeting properly accounts for zoom (screen→world conversion)
+- Configurable: `CAM_ZOOM_MIN`, `CAM_ZOOM_MAX`, `CAM_ZOOM_STEP`
+
+### Monster Patrol System
+- Monsters now patrol when idle (3-5 random waypoints within patrol_radius of spawn)
+- Walk at 40% speed, pause 1-3s at each waypoint
+- On aggro: drops patrol, fights normally
+- On leash reset: walks back to spawn, resumes patrol from nearest waypoint
+- Stuck detection: if monster hasn't moved in 1s during patrol, skips to next waypoint
+- Patrol waypoints validated against walkability (won't generate in trees)
+
+### Monster Pathfinding (A*)
+- Aggroed monsters now use A* pathfinding to chase (repaths every 0.5s)
+- Navigate around trees and obstacles instead of getting stuck on corners
+- `_nav_dungeon` reference stored on each monster for pathfinder access
+
+### Companion Fixes
+- Companions now spawn at walkable positions (`find_walkable_nearby` helper)
+- Teleport (when >600px from hero) lands on valid ground
+- No more spawning/teleporting into trees
+
+### Other Fixes
+- Human Cultist sprite changed from (5,7) tentacle to (7,6) green humanoid
+- FPS counter displayed top-left (green ≥50, yellow ≥30, red <30)
+- `run.sh` updated to use `--map` by default
+
+### Key Files Modified
+- `map_editor.py` — load click-select, top-left camera, sample tool, walkability drag
+- `game/main.py` — CHAR_SCALE, cam_zoom, patrol integration, companion fixes, FPS
+- `game/engine/ai.py` — patrol system, A* chase pathfinding, stuck detection
+- `game/engine/entities.py` — SPEED_SCALE comment update
+- `data/maps/northshire.json` — expanded 80×60 map (new)
+- `run.sh` — updated launch command

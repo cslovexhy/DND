@@ -250,15 +250,35 @@ cam_x, cam_y = 0.0, 0.0  # Camera offset in pixels
 zoom = 2.0  # Tile render scale
 min_zoom, max_zoom = 0.5, 6.0
 
+
+def reset_camera_to_top_left():
+    """Position camera so map top-left aligns with canvas top-left."""
+    global cam_x, cam_y
+    canvas_w = SCREEN_W - PALETTE_W
+    canvas_h = SCREEN_H - TOOLBAR_H
+    # The rendering formula is: sx = canvas_cx + (tx * tile_render_size) - cam_x * zoom
+    # For tile (0,0) to appear at the canvas top-left (PALETTE_W, TOOLBAR_H):
+    #   canvas_cx + 0 - cam_x * zoom = 0  (relative to canvas start)
+    # canvas_cx is canvas_w / 2, so cam_x * zoom = canvas_w / 2
+    # cam_x = canvas_w / (2 * zoom)
+    cam_x = canvas_w / (2.0 * zoom)
+    cam_y = canvas_h / (2.0 * zoom)
+
+
+reset_camera_to_top_left()
+
 # Tool state
 selected_tile = (8, 10)  # Default brush (the floor tile you liked)
 current_layer = 0
 show_walkability = False
 fill_mode = False
+sample_mode = False  # Eyedropper: click tile on canvas to select it
 spawn_mode = False  # When true, palette shows spawn types instead of tiles
 painting = False  # Is left mouse held down?
 erasing = False   # Is right mouse held down?
 panning = False   # Is middle mouse held down?
+walk_painting = False  # Walkability drag mode
+walk_paint_value = False  # Target walkability value during drag
 pan_start = (0, 0)
 cam_start = (0, 0)
 
@@ -315,13 +335,14 @@ def draw_toolbar():
         ("Undo (Ctrl+Z)", "undo"),
         ("Redo (Ctrl+Shift+Z)", "redo"),
         ("Fill (F)", "fill"),
+        ("Sample (E)", "sample"),
         ("Walkability (W)", "walk"),
         ("Spawns (3)", "spawns"),
     ]
     for label, action in btn_labels:
         tw = font.size(label)[0] + 16
         rect = pygame.Rect(bx, 6, tw, 28)
-        active = (action == "fill" and fill_mode) or (action == "walk" and show_walkability) or (action == "spawns" and spawn_mode)
+        active = (action == "fill" and fill_mode) or (action == "walk" and show_walkability) or (action == "spawns" and spawn_mode) or (action == "sample" and sample_mode)
         hovered = rect.collidepoint(pygame.mouse.get_pos())
         color = COL_BUTTON_ACTIVE if active else (COL_BUTTON_HOVER if hovered else COL_BUTTON)
         pygame.draw.rect(screen, color, rect, border_radius=4)
@@ -331,7 +352,9 @@ def draw_toolbar():
         bx += tw + 6
 
     # Mode indicator
-    if spawn_mode:
+    if sample_mode:
+        mode_text = "SAMPLE MODE — Click a tile to pick it"
+    elif spawn_mode:
         mode_text = f"SPAWN MODE — {SPAWN_TYPES[selected_spawn]['name']}"
     else:
         mode_text = f"Layer: {map_data.layers[current_layer].name} [{current_layer+1}/{len(map_data.layers)}]"
@@ -581,15 +604,20 @@ def erase_tile(tx, ty):
     return {"layer": current_layer, "x": tx, "y": ty, "old": old, "new": None}
 
 
-def text_input_prompt(title="Filename:", default=""):
-    """Show a text input dialog in the center of screen. Returns string or None if cancelled."""
+def text_input_prompt(title="Filename:", default="", allow_click_select=False):
+    """Show a text input dialog in the center of screen. Returns string or None if cancelled.
+    If allow_click_select=True, existing files are clickable to auto-select."""
     input_text = default
     cursor_blink = 0
     prompt_font = pygame.font.SysFont("monospace", 18)
     title_font = pygame.font.SysFont("monospace", 14)
-    existing = [f for f in os.listdir(save_dir) if f.endswith(".json")] if os.path.exists(save_dir) else []
+    existing = sorted([f for f in os.listdir(save_dir) if f.endswith(".json")]) if os.path.exists(save_dir) else []
+    hovered_file = None
 
     while True:
+        hovered_file = None
+        mx, my = pygame.mouse.get_pos()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return None
@@ -604,12 +632,26 @@ def text_input_prompt(title="Filename:", default=""):
                     ch = event.unicode
                     if ch and ch.isprintable() and len(input_text) < 40:
                         input_text += ch
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and allow_click_select:
+                # Check if a file entry was clicked
+                if existing:
+                    box_w = 450
+                    box_h = min(200 + len(existing) * 28, 500)
+                    box_x = (SCREEN_W - box_w) // 2
+                    box_y = (SCREEN_H - box_h) // 2
+                    list_y = box_y + 110 + 20
+                    for fname in existing[:14]:
+                        frect = pygame.Rect(box_x + 16, list_y, box_w - 32, 26)
+                        if frect.collidepoint(event.pos):
+                            return fname.replace(".json", "")
+                        list_y += 28
 
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 150))
         screen.blit(overlay, (0, 0))
 
-        box_w, box_h = 450, min(200 + len(existing) * 18, 400)
+        box_w = 450
+        box_h = min(200 + len(existing) * 28, 500)
         box_x = (SCREEN_W - box_w) // 2
         box_y = (SCREEN_H - box_h) // 2
         pygame.draw.rect(screen, (50, 50, 55), (box_x, box_y, box_w, box_h), border_radius=8)
@@ -631,13 +673,22 @@ def text_input_prompt(title="Filename:", default=""):
 
         if existing:
             list_y = box_y + 110
-            header = font_sm.render("Existing maps:", True, (180, 180, 180))
+            header_text = "Click to load:" if allow_click_select else "Existing maps:"
+            header = font_sm.render(header_text, True, (180, 180, 180))
             screen.blit(header, (box_x + 20, list_y))
             list_y += 20
-            for fname in existing[:12]:
-                ft = font_sm.render(f"  {fname}", True, (130, 160, 130))
-                screen.blit(ft, (box_x + 20, list_y))
-                list_y += 18
+            for fname in existing[:14]:
+                frect = pygame.Rect(box_x + 16, list_y, box_w - 32, 26)
+                is_hovered = frect.collidepoint(mx, my)
+                if is_hovered and allow_click_select:
+                    pygame.draw.rect(screen, (70, 90, 70), frect, border_radius=4)
+                    hovered_file = fname
+                elif allow_click_select:
+                    pygame.draw.rect(screen, (55, 55, 60), frect, border_radius=4)
+                ft_color = (180, 220, 180) if is_hovered and allow_click_select else (130, 160, 130)
+                ft = font_sm.render(f"  {fname}", True, ft_color)
+                screen.blit(ft, (box_x + 24, list_y + 5))
+                list_y += 28
 
         pygame.display.flip()
         clock.tick(30)
@@ -662,9 +713,9 @@ def save_map():
 
 
 def load_map():
-    """Load map from JSON with filename prompt."""
+    """Load map from JSON with filename prompt. Files are clickable."""
     global map_data, last_filename
-    filename = text_input_prompt("Load map:", last_filename)
+    filename = text_input_prompt("Load map:", last_filename, allow_click_select=True)
     if filename is None:
         return
     if not filename.endswith(".json"):
@@ -675,6 +726,7 @@ def load_map():
             data = json.load(f)
         map_data = MapData.from_dict(data)
         last_filename = filename.replace(".json", "")
+        reset_camera_to_top_left()
         print(f"Loaded: {path}")
     else:
         print(f"File not found: {path}")
@@ -706,6 +758,12 @@ while running:
                 undo_stack.undo(map_data)
             elif event.key == pygame.K_f:
                 fill_mode = not fill_mode
+                if fill_mode:
+                    sample_mode = False
+            elif event.key == pygame.K_e:
+                sample_mode = not sample_mode
+                if sample_mode:
+                    fill_mode = False
             elif event.key == pygame.K_w:
                 show_walkability = not show_walkability
             elif event.key == pygame.K_1:
@@ -739,6 +797,12 @@ while running:
                         undo_stack.redo(map_data)
                     elif action == "fill":
                         fill_mode = not fill_mode
+                        if fill_mode:
+                            sample_mode = False
+                    elif action == "sample":
+                        sample_mode = not sample_mode
+                        if sample_mode:
+                            fill_mode = False
                     elif action == "walk":
                         show_walkability = not show_walkability
                     elif action == "spawns":
@@ -755,7 +819,23 @@ while running:
                 if event.button == 1:  # Left click
                     tx, ty = screen_to_tile(mx, my)
                     if tx is not None:
-                        if spawn_mode:
+                        if sample_mode:
+                            # Eyedropper: pick tile from canvas
+                            # Check current layer first, then fall through layers
+                            sampled = None
+                            for li in range(len(map_data.layers) - 1, -1, -1):
+                                cell = map_data.layers[li].get_tile(tx, ty)
+                                if cell:
+                                    sampled = (cell["col"], cell["row"])
+                                    break
+                            if sampled:
+                                selected_tile = sampled
+                                # Auto-scroll palette to show selected tile
+                                tile_idx = sampled[1] * SHEET_COLS + sampled[0]
+                                cols_fit = (PALETTE_W - 16) // (palette_tile_size + 2)
+                                palette_scroll = tile_idx // cols_fit
+                                sample_mode = False
+                        elif spawn_mode:
                             # Place spawn
                             map_data.add_spawn(SPAWN_TYPES[selected_spawn]["id"], tx, ty)
                         elif fill_mode:
@@ -764,13 +844,15 @@ while running:
                             if actions:
                                 undo_stack.push_batch(actions)
                         elif show_walkability:
-                            # Toggle walkability
+                            # Toggle walkability — start drag stroke
                             cell = map_data.layers[current_layer].get_tile(tx, ty)
                             if cell:
                                 old = deepcopy(cell)
-                                cell["walkable"] = not cell.get("walkable", True)
+                                walk_paint_value = not cell.get("walkable", True)
+                                cell["walkable"] = walk_paint_value
                                 new = deepcopy(cell)
-                                undo_stack.push({"layer": current_layer, "x": tx, "y": ty, "old": old, "new": new})
+                                walk_painting = True
+                                current_stroke = [{"layer": current_layer, "x": tx, "y": ty, "old": old, "new": new}]
                         else:
                             painting = True
                             current_stroke = []
@@ -802,6 +884,10 @@ while running:
                     undo_stack.push_batch(current_stroke)
                     current_stroke = []
                 painting = False
+                if walk_painting and current_stroke:
+                    undo_stack.push_batch(current_stroke)
+                    current_stroke = []
+                walk_painting = False
             elif event.button == 3:
                 if erasing and current_stroke:
                     undo_stack.push_batch(current_stroke)
@@ -817,6 +903,15 @@ while running:
                 dy = my - pan_start[1]
                 cam_x = cam_start[0] - dx / zoom
                 cam_y = cam_start[1] - dy / zoom
+            elif walk_painting:
+                tx, ty = screen_to_tile(mx, my)
+                if tx is not None:
+                    cell = map_data.layers[current_layer].get_tile(tx, ty)
+                    if cell and cell.get("walkable", True) != walk_paint_value:
+                        old = deepcopy(cell)
+                        cell["walkable"] = walk_paint_value
+                        new = deepcopy(cell)
+                        current_stroke.append({"layer": current_layer, "x": tx, "y": ty, "old": old, "new": new})
             elif painting:
                 tx, ty = screen_to_tile(mx, my)
                 if tx is not None:

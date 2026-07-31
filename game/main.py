@@ -17,9 +17,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from game.engine.entities import Hero, Monster, Ability, Condition, GameState, Projectile
 from game.engine.dungeon import UnifiedDungeon, RoomType, TILE_SIZE
 from game.engine.world_map import WorldMap
-from game.engine.ai import run_monster_ai, setup_monster_aggro, call_for_help
+from game.engine.ai import run_monster_ai, setup_monster_aggro, call_for_help, generate_patrol_route
 from game.engine.pathfinding import astar
 from game.content.heroes import ALL_HEROES
+import game.engine.entities as _entities
 
 os.chdir(os.path.dirname(os.path.dirname(__file__)))
 
@@ -30,9 +31,9 @@ for i, arg in enumerate(sys.argv):
     if arg == "--map" and i + 1 < len(sys.argv):
         USE_MAP = sys.argv[i + 1]
     elif arg == "--map" and i + 1 >= len(sys.argv):
-        USE_MAP = "data/maps/northshire_church.json"
+        USE_MAP = "data/maps/northshire.json"
 if "--map" in sys.argv and USE_MAP is None:
-    USE_MAP = "data/maps/northshire_church.json"
+    USE_MAP = "data/maps/northshire.json"
 
 # === INIT ===
 pygame.init()
@@ -58,6 +59,16 @@ DOOR_COLOR = (180, 140, 60)
 
 # === LOAD SPRITES ===
 TILE_SRC = 16
+
+# Character scale: 1.0 = same size as map tile, 0.5 = half size.
+# Also scales movement speed proportionally so the map feels bigger.
+CHAR_SCALE = 0.5
+CHAR_SIZE = int(TILE_SIZE * CHAR_SCALE)
+BOSS_SCALE = CHAR_SCALE * 1.5  # Bosses are 1.5x character size
+
+# Scale movement speed to match character size
+_entities.SPEED_SCALE = int(30 * CHAR_SCALE)
+
 dungeon_img = pygame.image.load("assets/kenney_dungeon/Tilemap/tilemap.png").convert_alpha()
 rpg_img = pygame.image.load("assets/kenney_rpg/Spritesheet/roguelikeSheet_transparent.png").convert_alpha()
 creature_img = pygame.image.load("assets/tiny_creatures/tiny-creatures/Tilemap/tilemap.png").convert_alpha()
@@ -66,7 +77,7 @@ def get_dungeon_tile(col, row):
     x, y = col*(TILE_SRC+1), row*(TILE_SRC+1)
     s = pygame.Surface((TILE_SRC, TILE_SRC), pygame.SRCALPHA)
     s.blit(dungeon_img, (0,0), (x,y,TILE_SRC,TILE_SRC))
-    return pygame.transform.scale(s, (TILE_SIZE, TILE_SIZE))
+    return pygame.transform.scale(s, (CHAR_SIZE, CHAR_SIZE))
 
 def get_rpg_tile(col, row):
     x, y = col*(TILE_SRC+1), row*(TILE_SRC+1)
@@ -84,7 +95,9 @@ def get_rpg_tile_raw(col, row):
 # Cache for world map tile surfaces (scaled to TILE_SIZE)
 rpg_tile_cache = {}
 
-def get_creature(col, row, scale=TILE_SIZE):
+def get_creature(col, row, scale=None):
+    if scale is None:
+        scale = CHAR_SIZE
     x, y = col*(TILE_SRC+1), row*(TILE_SRC+1)
     s = pygame.Surface((TILE_SRC, TILE_SRC), pygame.SRCALPHA)
     s.blit(creature_img, (0,0), (x,y,TILE_SRC,TILE_SRC))
@@ -110,14 +123,14 @@ MONSTER_SPRITES = {
     "Snake": get_creature(0, 4),
     "Orc Smasher": get_creature(1, 1),
     "Orc Archer": get_creature(0, 1),
-    "Human Cultist": get_creature(5, 7),
+    "Human Cultist": get_creature(7, 6),
     "Duergar Guard": get_creature(4, 12),
     "Legion Devil": get_creature(8, 3),
     "Grey Wolf": get_creature(3, 2),
     "Grell": get_creature(5, 0),
     "Gibbering Mouther": get_creature(4, 8),
 }
-BOSS_SPRITE = get_creature(9, 7, int(TILE_SIZE * 1.5))
+BOSS_SPRITE = get_creature(9, 7, int(TILE_SIZE * BOSS_SCALE))
 
 # === EFFECTS ===
 floating_texts = []
@@ -131,7 +144,7 @@ class FloatingText:
     def update(self, dt): self.timer -= dt; self.y -= 50*dt
     def draw(self, s, cx, cy):
         t = font.render(self.text, True, self.color)
-        s.blit(t, (int(self.x-cx+WIDTH//2)-t.get_width()//2, int(self.y-cy+HEIGHT//2)))
+        s.blit(t, (int((self.x-cx)*cam_zoom+WIDTH//2)-t.get_width()//2, int((self.y-cy)*cam_zoom+HEIGHT//2)))
 
 class AoeRing:
     def __init__(self, x, y, radius, color):
@@ -139,9 +152,9 @@ class AoeRing:
         self.timer = 0.3
     def update(self, dt): self.timer -= dt
     def draw(self, s, cx, cy):
-        sx, sy = int(self.x-cx+WIDTH//2), int(self.y-cy+HEIGHT//2)
+        sx, sy = int((self.x-cx)*cam_zoom+WIDTH//2), int((self.y-cy)*cam_zoom+HEIGHT//2)
         p = 1.0 - self.timer/0.3
-        r = int(self.max_r * p)
+        r = max(1, int(self.max_r * p * cam_zoom))
         a = int(150*(self.timer/0.3))
         if a > 0 and r > 0:
             surf = pygame.Surface((r*2,r*2), pygame.SRCALPHA)
@@ -307,6 +320,12 @@ pending_cast = None  # (ab_key, ab, target_monster) or None
 # Game speed (for AI observation)
 game_speed = 1.0  # 1x, 2x, 4x
 
+# Camera zoom (scroll wheel to adjust)
+cam_zoom = 1.0       # 1.0 = default view, 2.0 = zoomed in 200%
+CAM_ZOOM_MIN = 0.5   # Zoomed out (see more map)
+CAM_ZOOM_MAX = 2.0   # Zoomed in (characters look bigger)
+CAM_ZOOM_STEP = 0.1
+
 # Skill slots (Diablo 2 style)
 ability_keys = list(hero.abilities.keys())  # ["Q", "R", "E"]
 left_skill_idx = 0    # Index into ability_keys for left-click skill
@@ -342,7 +361,7 @@ available_companions = [h for i, h in enumerate(ALL_HEROES) if i != selected_her
 if auto_mode and available_companions:
     # Pick Heskan if available, else first
     comp_info = next((c for c in available_companions if c["name"] == "Heskan"), available_companions[0])
-    cx, cy = hero.x + random.randint(-40, 40), hero.y + random.randint(-40, 40)
+    cx, cy = find_walkable_nearby(hero.x, hero.y, radius=40)
     comp = comp_info["create"](cx, cy)
     comp.sprite = HERO_SPRITES[comp_info["sprite_key"]]
     comp_ai = create_hero_ai(comp)
@@ -370,7 +389,8 @@ def spawn_monsters_for_room(room):
             boss = Monster("Meerak", "Reptile", wx + offset[0], wy + offset[1], hp=6, ac=17, speed=5,
                            attack_bonus=8, attack_damage=1, experience=5, is_boss=True)
             boss.sprite = BOSS_SPRITE
-            setup_monster_aggro(boss)
+            setup_monster_aggro(boss, nav_dungeon=dungeon)
+            generate_patrol_route(boss, patrol_radius=60)
             game_state.monsters.append(boss)
         return
     for sx, sy in room.monster_spawns:
@@ -385,11 +405,34 @@ def spawn_monsters_for_room(room):
         if mt.get("ranged"):
             m.ranged_attack_range = 250
             m.ranged_attack_damage = m.base_damage
-        setup_monster_aggro(m)
+        setup_monster_aggro(m, nav_dungeon=dungeon)
+        generate_patrol_route(m, patrol_radius=80, collision_fn=is_wall)
         game_state.monsters.append(m)
 
 def is_wall(wx, wy):
     return dungeon.is_wall(wx, wy)
+
+
+def find_walkable_nearby(x, y, radius=60, attempts=20):
+    """Find a walkable position near (x, y). Returns (wx, wy) or (x, y) as fallback."""
+    for _ in range(attempts):
+        nx = x + random.randint(-radius, radius)
+        ny = y + random.randint(-radius, radius)
+        if not is_wall(nx, ny):
+            return nx, ny
+    # Fallback: try the exact point
+    if not is_wall(x, y):
+        return x, y
+    # Last resort: spiral outward to find any walkable tile
+    for r in range(1, radius // TILE_SIZE + 3):
+        for dx in range(-r, r + 1):
+            for dy in range(-r, r + 1):
+                tx = x + dx * TILE_SIZE
+                ty = y + dy * TILE_SIZE
+                if not is_wall(tx, ty):
+                    return tx, ty
+    return x, y
+
 
 # World map monster stats lookup
 SPAWN_STATS = {
@@ -430,7 +473,8 @@ def spawn_world_map_monsters():
         if mt.get("ranged"):
             m.ranged_attack_range = 250
             m.ranged_attack_damage = m.base_damage
-        setup_monster_aggro(m)
+        setup_monster_aggro(m, nav_dungeon=dungeon)
+        generate_patrol_route(m, patrol_radius=100, collision_fn=is_wall)
         game_state.monsters.append(m)
 
 # Spawn monsters for world map mode at start
@@ -438,8 +482,8 @@ if USE_MAP:
     spawn_world_map_monsters()
 
 def get_monster_at_screen(sx, sy):
-    wx = sx + hero.x - WIDTH//2
-    wy = sy + hero.y - HEIGHT//2
+    wx = (sx - WIDTH//2) / cam_zoom + hero.x
+    wy = (sy - HEIGHT//2) / cam_zoom + hero.y
     for m in game_state.alive_monsters:
         if abs(m.x - wx) < TILE_SIZE and abs(m.y - wy) < TILE_SIZE:
             return m
@@ -776,6 +820,8 @@ while running:
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
+        if event.type == pygame.MOUSEWHEEL:
+            cam_zoom = max(CAM_ZOOM_MIN, min(CAM_ZOOM_MAX, cam_zoom + event.y * CAM_ZOOM_STEP))
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 if frostbolt_channeling:
@@ -818,8 +864,7 @@ while running:
                     # Check not already summoned
                     already = any(c.name == comp_info["name"] for c, _ in companions)
                     if not already:
-                        cx = hero.x + random.randint(-60, 60)
-                        cy = hero.y + random.randint(-60, 60)
+                        cx, cy = find_walkable_nearby(hero.x, hero.y, radius=60)
                         comp = comp_info["create"](cx, cy)
                         comp.sprite = HERO_SPRITES[comp_info["sprite_key"]]
                         comp_ai = create_hero_ai(comp)
@@ -833,8 +878,8 @@ while running:
 
         if event.type == pygame.MOUSEBUTTONDOWN and not victory and not game_state.adventure_failed:
             mx_s, my_s = event.pos
-            wx = mx_s + hero.x - WIDTH//2
-            wy = my_s + hero.y - HEIGHT//2
+            wx = (mx_s - WIDTH//2) / cam_zoom + hero.x
+            wy = (my_s - HEIGHT//2) / cam_zoom + hero.y
             clicked_monster = get_monster_at_screen(mx_s, my_s)
             shift_held = pygame.key.get_mods() & pygame.KMOD_SHIFT
 
@@ -1289,9 +1334,8 @@ while running:
             # No combat action — follow the hero
             dist_to_hero = comp.distance_to(hero)
             if dist_to_hero > 600:
-                # Too far — teleport to hero
-                comp.x = hero.x + random.randint(-50, 50)
-                comp.y = hero.y + random.randint(-50, 50)
+                # Too far — teleport to hero (walkable position)
+                comp.x, comp.y = find_walkable_nearby(hero.x, hero.y, radius=60)
                 comp._follow_path = None
             elif dist_to_hero > 80:
                 # Recalculate path every time (hero moves)
@@ -1413,32 +1457,33 @@ while running:
     cx, cy = hero.x, hero.y
 
     # Draw visible tiles
-    view_left = int((cx - WIDTH//2) // TILE_SIZE) - 1
-    view_top = int((cy - HEIGHT//2) // TILE_SIZE) - 1
-    view_right = view_left + WIDTH // TILE_SIZE + 3
-    view_bottom = view_top + HEIGHT // TILE_SIZE + 3
+    ztile = int(TILE_SIZE * cam_zoom)  # Tile size on screen after zoom
+    view_left = int((cx - WIDTH//2 / cam_zoom) // TILE_SIZE) - 1
+    view_top = int((cy - HEIGHT//2 / cam_zoom) // TILE_SIZE) - 1
+    view_right = view_left + int(WIDTH / ztile) + 3
+    view_bottom = view_top + int(HEIGHT / ztile) + 3
 
     if USE_MAP:
         # World map rendering — draw tiles from spritesheet data
         for ty in range(max(0, view_top), min(world_map.height, view_bottom)):
             for tx in range(max(0, view_left), min(world_map.width, view_right)):
-                sx = int(tx * TILE_SIZE - cx + WIDTH//2)
-                sy = int(ty * TILE_SIZE - cy + HEIGHT//2)
+                sx = int((tx * TILE_SIZE - cx) * cam_zoom + WIDTH//2)
+                sy = int((ty * TILE_SIZE - cy) * cam_zoom + HEIGHT//2)
                 # Ground layer
                 ground_tile = world_map.ground[ty][tx] if world_map.ground else None
                 if ground_tile:
-                    key = (ground_tile.col, ground_tile.row)
+                    key = (ground_tile.col, ground_tile.row, ztile)
                     if key not in rpg_tile_cache:
                         rpg_tile_cache[key] = pygame.transform.scale(
-                            get_rpg_tile_raw(ground_tile.col, ground_tile.row), (TILE_SIZE, TILE_SIZE))
+                            get_rpg_tile_raw(ground_tile.col, ground_tile.row), (ztile, ztile))
                     screen.blit(rpg_tile_cache[key], (sx, sy))
                 # Objects layer
                 obj_tile = world_map.objects[ty][tx] if world_map.objects else None
                 if obj_tile:
-                    key = (obj_tile.col, obj_tile.row)
+                    key = (obj_tile.col, obj_tile.row, ztile)
                     if key not in rpg_tile_cache:
                         rpg_tile_cache[key] = pygame.transform.scale(
-                            get_rpg_tile_raw(obj_tile.col, obj_tile.row), (TILE_SIZE, TILE_SIZE))
+                            get_rpg_tile_raw(obj_tile.col, obj_tile.row), (ztile, ztile))
                     screen.blit(rpg_tile_cache[key], (sx, sy))
     else:
         # Dungeon rendering (original fog-of-war system)
@@ -1465,8 +1510,8 @@ while running:
                         if visible: break
                     if not visible:
                         continue
-                    sx = int(tx * TILE_SIZE - cx + WIDTH//2)
-                    sy = int(ty * TILE_SIZE - cy + HEIGHT//2)
+                    sx = int((tx * TILE_SIZE - cx) * cam_zoom + WIDTH//2)
+                    sy = int((ty * TILE_SIZE - cy) * cam_zoom + HEIGHT//2)
                     screen.blit(SPR_WALL, (sx, sy))
                 else:
                     visible = False
@@ -1482,15 +1527,15 @@ while running:
                                     break
                     if not visible:
                         continue
-                    sx = int(tx * TILE_SIZE - cx + WIDTH//2)
-                    sy = int(ty * TILE_SIZE - cy + HEIGHT//2)
+                    sx = int((tx * TILE_SIZE - cx) * cam_zoom + WIDTH//2)
+                    sy = int((ty * TILE_SIZE - cy) * cam_zoom + HEIGHT//2)
                     screen.blit(SPR_FLOOR if (tx+ty) % 5 != 0 else SPR_FLOOR2, (sx, sy))
 
     # Move path dots
     for wp in move_path[:8]:
-        sx = int(wp[0] - cx + WIDTH//2)
-        sy = int(wp[1] - cy + HEIGHT//2)
-        pygame.draw.circle(screen, (60, 120, 60), (sx, sy), 3)
+        sx = int((wp[0] - cx) * cam_zoom + WIDTH//2)
+        sy = int((wp[1] - cy) * cam_zoom + HEIGHT//2)
+        pygame.draw.circle(screen, (60, 120, 60), (sx, sy), max(2, int(3 * cam_zoom)))
 
     # Effects
     for e in effects: e.draw(screen, cx, cy)
@@ -1500,11 +1545,12 @@ while running:
         if not m.alive: continue
         spr = m.sprite
         if not spr: continue
-        sw, sh = spr.get_size()
-        sx = int(m.x - cx + WIDTH//2 - sw//2)
-        sy = int(m.y - cy + HEIGHT//2 - sh//2)
+        sw, sh = int(spr.get_width() * cam_zoom), int(spr.get_height() * cam_zoom)
+        sx = int((m.x - cx) * cam_zoom + WIDTH//2 - sw//2)
+        sy = int((m.y - cy) * cam_zoom + HEIGHT//2 - sh//2)
         if sx < -sw or sx > WIDTH or sy < -sh or sy > HEIGHT: continue
         s = pygame.transform.flip(spr, True, False) if m.facing_left else spr
+        s = pygame.transform.scale(s, (sw, sh))
         if m.flash_timer > 0:
             f = s.copy(); f.fill((255,255,255,200), special_flags=pygame.BLEND_RGBA_ADD)
             screen.blit(f, (sx, sy))
@@ -1534,12 +1580,13 @@ while running:
         cspr = comp.sprite
         if not cspr:
             continue
-        csw, csh = cspr.get_size()
-        csx = int(comp.x - cx + WIDTH//2 - csw//2)
-        csy = int(comp.y - cy + HEIGHT//2 - csh//2)
+        csw, csh = int(cspr.get_width() * cam_zoom), int(cspr.get_height() * cam_zoom)
+        csx = int((comp.x - cx) * cam_zoom + WIDTH//2 - csw//2)
+        csy = int((comp.y - cy) * cam_zoom + HEIGHT//2 - csh//2)
         if csx < -csw or csx > WIDTH or csy < -csh or csy > HEIGHT:
             continue
         cs = pygame.transform.flip(cspr, True, False) if comp.facing_left else cspr
+        cs = pygame.transform.scale(cs, (csw, csh))
         if comp.stealthed:
             cs = cs.copy()
             cs.set_alpha(100)
@@ -1559,8 +1606,8 @@ while running:
 
     # Projectiles
     for proj in projectiles:
-        psx = int(proj.x - cx + WIDTH//2)
-        psy = int(proj.y - cy + HEIGHT//2)
+        psx = int((proj.x - cx) * cam_zoom + WIDTH//2)
+        psy = int((proj.y - cy) * cam_zoom + HEIGHT//2)
         # Monster arrows: draw as a rotated arrow shape
         if proj.color == (255, 80, 80) and proj.target and proj.target.alive:
             import math as _math
@@ -1573,28 +1620,29 @@ while running:
                 # Perpendicular
                 px, py = -ny, nx
                 # Arrow shaft (line)
-                length = 14
+                length = int(14 * cam_zoom)
                 shaft_start = (psx - nx*length//2, psy - ny*length//2)
                 shaft_end = (psx + nx*length//2, psy + ny*length//2)
-                pygame.draw.line(screen, (139, 90, 43), shaft_start, shaft_end, 2)
+                pygame.draw.line(screen, (139, 90, 43), shaft_start, shaft_end, max(1, int(2 * cam_zoom)))
                 # Arrowhead (small triangle at front)
-                tip = (int(psx + nx*length//2 + nx*4), int(psy + ny*length//2 + ny*4))
-                left = (int(shaft_end[0] + px*3), int(shaft_end[1] + py*3))
-                right = (int(shaft_end[0] - px*3), int(shaft_end[1] - py*3))
+                tip = (int(psx + nx*length//2 + nx*4*cam_zoom), int(psy + ny*length//2 + ny*4*cam_zoom))
+                left = (int(shaft_end[0] + px*3*cam_zoom), int(shaft_end[1] + py*3*cam_zoom))
+                right = (int(shaft_end[0] - px*3*cam_zoom), int(shaft_end[1] - py*3*cam_zoom))
                 pygame.draw.polygon(screen, (180, 180, 180), [tip, left, right])
             else:
-                pygame.draw.circle(screen, proj.color, (psx, psy), int(proj.radius))
+                pygame.draw.circle(screen, proj.color, (psx, psy), max(2, int(proj.radius * cam_zoom)))
         else:
-            pygame.draw.circle(screen, proj.color, (psx, psy), int(proj.radius))
+            pygame.draw.circle(screen, proj.color, (psx, psy), max(2, int(proj.radius * cam_zoom)))
             # Glow trail
-            pygame.draw.circle(screen, (*proj.color[:3], 100) if len(proj.color) == 4 else proj.color, (psx, psy), int(proj.radius) + 3, 1)
+            pygame.draw.circle(screen, (*proj.color[:3], 100) if len(proj.color) == 4 else proj.color, (psx, psy), max(3, int(proj.radius * cam_zoom) + 3), 1)
 
     # Hero
     spr = hero.sprite
-    sw, sh = spr.get_size()
-    sx = int(hero.x - cx + WIDTH//2 - sw//2)
-    sy = int(hero.y - cy + HEIGHT//2 - sh//2)
+    sw, sh = int(spr.get_width() * cam_zoom), int(spr.get_height() * cam_zoom)
+    sx = int((hero.x - cx) * cam_zoom + WIDTH//2 - sw//2)
+    sy = int((hero.y - cy) * cam_zoom + HEIGHT//2 - sh//2)
     s = pygame.transform.flip(spr, True, False) if hero.facing_left else spr
+    s = pygame.transform.scale(s, (sw, sh))
     if hero.stealthed:
         s = s.copy()
         s.set_alpha(100)  # Semi-transparent when stealthed
@@ -1693,10 +1741,15 @@ while running:
 
     screen.blit(font.render(f"Kills: {hero.kills}  Gold: {hero.gold}", True, GOLD), (WIDTH-160, 20))
     if USE_MAP:
-        screen.blit(font.render("Northshire Church", True, BLUE), (WIDTH-160, 40))
+        screen.blit(font.render("Northshire", True, BLUE), (WIDTH-160, 40))
     else:
         screen.blit(font.render(f"Room: {dungeon.current_room.name}", True, BLUE), (WIDTH-160, 40))
     screen.blit(font.render(game_state.objective_text, True, (200,200,150)), (WIDTH//2-180, 10))
+
+    # FPS counter
+    fps = int(clock.get_fps())
+    fps_color = HP_GREEN if fps >= 50 else (GOLD if fps >= 30 else HP_RED)
+    screen.blit(font.render(f"FPS: {fps}", True, fps_color), (10, 10))
 
     # Minimap (dungeon mode only)
     mm_x, mm_y = WIDTH-120, HEIGHT-100
