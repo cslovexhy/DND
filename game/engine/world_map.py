@@ -97,8 +97,8 @@ class WorldMap:
         if self.ground and self.ground[ty][tx] is not None:
             return self.ground[ty][tx].walkable
 
-        # Empty tile = not walkable
-        return False
+        # Empty tile (no visual) = still walkable
+        return True
 
     # Compatibility with dungeon.py / pathfinding.py interface
     def is_floor(self, tx, ty) -> bool:

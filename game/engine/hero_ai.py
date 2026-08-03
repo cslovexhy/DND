@@ -2,17 +2,20 @@
 Hero AI — automated player behavior for testing and AI companions.
 
 Each hero class gets a behavior that:
-- Picks targets intelligently
+- Picks targets intelligently (path distance, not Euclidean)
 - Uses abilities optimally (cooldown management)
 - Positions properly (melee stays close, ranged keeps distance)
 - Uses potions when low HP
+- Respects line of sight (moves to get LOS before casting)
 
 This enables:
 1. Automated playtesting (watch AI clear dungeons to tune difficulty)
 2. AI companions in multiplayer (invite AI heroes to help)
 """
 import math
+import time
 from game.engine.entities import Hero, Monster, Condition
+from game.engine.pathfinding import astar, has_line_of_sight
 
 
 class HeroAI:
@@ -22,18 +25,81 @@ class HeroAI:
         self.hero = hero
         self.target: Monster = None
         self.dash_request = None  # (target_x, target_y, target_monster, damage, stun_dur)
+        self._nav_dungeon = None  # Set externally after creation
+        self._path_cache = {}     # monster_id -> (path_len, timestamp)
+        self._path_cache_ttl = 0.5  # Recalculate path distances every 0.5s
+
+    def set_nav_dungeon(self, dungeon):
+        """Set the navigation dungeon reference for pathfinding and LOS."""
+        self._nav_dungeon = dungeon
+
+    def get_engaged_monsters(self, monsters: list[Monster]) -> list[Monster]:
+        """Return only monsters that are currently aggroed (engaged in combat).
+        AI should only target these and avoid pulling new monsters until the
+        current engagement is cleared."""
+        from game.engine.ai import AggroState
+        engaged = [m for m in monsters if m.alive and
+                   hasattr(m, 'aggro_state') and m.aggro_state == AggroState.AGGROED]
+        if engaged:
+            return engaged
+        # Nothing engaged — allow targeting any alive monster (start new pull)
+        return [m for m in monsters if m.alive]
+
+    def has_los(self, target) -> bool:
+        """Check if hero has line of sight to target."""
+        if not self._nav_dungeon:
+            return True  # No dungeon reference, assume clear
+        return has_line_of_sight(self._nav_dungeon, self.hero.x, self.hero.y, target.x, target.y)
+
+    def path_distance(self, target) -> float:
+        """Get path distance to target (cached, refreshed every 0.5s).
+        Returns euclidean distance if no dungeon, or path length in pixels.
+        Falls back to large value if no path found."""
+        if not self._nav_dungeon:
+            return self.hero.distance_to(target)
+
+        mid = id(target)
+        now = time.monotonic()
+        cached = self._path_cache.get(mid)
+        if cached and (now - cached[1]) < self._path_cache_ttl:
+            return cached[0]
+
+        # If LOS exists, use euclidean (cheaper, and we know path is clear)
+        if has_line_of_sight(self._nav_dungeon, self.hero.x, self.hero.y, target.x, target.y):
+            dist = self.hero.distance_to(target)
+            self._path_cache[mid] = (dist, now)
+            return dist
+
+        # No LOS — compute A* path length
+        path = astar(self._nav_dungeon, self.hero.x, self.hero.y, target.x, target.y, max_steps=80)
+        if path:
+            # Sum path segment lengths
+            dist = 0.0
+            px, py = self.hero.x, self.hero.y
+            for wx, wy in path:
+                dist += math.sqrt((wx - px)**2 + (wy - py)**2)
+                px, py = wx, wy
+            self._path_cache[mid] = (dist, now)
+            return dist
+        else:
+            # No path found — very far / unreachable
+            self._path_cache[mid] = (99999.0, now)
+            return 99999.0
 
     def pick_target(self, monsters: list[Monster]) -> Monster:
-        """Pick best target. Override per class."""
-        alive = [m for m in monsters if m.alive]
-        if not alive:
+        """Pick best target by path distance, preferring engaged monsters."""
+        candidates = self.get_engaged_monsters(monsters)
+        if not candidates:
             return None
-        # Default: closest enemy
-        return min(alive, key=lambda m: self.hero.distance_to(m))
+        return min(candidates, key=lambda m: self.path_distance(m))
 
     def should_use_potion(self, potions: int) -> bool:
         """Use potion when below 40% HP."""
         return potions > 0 and self.hero.hp < self.hero.max_hp * 0.4
+
+    def count_enemies_in_range(self, monsters, radius):
+        """Count enemies within euclidean radius (still useful for AoE decisions)."""
+        return sum(1 for m in monsters if m.alive and self.hero.distance_to(m) <= radius)
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         """
@@ -62,21 +128,17 @@ class FighterAI(HeroAI):
     """
 
     def pick_target(self, monsters):
-        alive = [m for m in monsters if m.alive]
-        if not alive:
+        candidates = self.get_engaged_monsters(monsters)
+        if not candidates:
             return None
 
-        # Prioritize: low HP enemies first (secure kills), then closest
-        in_melee = [m for m in alive if self.hero.distance_to(m) < 80]
+        # Prioritize: low HP enemies in melee range (secure kills)
+        in_melee = [m for m in candidates if self.hero.distance_to(m) < 80 and self.has_los(m)]
         if in_melee:
-            # Kill the lowest HP one in melee range
             return min(in_melee, key=lambda m: m.hp)
 
-        # Otherwise closest
-        return min(alive, key=lambda m: self.hero.distance_to(m))
-
-    def count_enemies_in_range(self, monsters, radius):
-        return sum(1 for m in monsters if m.alive and self.hero.distance_to(m) <= radius)
+        # Otherwise closest by path distance
+        return min(candidates, key=lambda m: self.path_distance(m))
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
@@ -111,16 +173,16 @@ class FighterAI(HeroAI):
         if self.should_use_potion(3):  # AI always "has" potions conceptually
             action["use_potion"] = True
 
-        # 2. Whirlwind (E) if 2+ enemies in melee range
+        # 2. Demoralizing Shout (E) if 2+ enemies in melee range
         ab_e = self.hero.abilities.get("E")
         if ab_e and ab_e.is_ready() and enemies_in_melee >= 2:
             action["use_ability"] = "E"
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
             return action
 
-        # 3. Charge (R) if CD ready — use as gap closer or damage nuke
+        # 3. Charge (R) if CD ready and LOS — use as gap closer or damage nuke
         ab_r = self.hero.abilities.get("R")
-        if ab_r and ab_r.is_ready() and self.target:
+        if ab_r and ab_r.is_ready() and self.target and self.has_los(self.target):
             action["use_ability"] = "R"
             action["ability_target_monster"] = self.target
             # Request dash
@@ -137,25 +199,21 @@ class FighterAI(HeroAI):
                 )
             return action
 
-        # 4. Reaping Strike (Q) if in melee range and 2+ enemies nearby
+        # 4. Reaping Strike (Q) if in melee range and 2+ enemies nearby and LOS
         ab_q = self.hero.abilities.get("Q")
-        if ab_q and ab_q.is_ready() and dist <= ab_q.range and enemies_in_melee >= 2:
+        if ab_q and ab_q.is_ready() and dist <= ab_q.range and enemies_in_melee >= 2 and self.has_los(self.target):
             action["use_ability"] = "Q"
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
             return action
 
-        # 5. Reaping Strike on single target in range
-        if ab_q and ab_q.is_ready() and dist <= ab_q.range:
+        # 5. Reaping Strike on single target in range and LOS
+        if ab_q and ab_q.is_ready() and dist <= ab_q.range and self.has_los(self.target):
             action["use_ability"] = "Q"
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
             return action
 
-        # 6. Move toward target if not in melee range
-        if dist > 60:
-            action["move_to"] = (self.target.x, self.target.y)
-        else:
-            # 7. In range but abilities on cooldown — basic attack (stay in place)
-            action["basic_attack"] = self.target
+        # 6. Move toward target (to get in range or get LOS)
+        action["move_to"] = (self.target.x, self.target.y)
 
         return action
 
@@ -181,14 +239,14 @@ class ClericAI(HeroAI):
         return min(candidates, key=lambda h: h.hp / h.max_hp)
 
     def pick_target(self, monsters):
-        alive = [m for m in monsters if m.alive]
-        if not alive:
+        candidates = self.get_engaged_monsters(monsters)
+        if not candidates:
             return None
         # Prioritize low HP targets to secure kills
-        low_hp = [m for m in alive if m.hp <= m.max_hp * 0.3]
+        low_hp = [m for m in candidates if m.hp <= m.max_hp * 0.3]
         if low_hp:
-            return min(low_hp, key=lambda m: self.hero.distance_to(m))
-        return min(alive, key=lambda m: self.hero.distance_to(m))
+            return min(low_hp, key=lambda m: self.path_distance(m))
+        return min(candidates, key=lambda m: self.path_distance(m))
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
@@ -243,9 +301,9 @@ class ClericAI(HeroAI):
                 action["ability_target_ally"] = renew_target
                 return action
 
-        # 4. Wanding (ranged auto-attack) if in range
+        # 4. Wanding (ranged auto-attack) if in range and LOS
         ab_q = self.hero.abilities.get("Q")
-        if ab_q and ab_q.is_ready() and dist <= 200:
+        if ab_q and ab_q.is_ready() and dist <= 200 and self.has_los(self.target):
             action["use_ability"] = "Q"
             action["ability_target_monster"] = self.target
             return action
@@ -259,12 +317,8 @@ class ClericAI(HeroAI):
                 action["move_to"] = (self.hero.x + (dx / d) * 100, self.hero.y + (dy / d) * 100)
             return action
 
-        # 6. Move into wand range if too far
-        if dist > 190:
-            action["move_to"] = (self.target.x, self.target.y)
-        else:
-            # In range but abilities on CD — basic attack
-            action["basic_attack"] = self.target
+        # 6. Move toward target (to get in range or get LOS)
+        action["move_to"] = (self.target.x, self.target.y)
 
         return action
 
@@ -279,13 +333,13 @@ class PaladinAI(HeroAI):
     """
 
     def pick_target(self, monsters):
-        alive = [m for m in monsters if m.alive]
-        if not alive:
+        candidates = self.get_engaged_monsters(monsters)
+        if not candidates:
             return None
-        in_melee = [m for m in alive if self.hero.distance_to(m) < 70]
+        in_melee = [m for m in candidates if self.hero.distance_to(m) < 70 and self.has_los(m)]
         if in_melee:
             return min(in_melee, key=lambda m: m.hp)
-        return min(alive, key=lambda m: self.hero.distance_to(m))
+        return min(candidates, key=lambda m: self.path_distance(m))
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
@@ -326,27 +380,24 @@ class PaladinAI(HeroAI):
             action["use_ability"] = "R"
             return action
 
-        # 4. Judgement if target is far or Seal about to expire
+        # 4. Judgement if target is far or Seal about to expire (ranged — needs LOS)
         ab_e = self.hero.abilities.get("E")
         seal_expiring = has_seal and self.hero.buffs["Righteous Seal"]["remaining"] < 2.0
-        if ab_e and ab_e.is_ready() and dist <= 250:
+        if ab_e and ab_e.is_ready() and dist <= 250 and self.has_los(self.target):
             if dist > 120 or seal_expiring:
                 action["use_ability"] = "E"
                 action["ability_target_monster"] = self.target
                 return action
 
-        # 5. Smite if in melee range
+        # 5. Smite if in melee range and LOS
         ab_q = self.hero.abilities.get("Q")
-        if ab_q and ab_q.is_ready() and dist <= 70:
+        if ab_q and ab_q.is_ready() and dist <= 70 and self.has_los(self.target):
             action["use_ability"] = "Q"
             action["ability_target_monster"] = self.target
             return action
 
-        # 6. Move toward target
-        if dist > 50:
-            action["move_to"] = (self.target.x, self.target.y)
-        else:
-            action["basic_attack"] = self.target
+        # 6. Move toward target (to get in range or get LOS)
+        action["move_to"] = (self.target.x, self.target.y)
 
         return action
 
@@ -363,16 +414,13 @@ class WizardAI(HeroAI):
     """
 
     def pick_target(self, monsters):
-        alive = [m for m in monsters if m.alive]
-        if not alive:
+        candidates = self.get_engaged_monsters(monsters)
+        if not candidates:
             return None
-        low_hp = [m for m in alive if m.hp <= m.max_hp * 0.3]
+        low_hp = [m for m in candidates if m.hp <= m.max_hp * 0.3]
         if low_hp:
-            return min(low_hp, key=lambda m: self.hero.distance_to(m))
-        return min(alive, key=lambda m: self.hero.distance_to(m))
-
-    def count_enemies_in_range(self, monsters, radius):
-        return sum(1 for m in monsters if m.alive and self.hero.distance_to(m) <= radius)
+            return min(low_hp, key=lambda m: self.path_distance(m))
+        return min(candidates, key=lambda m: self.path_distance(m))
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
@@ -387,6 +435,19 @@ class WizardAI(HeroAI):
 
         # Don't act if channeling (immobilized)
         if self.hero.has_condition(Condition.IMMOBILIZED):
+            return action
+
+        # Kite-back: after Frost Nova or Frostbolt with melee enemies, retreat 0.5s
+        if not hasattr(self, '_kite_timer'):
+            self._kite_timer = 0.0
+        if self._kite_timer > 0:
+            self._kite_timer -= dt
+            closest = min(alive, key=lambda m: self.hero.distance_to(m))
+            dx = self.hero.x - closest.x
+            dy = self.hero.y - closest.y
+            d = math.sqrt(dx * dx + dy * dy)
+            if d > 0:
+                action["move_to"] = (self.hero.x + (dx / d) * 150, self.hero.y + (dy / d) * 150)
             return action
 
         self.target = self.pick_target(alive)
@@ -407,6 +468,8 @@ class WizardAI(HeroAI):
             print(f"[WIZARD_AI] {self.hero.name} FROST NOVA! enemies_close={enemies_close} hp_pct={hp_pct:.0%}", flush=True)
             action["use_ability"] = "E"
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
+            if self.count_enemies_in_range(alive, 120) > 0:
+                self._kite_timer = 0.5
             return action
 
         # 3. Frost Nova if 1 enemy close and low HP
@@ -414,20 +477,24 @@ class WizardAI(HeroAI):
             print(f"[WIZARD_AI] {self.hero.name} FROST NOVA (low HP)! enemies_close={enemies_close} hp_pct={hp_pct:.0%}", flush=True)
             action["use_ability"] = "E"
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
+            if self.count_enemies_in_range(alive, 120) > 0:
+                self._kite_timer = 0.5
             return action
 
         # 4. Fire Blast instant nuke when available
         ab_r = self.hero.abilities.get("R")
-        if ab_r and ab_r.is_ready() and dist <= 260:
+        if ab_r and ab_r.is_ready() and dist <= 260 and self.has_los(self.target):
             action["use_ability"] = "R"
             action["ability_target_monster"] = self.target
             return action
 
-        # 5. Frostbolt if in range
+        # 5. Frostbolt if in range and LOS
         ab_q = self.hero.abilities.get("Q")
-        if ab_q and ab_q.is_ready() and dist <= 260:
+        if ab_q and ab_q.is_ready() and dist <= 260 and self.has_los(self.target):
             action["use_ability"] = "Q"
             action["ability_target_monster"] = self.target
+            if self.count_enemies_in_range(alive, 120) > 0:
+                self._kite_timer = 0.5
             return action
 
         # 6. Kite if enemy too close
@@ -439,9 +506,8 @@ class WizardAI(HeroAI):
                 action["move_to"] = (self.hero.x + (dx / d) * 120, self.hero.y + (dy / d) * 120)
             return action
 
-        # 7. Move into range if too far
-        if dist > 250:
-            action["move_to"] = (self.target.x, self.target.y)
+        # 7. Move toward target (to get in range or get LOS)
+        action["move_to"] = (self.target.x, self.target.y)
 
         return action
 
@@ -457,14 +523,14 @@ class RogueAI(HeroAI):
     """
 
     def pick_target(self, monsters):
-        alive = [m for m in monsters if m.alive]
-        if not alive:
+        candidates = self.get_engaged_monsters(monsters)
+        if not candidates:
             return None
         # Prioritize low HP targets to secure kills
-        low_hp = [m for m in alive if m.hp <= m.max_hp * 0.3]
+        low_hp = [m for m in candidates if m.hp <= m.max_hp * 0.3]
         if low_hp:
-            return min(low_hp, key=lambda m: self.hero.distance_to(m))
-        return min(alive, key=lambda m: self.hero.distance_to(m))
+            return min(low_hp, key=lambda m: self.path_distance(m))
+        return min(candidates, key=lambda m: self.path_distance(m))
 
     def is_in_combat(self, monsters):
         """Check if any monster is targeting the hero."""
@@ -505,25 +571,25 @@ class RogueAI(HeroAI):
             action["use_ability"] = "R"
             return action
 
-        # 3. Ambush from stealth when in range
-        if ab_e and ab_e.is_ready() and self.hero.stealthed and dist <= 55:
+        # 3. Ambush from stealth when in range and LOS
+        if ab_e and ab_e.is_ready() and self.hero.stealthed and dist <= 55 and self.has_los(self.target):
             action["use_ability"] = "E"
             action["ability_target_monster"] = self.target
             return action
 
-        # 3b. Stealthed with Ambush ready but out of range — walk to target
-        if ab_e and ab_e.is_ready() and self.hero.stealthed and dist > 55:
+        # 3b. Stealthed with Ambush ready but out of range or no LOS — walk to target
+        if ab_e and ab_e.is_ready() and self.hero.stealthed and (dist > 55 or not self.has_los(self.target)):
             action["move_to"] = (self.target.x, self.target.y)
             return action
 
-        # 4. Walk to target if out of range (stealth or not)
+        # 4. Walk to target if out of range
         if dist > 50:
             action["move_to"] = (self.target.x, self.target.y)
             return action
 
-        # 5. Stab in melee (only if not stealthed — auto-attack is disabled in stealth)
+        # 5. Stab in melee (only if not stealthed and LOS)
         ab_q = self.hero.abilities.get("Q")
-        if ab_q and ab_q.is_ready() and not self.hero.stealthed and dist <= 55:
+        if ab_q and ab_q.is_ready() and not self.hero.stealthed and dist <= 55 and self.has_los(self.target):
             action["use_ability"] = "Q"
             action["ability_target_monster"] = self.target
             return action

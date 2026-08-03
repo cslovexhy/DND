@@ -273,7 +273,8 @@ current_layer = 0
 show_walkability = False
 fill_mode = False
 sample_mode = False  # Eyedropper: click tile on canvas to select it
-spawn_mode = False  # When true, palette shows spawn types instead of tiles
+spawn_mode = False     # When true, palette shows spawn types (monsters) instead of tiles
+location_mode = False  # When true, palette shows location types (hero_start, connections)
 painting = False  # Is left mouse held down?
 erasing = False   # Is right mouse held down?
 panning = False   # Is middle mouse held down?
@@ -283,11 +284,15 @@ pan_start = (0, 0)
 cam_start = (0, 0)
 
 # Spawn types
-SPAWN_TYPES = [
+LOCATION_TYPES = [
     # Special markers
     {"id": "hero_start", "name": "Hero Start", "color": (0, 200, 255)},
     {"id": "chest", "name": "Chest", "color": (255, 200, 0)},
     {"id": "npc", "name": "NPC", "color": (100, 255, 100)},
+    # Connection points (map transitions)
+] + [{"id": f"connection_{chr(97+i)}", "name": f"Connection {chr(65+i)}", "color": (255, 255, 0)} for i in range(26)]
+
+SPAWN_TYPES = [
     # Monsters
     {"id": "kobold_dragonshield", "name": "Kobold Dragonshield", "color": (200, 100, 50)},
     {"id": "orc_smasher", "name": "Orc Smasher", "color": (150, 180, 50)},
@@ -308,7 +313,11 @@ SPAWN_TYPES = [
     {"id": "rage_drake", "name": "Rage Drake (Boss)", "color": (200, 80, 0)},
     {"id": "otyugh", "name": "Otyugh (Boss)", "color": (80, 120, 0)},
 ]
-selected_spawn = 0  # Index into SPAWN_TYPES
+
+# Combined list for rendering (lookup by id)
+ALL_SPAWN_TYPES = LOCATION_TYPES + SPAWN_TYPES
+
+selected_spawn = 0  # Index into active palette (SPAWN_TYPES or LOCATION_TYPES)
 
 # Palette state
 palette_scroll = 0
@@ -338,11 +347,12 @@ def draw_toolbar():
         ("Sample (E)", "sample"),
         ("Walkability (W)", "walk"),
         ("Spawns (3)", "spawns"),
+        ("Locations (4)", "locations"),
     ]
     for label, action in btn_labels:
         tw = font.size(label)[0] + 16
         rect = pygame.Rect(bx, 6, tw, 28)
-        active = (action == "fill" and fill_mode) or (action == "walk" and show_walkability) or (action == "spawns" and spawn_mode) or (action == "sample" and sample_mode)
+        active = (action == "fill" and fill_mode) or (action == "walk" and show_walkability) or (action == "spawns" and spawn_mode) or (action == "locations" and location_mode) or (action == "sample" and sample_mode)
         hovered = rect.collidepoint(pygame.mouse.get_pos())
         color = COL_BUTTON_ACTIVE if active else (COL_BUTTON_HOVER if hovered else COL_BUTTON)
         pygame.draw.rect(screen, color, rect, border_radius=4)
@@ -356,6 +366,8 @@ def draw_toolbar():
         mode_text = "SAMPLE MODE — Click a tile to pick it"
     elif spawn_mode:
         mode_text = f"SPAWN MODE — {SPAWN_TYPES[selected_spawn]['name']}"
+    elif location_mode:
+        mode_text = f"LOCATION MODE — {LOCATION_TYPES[selected_spawn]['name']}"
     else:
         mode_text = f"Layer: {map_data.layers[current_layer].name} [{current_layer+1}/{len(map_data.layers)}]"
     lt = font.render(mode_text, True, COL_TEXT)
@@ -370,21 +382,23 @@ def draw_palette():
     pygame.draw.rect(screen, COL_PANEL, panel_rect)
     mx, my = pygame.mouse.get_pos()
 
-    if spawn_mode:
-        # === SPAWN PALETTE ===
-        title = font.render("Spawn Palette", True, COL_TEXT)
+    if spawn_mode or location_mode:
+        # === SPAWN / LOCATION PALETTE ===
+        active_list = SPAWN_TYPES if spawn_mode else LOCATION_TYPES
+        title_text = "Spawn Palette" if spawn_mode else "Location Palette"
+        title = font.render(title_text, True, COL_TEXT)
         screen.blit(title, (8, TOOLBAR_H + 5))
 
-        # Selected spawn preview
-        sp = SPAWN_TYPES[selected_spawn]
+        # Selected item preview
+        sp = active_list[selected_spawn]
         pygame.draw.circle(screen, sp["color"], (30, TOOLBAR_H + 45), 12)
         name_text = font_sm.render(sp["name"], True, COL_TEXT)
         screen.blit(name_text, (50, TOOLBAR_H + 38))
 
-        # List all spawn types
+        # List all types
         list_top = TOOLBAR_H + 70
         clicked_spawn = None
-        for i, sp in enumerate(SPAWN_TYPES):
+        for i, sp in enumerate(active_list):
             iy = list_top + i * 26
             if iy + 24 > SCREEN_H:
                 break
@@ -524,7 +538,7 @@ def draw_canvas():
         # Find color for this spawn type
         sp_color = (255, 255, 255)
         sp_name = spawn["type"]
-        for sp in SPAWN_TYPES:
+        for sp in ALL_SPAWN_TYPES:
             if sp["id"] == spawn["type"]:
                 sp_color = sp["color"]
                 sp_name = sp["name"]
@@ -537,6 +551,17 @@ def draw_canvas():
                   (center_x, center_y + r), (center_x - r, center_y)]
         pygame.draw.polygon(screen, sp_color, points)
         pygame.draw.polygon(screen, (255, 255, 255), points, 1)
+        # Show letter on connection points and "H" on hero_start (always visible)
+        spawn_id = spawn["type"]
+        if spawn_id.startswith("connection_"):
+            letter = spawn_id[-1].upper()
+            letter_surf = font_sm.render(letter, True, (0, 0, 0))
+            lr = letter_surf.get_rect(center=(center_x, center_y))
+            screen.blit(letter_surf, lr)
+        elif spawn_id == "hero_start":
+            letter_surf = font_sm.render("H", True, (0, 0, 0))
+            lr = letter_surf.get_rect(center=(center_x, center_y))
+            screen.blit(letter_surf, lr)
         # Label (only if zoomed in enough)
         if zoom >= 2.0:
             label = font_sm.render(sp_name[:10], True, (255, 255, 255))
@@ -769,11 +794,21 @@ while running:
             elif event.key == pygame.K_1:
                 current_layer = 0
                 spawn_mode = False
+                location_mode = False
             elif event.key == pygame.K_2:
                 current_layer = 1
                 spawn_mode = False
+                location_mode = False
             elif event.key == pygame.K_3:
                 spawn_mode = not spawn_mode
+                if spawn_mode:
+                    location_mode = False
+                    selected_spawn = 0
+            elif event.key == pygame.K_4:
+                location_mode = not location_mode
+                if location_mode:
+                    spawn_mode = False
+                    selected_spawn = 0
             elif event.key == pygame.K_ESCAPE:
                 running = False
             elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
@@ -807,6 +842,14 @@ while running:
                         show_walkability = not show_walkability
                     elif action == "spawns":
                         spawn_mode = not spawn_mode
+                        if spawn_mode:
+                            location_mode = False
+                            selected_spawn = 0
+                    elif action == "locations":
+                        location_mode = not location_mode
+                        if location_mode:
+                            spawn_mode = False
+                            selected_spawn = 0
                     break
 
             # Palette click
@@ -838,6 +881,9 @@ while running:
                         elif spawn_mode:
                             # Place spawn
                             map_data.add_spawn(SPAWN_TYPES[selected_spawn]["id"], tx, ty)
+                        elif location_mode:
+                            # Place location marker
+                            map_data.add_spawn(LOCATION_TYPES[selected_spawn]["id"], tx, ty)
                         elif fill_mode:
                             new_tile = {"col": selected_tile[0], "row": selected_tile[1], "walkable": True}
                             actions = flood_fill(map_data, current_layer, tx, ty, new_tile)
@@ -863,8 +909,8 @@ while running:
                 elif event.button == 3:  # Right click
                     tx, ty = screen_to_tile(mx, my)
                     if tx is not None:
-                        if spawn_mode:
-                            # Remove spawn
+                        if spawn_mode or location_mode:
+                            # Remove spawn/location
                             map_data.remove_spawn(tx, ty)
                         else:
                             erasing = True
@@ -960,7 +1006,7 @@ while running:
 
     # Handle palette selection (from draw_palette)
     if pygame.mouse.get_pressed()[0] and palette_result is not None:
-        if spawn_mode:
+        if spawn_mode or location_mode:
             selected_spawn = palette_result
         else:
             selected_tile = palette_result

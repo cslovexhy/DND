@@ -380,3 +380,77 @@ Decided current repo is too entangled to incrementally refactor — will create 
 - `game/engine/entities.py` — SPEED_SCALE comment update
 - `data/maps/northshire.json` — expanded 80×60 map (new)
 - `run.sh` — updated launch command
+
+---
+
+## Session 7 — 2026-08-02
+
+### Map System Fixes
+- **Empty tiles now walkable**: `WorldMap.is_tile_walkable` returns `True` for unpainted tiles (walkability determined solely by explicit `walkable: False` flags)
+- **Map select screen**: Game now shows map selection before hero select (Dungeon Mode + all maps in `data/maps/`). `--map <path>` skips it.
+- **hero_start validation**: Game exits with clear error if map has no hero_start spawn
+- **New map**: `haycock.json` (40×30, dungeon layout with bosses)
+
+### Map Editor
+- **Locations category (key 4)**: Separated hero_start, chest, NPC, and Connection A-Z into own "Locations" palette (yellow diamonds with letter labels)
+- **Spawns category (key 3)**: Now only monsters/bosses (17 entries, no clutter)
+- Connection points rendered with letter inside diamond at all zoom levels
+
+### Line of Sight System
+- **`has_line_of_sight()`**: Bresenham's tile raycast in `pathfinding.py` — O(n) where n ≈ 5-15 tiles
+- **Monster aggro**: Can't detect hero through walls
+- **Monster ranged AI**: Won't shoot without clear LOS
+- **Player abilities**: Frostbolt, Fire Blast, Wanding, Judgement, Charge all gated by LOS ("No line of sight!")
+- **Target selection**: Can't select enemies through walls; target drops if LOS is lost
+- **Companion abilities**: Same LOS rules via shared helpers
+
+### AI Overhaul (Pathfinding-Based)
+- **Path distance targeting**: AI picks targets by A* path length (cached 0.5s), not euclidean distance
+- **All AI movement uses A***: Hero AI, companions, and auto-attack walk all pathfind — no more wall bumping
+- **Aggro list**: AI only targets currently-aggroed monsters. Won't pull new packs until current engagement is cleared. Falls back to all alive if nothing engaged.
+- **LOS-aware casting**: AI moves toward target via A* until LOS is achieved, then casts
+- **Repath every 0.5s**: Hero AI, companions, and monsters all refresh paths at same cadence
+
+### Shared Ability Execution Helpers
+- `_exec_fire_blast()`, `_exec_ranged_projectile()`, `_exec_judgement()`, `_exec_stab()`, `_exec_smite()`
+- `_can_ranged_hit()`: Range + LOS in one call
+- Used by both `_cast_ability` (player/AI) and companion dispatch — single source of truth
+
+### Wizard AI Kiting
+- After Frost Nova or Frostbolt, if enemies within 120px, wizard retreats for 0.5s
+- Kite timer in `WizardAI._kite_timer` — applies to both hero-AI and companion
+
+### Demoralizing Shout (Fighter E skill, replaces Whirlwind)
+- AoE 120px radius (same as Frost Nova), 5s cooldown
+- Reduces all nearby enemies damage by 50% for 10s
+- Slows enemies 50% for 3s
+- Debuff stored in monster `buffs["Demoralized"]` — affects melee and ranged damage
+- Buff system moved to Entity base class (monsters now tick buffs too)
+
+### Wall Sliding Fix
+- `move_toward` now slides along walls at full speed instead of diagonal-component speed
+- Diagonal corner handling: picks dominant axis if diagonal is blocked
+
+### Companion AI Fix
+- `move_to` no longer blocked by `elif` when ability fails to fire (cooldown/GCD)
+- `comp_acted` flag ensures companions move when abilities can't execute
+
+### Key Files Modified
+- `game/engine/pathfinding.py` — `has_line_of_sight()` (Bresenham's)
+- `game/engine/ai.py` — LOS in aggro + ranged AI, Demoralized on ranged damage
+- `game/engine/hero_ai.py` — path_distance, has_los, get_engaged_monsters, kite timer, all pick_target overrides
+- `game/engine/entities.py` — buffs moved to Entity, wall sliding fix, Demoralized in try_basic_attack
+- `game/engine/world_map.py` — empty tiles walkable
+- `game/content/heroes.py` — Demoralizing Shout replaces Whirlwind
+- `game/main.py` — map select, LOS checks, shared helpers, AI dispatch fixes, A* movement
+- `map_editor.py` — Locations/Spawns split, connection points A-Z
+- `run.sh` — no longer forces `--map`
+- `data/maps/haycock.json` — new map
+
+### Commits
+- (pending)
+
+## MUST-DO Rules (Future Development)
+
+1. **Hero AI and Companion AI must always use the same code path.** Any behavior that applies to one must apply to the other — targeting logic, LOS checks, pathfinding, ability execution. Never duplicate ability logic between the two; use shared helper functions (`_exec_*`, `_can_ranged_hit`, etc.).
+

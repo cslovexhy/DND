@@ -125,6 +125,9 @@ class Entity:
         self.facing_left = False
         self.conditions: list[ActiveCondition] = []
 
+        # Active buffs/debuffs (name -> {remaining: float, ...data})
+        self.buffs: dict[str, dict] = {}
+
         # Absorb shield (Wall spell etc.)
         self.absorb_shield = 0.0  # current shield HP remaining
 
@@ -167,10 +170,26 @@ class Entity:
         ny = self.y + (dy/dist) * move_dist
 
         if collision_fn:
-            if not collision_fn(nx, self.y):
-                self.x = nx
-            if not collision_fn(self.x, ny):
-                self.y = ny
+            can_x = not collision_fn(nx, self.y)
+            can_y = not collision_fn(self.x, ny)
+            if can_x and can_y:
+                # Both axes free — check diagonal too
+                if not collision_fn(nx, ny):
+                    self.x = nx
+                    self.y = ny
+                else:
+                    # Diagonal blocked but axes individually free — pick dominant axis
+                    if abs(dx) >= abs(dy):
+                        self.x = nx
+                    else:
+                        self.y = ny
+            elif can_x:
+                # Slide along wall horizontally at full speed
+                self.x += (1 if dx > 0 else -1) * min(effective_speed * dt, abs(dx))
+            elif can_y:
+                # Slide along wall vertically at full speed
+                self.y += (1 if dy > 0 else -1) * min(effective_speed * dt, abs(dy))
+            # else: completely blocked, don't move
         else:
             self.x = nx
             self.y = ny
@@ -239,6 +258,16 @@ class Entity:
         self.flash_timer = max(0, self.flash_timer - dt)
         self.swing_timer = max(0, self.swing_timer - dt)
         self.update_conditions(dt)
+        # Tick buff/debuff timers
+        for k, v in list(self.buffs.items()):
+            v["remaining"] -= dt
+            # HoT tick processing (heals each frame proportionally)
+            if "hot_per_sec" in v and v["remaining"] > -dt:
+                heal_tick = v["hot_per_sec"] * dt
+                self.heal(heal_tick)
+        expired = [k for k, v in self.buffs.items() if v["remaining"] <= 0]
+        for k in expired:
+            del self.buffs[k]
 
     def can_swing(self) -> bool:
         """Check if entity can swing (weapon timer ready)."""
@@ -262,6 +291,9 @@ class Entity:
         self.swing_timer = self.weapon_speed
         import random
         damage = self.base_damage
+        # Demoralized debuff reduces damage output
+        if "Demoralized" in getattr(self, 'buffs', {}):
+            damage *= self.buffs["Demoralized"].get("damage_mult", 1.0)
         self.last_crit = random.random() < self.crit_chance
         if self.last_crit:
             damage *= self.crit_multiplier
@@ -292,9 +324,6 @@ class Hero(Entity):
         self.kills = 0
         self.level = 1
 
-        # Active buffs (name -> {remaining: float, data: dict})
-        self.buffs: dict[str, dict] = {}
-
         # Stealth state (Rogue)
         self.stealthed: bool = False
 
@@ -309,17 +338,6 @@ class Hero(Entity):
         self.gcd = max(0, self.gcd - dt)
         for ab in self.abilities.values():
             ab.update(dt)
-        # Update buffs
-        for k, v in list(self.buffs.items()):
-            v["remaining"] -= dt
-            # HoT tick processing (heals each frame proportionally)
-            if "hot_per_sec" in v and v["remaining"] > -dt:
-                heal_tick = v["hot_per_sec"] * dt
-                self.heal(heal_tick)
-        # Remove expired buffs after decrement
-        expired = [k for k, v in self.buffs.items() if v["remaining"] <= 0]
-        for k in expired:
-            del self.buffs[k]
 
     def use_ability(self, key: str, targets: list['Entity'],
                     target_pos: tuple = None) -> list[tuple[str, float]]:

@@ -84,3 +84,39 @@ def astar(dungeon, start_wx, start_wy, goal_wx, goal_wy, max_steps=200):
 
     # No path found — just return direct point
     return [(goal_wx, goal_wy)]
+
+
+def has_line_of_sight(dungeon, x1, y1, x2, y2):
+    """
+    Check if there's a clear line of sight between two world-pixel positions.
+    Uses Bresenham's line on the tile grid. Returns True if no wall blocks the path.
+    """
+    tx1 = int(x1 // TILE_SIZE)
+    ty1 = int(y1 // TILE_SIZE)
+    tx2 = int(x2 // TILE_SIZE)
+    ty2 = int(y2 // TILE_SIZE)
+
+    dx = abs(tx2 - tx1)
+    dy = abs(ty2 - ty1)
+    sx = 1 if tx1 < tx2 else -1
+    sy = 1 if ty1 < ty2 else -1
+    err = dx - dy
+
+    while True:
+        # Skip the start tile (entity is standing there)
+        if (tx1, ty1) != (int(x1 // TILE_SIZE), int(y1 // TILE_SIZE)):
+            if not dungeon.is_floor(tx1, ty1):
+                return False
+
+        if tx1 == tx2 and ty1 == ty2:
+            break
+
+        e2 = 2 * err
+        if e2 > -dy:
+            err -= dy
+            tx1 += sx
+        if e2 < dx:
+            err += dx
+            ty1 += sy
+
+    return True

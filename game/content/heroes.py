@@ -29,10 +29,10 @@ def create_vistra(x: float, y: float) -> Hero:
                                effect="Dash to target (200% weapon dmg + stun 1.5s)",
                                power_type="daily", color=(255, 160, 50),
                                is_dash=True, stun_duration=1.5))
-    h.add_ability("E", Ability("Whirlwind", cooldown=10.0, multiplier=0.8, flat_bonus=0,
-                               radius=70, range=70,
-                               effect="Spin attack hitting everything in melee (80% weapon dmg)",
-                               power_type="daily", color=(220, 220, 255)))
+    h.add_ability("E", Ability("Demoralizing Shout", cooldown=5.0, multiplier=0, flat_bonus=0,
+                               radius=120, range=0,
+                               effect="Reduces nearby enemies damage by 50% for 10s, slows 3s",
+                               power_type="encounter", color=(200, 150, 50)))
     return h
 
 

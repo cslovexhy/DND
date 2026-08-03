@@ -23,7 +23,7 @@ import math
 import random
 from typing import Optional
 from .entities import Monster, Hero, Entity, Condition
-from .pathfinding import astar
+from .pathfinding import astar, has_line_of_sight
 
 
 # === AGGRO STATE ===
@@ -175,6 +175,10 @@ def check_aggro(monster: Monster, heroes: list[Hero], all_monsters: list[Monster
         # Use stealth sense range if hero is stealthed
         effective_sense = monster.stealth_sense_range if getattr(hero, 'stealthed', False) else monster.sense_range
         if dist <= effective_sense:
+            # Line of sight check — can't aggro through walls
+            if hasattr(monster, '_nav_dungeon') and monster._nav_dungeon:
+                if not has_line_of_sight(monster._nav_dungeon, monster.x, monster.y, hero.x, hero.y):
+                    continue
             aggro_monster(monster, hero, all_monsters)
             break
 
@@ -315,13 +319,19 @@ def ai_ranged(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None
         # Too far, close in
         monster.move_toward(target.x, target.y, dt, collision_fn)
     else:
-        # In sweet spot, attack
-        if monster.swing_timer <= 0:
+        # In sweet spot — only attack if line of sight is clear
+        can_shoot = True
+        if hasattr(monster, '_nav_dungeon') and monster._nav_dungeon:
+            can_shoot = has_line_of_sight(monster._nav_dungeon, monster.x, monster.y, target.x, target.y)
+        if can_shoot and monster.swing_timer <= 0:
             monster.swing_timer = monster.weapon_speed
             # Cast time: freeze in place while shooting
             monster.apply_condition(Condition.IMMOBILIZED, 0.5)
             # Return signal to spawn projectile (damage applied on hit)
-            return ("ranged_attack_projectile", target, monster.base_damage)
+            ranged_dmg = monster.base_damage
+            if "Demoralized" in getattr(monster, 'buffs', {}):
+                ranged_dmg *= monster.buffs["Demoralized"].get("damage_mult", 1.0)
+            return ("ranged_attack_projectile", target, ranged_dmg)
 
     return ("move", target, 0)
 
