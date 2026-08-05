@@ -100,7 +100,7 @@ def create_tarak(x: float, y: float) -> Hero:
                                radius=0, range=55,
                                effect="Fast melee strike (100% weapon dmg).",
                                power_type="at_will", color=ROGUE_COLOR))
-    h.add_ability("R", Ability("Stealth", cooldown=6.0, multiplier=0, flat_bonus=0,
+    h.add_ability("R", Ability("Stealth", cooldown=2.0, multiplier=0, flat_bonus=0,
                                radius=0, range=0,
                                effect="Go invisible. 60% move speed. Mobs can't see you. Attack breaks stealth.",
                                power_type="utility", color=(100, 180, 100)))

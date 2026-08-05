@@ -45,6 +45,7 @@ class WorldMap:
         m = cls()
         m.width = data["width"]
         m.height = data["height"]
+        m.tile_size = data.get("tile_size", TILE_SIZE)
 
         # Load layers
         for layer_data in data.get("layers", []):
@@ -80,8 +81,9 @@ class WorldMap:
 
     def is_walkable(self, wx, wy) -> bool:
         """Check if a world-pixel position is walkable."""
-        tx = int(wx // TILE_SIZE)
-        ty = int(wy // TILE_SIZE)
+        ts = getattr(self, 'tile_size', TILE_SIZE)
+        tx = int(wx // ts)
+        ty = int(wy // ts)
         return self.is_tile_walkable(tx, ty)
 
     def is_tile_walkable(self, tx, ty) -> bool:
@@ -111,15 +113,17 @@ class WorldMap:
 
     def get_start_pos(self) -> tuple:
         """Get hero start position in world pixel coords (center of tile)."""
+        ts = self.tile_size
         if self.hero_start:
             tx, ty = self.hero_start
-            return (tx * TILE_SIZE + TILE_SIZE // 2, ty * TILE_SIZE + TILE_SIZE // 2)
+            return (tx * ts + ts // 2, ty * ts + ts // 2)
         # Fallback: center of map
-        return (self.width * TILE_SIZE // 2, self.height * TILE_SIZE // 2)
+        return (self.width * ts // 2, self.height * ts // 2)
 
     def get_spawn_world_pos(self, tx, ty) -> tuple:
         """Convert tile coords to world pixel center."""
-        return (tx * TILE_SIZE + TILE_SIZE // 2, ty * TILE_SIZE + TILE_SIZE // 2)
+        ts = self.tile_size
+        return (tx * ts + ts // 2, ty * ts + ts // 2)
 
     def get_monster_spawns(self) -> list:
         """Return all monster/entity spawn points (excluding hero_start)."""

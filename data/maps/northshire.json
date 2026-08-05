@@ -29152,21 +29152,6 @@
     },
     {
       "type": "kobold_dragonshield",
-      "x": 10,
-      "y": 13
-    },
-    {
-      "type": "kobold_dragonshield",
-      "x": 13,
-      "y": 13
-    },
-    {
-      "type": "kobold_dragonshield",
-      "x": 13,
-      "y": 11
-    },
-    {
-      "type": "kobold_dragonshield",
       "x": 16,
       "y": 11
     },
@@ -29222,11 +29207,6 @@
     },
     {
       "type": "kobold_dragonshield",
-      "x": 15,
-      "y": 4
-    },
-    {
-      "type": "kobold_dragonshield",
       "x": 16,
       "y": 3
     },
@@ -29234,11 +29214,6 @@
       "type": "kobold_dragonshield",
       "x": 17,
       "y": 3
-    },
-    {
-      "type": "kobold_dragonshield",
-      "x": 20,
-      "y": 2
     },
     {
       "type": "kobold_dragonshield",
@@ -29619,6 +29594,26 @@
       "type": "human_cultist",
       "x": 59,
       "y": 21
+    },
+    {
+      "type": "kobold_dragonshield",
+      "x": 14,
+      "y": 11
+    },
+    {
+      "type": "kobold_dragonshield",
+      "x": 7,
+      "y": 13
+    },
+    {
+      "type": "kobold_dragonshield",
+      "x": 14,
+      "y": 13
+    },
+    {
+      "type": "kobold_dragonshield",
+      "x": 11,
+      "y": 13
     }
   ]
 }

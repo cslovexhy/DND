@@ -454,3 +454,82 @@ Decided current repo is too entangled to incrementally refactor — will create 
 
 1. **Hero AI and Companion AI must always use the same code path.** Any behavior that applies to one must apply to the other — targeting logic, LOS checks, pathfinding, ability execution. Never duplicate ability logic between the two; use shared helper functions (`_exec_*`, `_can_ranged_hit`, etc.).
 
+2. **AI behavior must be validated on the Northshire map (solo, no companion).** After any AI change, run:
+   ```
+   .venv/bin/python3 -m game.main --auto --no-companion --hero <N> --map data/maps/northshire.json --debug > /tmp/ai_test.log 2>&1
+   ```
+   Acceptance criteria:
+   - **No ping-pong**: A character must never reverse direction 4+ times without casting a skill. Detect with the reversal counter on the `[AI ]` log lines (X position changes direction without a Q/R/E action in between).
+   - **Reasonable kill count**: The hero should kill multiple mobs within ~80s game-time (at 4x speed). Zero or near-zero kills indicates a stuck/broken AI.
+   - **Survival**: The hero should not die (DEFEATED) unless intentionally testing difficulty. Reaching very low HP is acceptable.
+   - **Cast activity**: The hero should be casting skills regularly, not spending long stretches only moving or idle.
+
+
+---
+
+## Session 8 — 2026-08-04
+
+### Python/Environment Fix
+- Python upgraded from 3.12 to 3.14 (Homebrew), broke pygame import
+- Created `.venv` virtual environment, installed `pygame-ce` 2.5.7 (community edition, compatible with 3.14)
+- Updated `run.sh` to use `.venv/bin/python3` directly with helpful error message
+- Created `mapEditor.sh` launcher script
+
+### Walk-to-Range Skill Queueing (Player QoL)
+- **All targeted skills** now queue walk-to-range when out of range instead of doing nothing
+- **Fire Blast**: no longer shows "Too far!" — queues walk + cast like other ranged skills
+- **Ambush**: routes through `ambush_target` path (works while stealthed) with A* pathfinding instead of direct-line `move_toward`
+- **Cancellation**: any click (ground, new enemy, new skill) cancels queued walk + pending cast
+- **Ambush walk-to**: uses A* pathfinding, cancels on LOS loss or stealth break
+
+### Rogue Improvements
+- **Stealth cooldown**: 6s → 2s (much more frequent Stealth→Ambush cycling)
+- **Auto-bind right-click**: entering stealth binds right-click to Ambush, breaking stealth binds back to Stealth
+- **AI target lock**: Rogue locks `_ambush_target` while stealthed — no more ping-pong between equidistant mobs
+- **AI waits for Stealth CD**: won't Stab if Stealth is <0.5s from ready, enabling immediate re-stealth→Ambush cycle
+
+### Wizard AI Overhaul (Smart Kiting)
+- **Frostbolt never wasted**: cast fires whenever ready + in range + LOS, regardless of enemy distance
+- **Smart kite algorithm** (`_find_best_kite_position`):
+  1. Evaluate 8 directional candidates (120px step)
+  2. Filter by walkability + LOS from current position
+  3. Score by **minimum distance** to nearest threat (within 500px radius)
+  4. Pick direction that maximizes distance from closest mob
+- **Kite priority**: enemies < 130px → kite first then cast; 130-260px → cast immediately; on CD + enemies < 220px → kite between casts
+- **GCD kiting**: during GCD, actively repositions using smart kite (< 220px) or closes gap (> 260px)
+- **Eliminated ping-pong**: wizard no longer oscillates when cornered — finds viable retreat paths around walls
+
+### Map Data Fix
+- Removed unreachable mob spawn on non-walkable tile (20,2) in `northshire.json`
+- Root cause: Kobold Dragonshield spawned on `walkable=False` ground tile (kenney_rpg col=5 row=10)
+- A* correctly found no path, but AI kept targeting the unreachable mob indefinitely
+
+### Auto-mode Improvements
+- Added `--no-companion` flag: test hero AI solo without companion skewing results
+- Fixed `find_walkable_nearby` ordering bug (function used before defined in `--auto` mode)
+- `game_speed = 4.0` now set outside companion block (works with `--no-companion`)
+
+### Debug Logging
+- Added `target_pos` and `path_len` to `[AI]` debug log lines for diagnosing stuck states
+
+### AI Testing Protocol (added to MUST-DO Rules)
+- Validate on Northshire map (open field) AND Haycock (dungeon corridors)
+- Solo, no companion, 4x speed, ~20s wall-clock
+- Check: 0 ping-pong, reasonable kills, survival, cast activity
+
+### Key Files Modified
+- `run.sh` — venv launcher
+- `mapEditor.sh` — new map editor launcher
+- `game/main.py` — skill queueing, auto-bind, debug logging, --no-companion, auto-mode fix
+- `game/engine/hero_ai.py` — Rogue target lock, Wizard smart kite, ping-pong fixes
+- `game/engine/world_map.py` — added `tile_size` attribute from JSON
+- `game/content/heroes.py` — Stealth CD 6→2s
+- `data/maps/northshire.json` — removed unreachable mob spawn
+- `WORKLOG.md` — session log, AI testing rules
+
+### Test Results (end of session)
+| Hero | Map | Kills | Died | Ping-pong |
+|------|-----|-------|------|-----------|
+| Wizard | Haycock | 14 | 0 | 0 |
+| Wizard | Northshire | 13 | 0 | 0 |
+| Rogue | Northshire | 30 | 0 | 0 |

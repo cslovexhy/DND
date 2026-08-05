@@ -422,6 +422,58 @@ class WizardAI(HeroAI):
             return min(low_hp, key=lambda m: self.path_distance(m))
         return min(candidates, key=lambda m: self.path_distance(m))
 
+    def _find_best_kite_position(self, monsters) -> tuple:
+        """Evaluate 8 directions to find the safest retreat position.
+        Returns (x, y) of best kite target, or None if no valid option.
+
+        Algorithm:
+        1. Generate 8 candidate positions (step_distance in each direction)
+        2. Filter: must be walkable and have LOS from current position
+        3. Score: sum of distances from candidate to all mobs within 500px
+        4. Return highest-scoring (safest) position
+        """
+        step = 120  # How far to step in each direction
+        hx, hy = self.hero.x, self.hero.y
+
+        # 8 directions: N, NE, E, SE, S, SW, W, NW
+        directions = [
+            (0, -1), (0.707, -0.707), (1, 0), (0.707, 0.707),
+            (0, 1), (-0.707, 0.707), (-1, 0), (-0.707, -0.707)
+        ]
+
+        # Mobs within threat radius
+        threats = [m for m in monsters if m.alive and self.hero.distance_to(m) < 500]
+        if not threats:
+            return None
+
+        best_pos = None
+        best_score = -1
+
+        for dx, dy in directions:
+            cx = hx + dx * step
+            cy = hy + dy * step
+
+            # Filter: must be walkable
+            if not self._nav_dungeon:
+                continue
+            if self._nav_dungeon.is_wall(cx, cy):
+                continue
+
+            # Filter: must have LOS from current position
+            if not has_line_of_sight(self._nav_dungeon, hx, hy, cx, cy):
+                continue
+
+            # Score: minimum distance to any threat (higher = safer)
+            # The closest mob is what kills you — maximize distance from nearest threat
+            score = min(math.sqrt((cx - m.x)**2 + (cy - m.y)**2) for m in threats)
+
+            if score > best_score:
+                best_score = score
+                best_pos = (cx, cy)
+
+        return best_pos
+
+
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
                   "ability_target_monster": None, "use_potion": False, "dash": None}
@@ -431,23 +483,30 @@ class WizardAI(HeroAI):
             return action
 
         if self.hero.gcd > 0:
+            # During GCD, smart kite or close gap
+            self.target = self.pick_target(alive)
+            if self.target:
+                dist = self.hero.distance_to(self.target)
+                if dist < 220:
+                    kite_pos = self._find_best_kite_position(alive)
+                    if kite_pos:
+                        action["move_to"] = kite_pos
+                elif dist > 260:
+                    action["move_to"] = (self.target.x, self.target.y)
             return action
 
         # Don't act if channeling (immobilized)
         if self.hero.has_condition(Condition.IMMOBILIZED):
             return action
 
-        # Kite-back: after Frost Nova or Frostbolt with melee enemies, retreat 0.5s
+        # Kite-back: after Frost Nova, retreat for 0.5s
         if not hasattr(self, '_kite_timer'):
             self._kite_timer = 0.0
         if self._kite_timer > 0:
             self._kite_timer -= dt
-            closest = min(alive, key=lambda m: self.hero.distance_to(m))
-            dx = self.hero.x - closest.x
-            dy = self.hero.y - closest.y
-            d = math.sqrt(dx * dx + dy * dy)
-            if d > 0:
-                action["move_to"] = (self.hero.x + (dx / d) * 150, self.hero.y + (dy / d) * 150)
+            kite_pos = self._find_best_kite_position(alive)
+            if kite_pos:
+                action["move_to"] = kite_pos
             return action
 
         self.target = self.pick_target(alive)
@@ -481,29 +540,32 @@ class WizardAI(HeroAI):
                 self._kite_timer = 0.5
             return action
 
-        # 4. Fire Blast instant nuke when available
+        # 4. Fire Blast instant nuke when available (instant — safe at any range)
         ab_r = self.hero.abilities.get("R")
         if ab_r and ab_r.is_ready() and dist <= 260 and self.has_los(self.target):
             action["use_ability"] = "R"
             action["ability_target_monster"] = self.target
             return action
 
-        # 5. Frostbolt if in range and LOS
+        # 5. Frostbolt if in range and LOS — but kite first if enemy is dangerously close
         ab_q = self.hero.abilities.get("Q")
         if ab_q and ab_q.is_ready() and dist <= 260 and self.has_los(self.target):
+            # If enemy very close, try to kite first (one cycle) then cast
+            if dist < 130:
+                kite_pos = self._find_best_kite_position(alive)
+                if kite_pos:
+                    action["move_to"] = kite_pos
+                    return action
+            # Safe enough distance or no kite option — cast
             action["use_ability"] = "Q"
             action["ability_target_monster"] = self.target
-            if self.count_enemies_in_range(alive, 120) > 0:
-                self._kite_timer = 0.5
             return action
 
-        # 6. Kite if enemy too close
-        if dist < 100:
-            dx = self.hero.x - self.target.x
-            dy = self.hero.y - self.target.y
-            d = math.sqrt(dx * dx + dy * dy)
-            if d > 0:
-                action["move_to"] = (self.hero.x + (dx / d) * 120, self.hero.y + (dy / d) * 120)
+        # 6. Kite if enemy too close AND abilities on CD (don't stand still waiting)
+        if dist < 220 and not (ab_q and ab_q.is_ready()):
+            kite_pos = self._find_best_kite_position(alive)
+            if kite_pos:
+                action["move_to"] = kite_pos
             return action
 
         # 7. Move toward target (to get in range or get LOS)
@@ -521,6 +583,10 @@ class RogueAI(HeroAI):
     - Stay in melee range of target
     - Pop potion below 35% HP
     """
+
+    def __init__(self, hero):
+        super().__init__(hero)
+        self._ambush_target: Monster = None  # Locked target during stealth approach
 
     def pick_target(self, monsters):
         candidates = self.get_engaged_monsters(monsters)
@@ -545,15 +611,30 @@ class RogueAI(HeroAI):
 
         alive = [m for m in monsters if m.alive]
         if not alive:
+            self._ambush_target = None
             return action
 
         if self.hero.gcd > 0:
-            self.target = self.pick_target(alive)
+            self.target = self._ambush_target if self._ambush_target and self._ambush_target.alive else self.pick_target(alive)
             if self.target and self.hero.distance_to(self.target) > 50:
                 action["move_to"] = (self.target.x, self.target.y)
             return action
 
-        self.target = self.pick_target(alive)
+        # Clear locked ambush target if invalid
+        if self._ambush_target and (not self._ambush_target.alive or not self.hero.stealthed):
+            self._ambush_target = None
+
+        # While stealthed with ambush ready, use locked target
+        ab_e = self.hero.abilities.get("E")
+        if self.hero.stealthed and ab_e and ab_e.is_ready():
+            # Lock target if not already locked
+            if not self._ambush_target:
+                self._ambush_target = self.pick_target(alive)
+            self.target = self._ambush_target
+        else:
+            self._ambush_target = None
+            self.target = self.pick_target(alive)
+
         if not self.target:
             return action
 
@@ -566,7 +647,6 @@ class RogueAI(HeroAI):
 
         # 2. Stealth if not already stealthed and CD ready
         ab_r = self.hero.abilities.get("R")
-        ab_e = self.hero.abilities.get("E")
         if ab_r and ab_r.is_ready() and not self.hero.stealthed:
             action["use_ability"] = "R"
             return action
@@ -575,9 +655,10 @@ class RogueAI(HeroAI):
         if ab_e and ab_e.is_ready() and self.hero.stealthed and dist <= 55 and self.has_los(self.target):
             action["use_ability"] = "E"
             action["ability_target_monster"] = self.target
+            self._ambush_target = None  # Ambush fired, unlock
             return action
 
-        # 3b. Stealthed with Ambush ready but out of range or no LOS — walk to target
+        # 3b. Stealthed with Ambush ready but out of range or no LOS — walk to locked target
         if ab_e and ab_e.is_ready() and self.hero.stealthed and (dist > 55 or not self.has_los(self.target)):
             action["move_to"] = (self.target.x, self.target.y)
             return action
@@ -587,12 +668,16 @@ class RogueAI(HeroAI):
             action["move_to"] = (self.target.x, self.target.y)
             return action
 
-        # 5. Stab in melee (only if not stealthed and LOS)
+        # 5. Stab in melee — but only if Stealth is on long cooldown
+        #    If Stealth is almost ready (<0.5s), wait for it to cycle into Ambush
         ab_q = self.hero.abilities.get("Q")
         if ab_q and ab_q.is_ready() and not self.hero.stealthed and dist <= 55 and self.has_los(self.target):
-            action["use_ability"] = "Q"
-            action["ability_target_monster"] = self.target
-            return action
+            if not ab_r or ab_r.remaining > 0.5:
+                # Stealth on CD — Stab while waiting
+                action["use_ability"] = "Q"
+                action["ability_target_monster"] = self.target
+                return action
+            # else: Stealth almost ready — don't Stab, let it cycle to Stealth→Ambush
 
         # 6. Basic attack fallback
         if not self.hero.stealthed:

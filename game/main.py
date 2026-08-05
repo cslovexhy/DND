@@ -429,20 +429,7 @@ ai_enabled = auto_mode  # Auto mode starts with AI on
 companions = []  # list of (hero_obj, ai_obj) tuples
 available_companions = [h for i, h in enumerate(ALL_HEROES) if i != selected_hero_idx]
 
-# Auto-mode: summon first available companion and set 4x speed
-if auto_mode and available_companions:
-    # Pick Heskan if available, else first
-    comp_info = next((c for c in available_companions if c["name"] == "Heskan"), available_companions[0])
-    cx, cy = find_walkable_nearby(hero.x, hero.y, radius=40)
-    comp = comp_info["create"](cx, cy)
-    comp.sprite = HERO_SPRITES[comp_info["sprite_key"]]
-    comp_ai = create_hero_ai(comp)
-    comp_ai.set_nav_dungeon(dungeon)
-    if hasattr(comp_ai, 'allies'):
-        comp_ai.allies = game_state.heroes
-    companions.append((comp, comp_ai))
-    game_state.heroes.append(comp)
-    game_speed = 4.0
+# Auto-mode companion spawning is deferred until after helper functions are defined
 
 # Monster pool
 MONSTER_POOL = [
@@ -510,6 +497,24 @@ def find_walkable_nearby(x, y, radius=60, attempts=20):
                 if not is_wall(tx, ty):
                     return tx, ty
     return x, y
+
+
+# Auto-mode: summon first available companion and set 4x speed
+if auto_mode and available_companions and "--no-companion" not in sys.argv:
+    # Pick Heskan if available, else first
+    comp_info = next((c for c in available_companions if c["name"] == "Heskan"), available_companions[0])
+    cx, cy = find_walkable_nearby(hero.x, hero.y, radius=40)
+    comp = comp_info["create"](cx, cy)
+    comp.sprite = HERO_SPRITES[comp_info["sprite_key"]]
+    comp_ai = create_hero_ai(comp)
+    comp_ai.set_nav_dungeon(dungeon)
+    if hasattr(comp_ai, 'allies'):
+        comp_ai.allies = game_state.heroes
+    companions.append((comp, comp_ai))
+    game_state.heroes.append(comp)
+
+if auto_mode:
+    game_speed = 4.0
 
 
 # World map monster stats lookup
@@ -621,10 +626,14 @@ def _exec_judgement(caster, target, ab):
 
 def _exec_stab(caster, target, ab):
     """Execute Stab: fast melee attack. Returns damage dealt."""
+    global right_skill_idx
     ab.use()
     caster.swing_timer = caster.weapon_speed
     if getattr(caster, 'stealthed', False):
         caster.stealthed = False
+        # Auto-bind right-click back to Stealth (main hero only)
+        if caster is hero and "R" in ability_keys:
+            right_skill_idx = ability_keys.index("R")
     dmg_amount = ab.calc_damage(caster.base_damage)
     # Crit check
     import random as _rng
@@ -664,7 +673,7 @@ def _can_ranged_hit(caster, target, ab):
 
 def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
     """Cast an ability — handles AoE, single target, dash, stun, call-for-help, and Quinn's Seal system."""
-    global move_path, selected_target, dash_active, dash_target_x, dash_target_y, dash_stun_target, dash_stun_duration, dash_damage, frostbolt_channeling, frostbolt_channel_timer, frostbolt_target, ambush_target
+    global move_path, selected_target, dash_active, dash_target_x, dash_target_y, dash_stun_target, dash_stun_duration, dash_damage, frostbolt_channeling, frostbolt_channel_timer, frostbolt_target, ambush_target, right_skill_idx
 
     # Global Cooldown check
     if hero.gcd > 0:
@@ -688,6 +697,9 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
         if hero.stealthed:
             hero.stealthed = False
             floating_texts.append(FloatingText(hero.x, hero.y - 40, "Stealth broken!", (200, 200, 200)))
+            # Auto-bind right-click back to Stealth
+            if "R" in ability_keys:
+                right_skill_idx = ability_keys.index("R")
         dmg_amount = ab.calc_damage(hero.base_damage)
         # Crit roll
         hero.last_crit = random.random() < hero.crit_chance
@@ -711,6 +723,9 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
         ab.use()
         hero.stealthed = True
         selected_target = None  # Stop auto-attack
+        # Auto-bind right-click to Ambush
+        if "E" in ability_keys:
+            right_skill_idx = ability_keys.index("E")
         # Drop aggro from all monsters targeting hero (except bosses)
         for m in game_state.alive_monsters:
             if hasattr(m, 'aggro_target') and m.aggro_target == hero and not m.is_boss:
@@ -732,13 +747,18 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
             return
         dist_to_target = hero.distance_to(clicked_monster)
         if dist_to_target > ab.range:
-            selected_target = clicked_monster
+            # Queue walk-to via ambush_target (works while stealthed)
+            ambush_target = clicked_monster
+            selected_target = None
             move_path = []
             return
         ab.use()
         hero.swing_timer = hero.weapon_speed
         # Break stealth
         hero.stealthed = False
+        # Auto-bind right-click back to Stealth
+        if "R" in ability_keys:
+            right_skill_idx = ability_keys.index("R")
         # Damage: 3x weapon + 20% target max HP
         dmg_amount = ab.calc_damage(hero.base_damage) + clicked_monster.max_hp * 0.2
         dmg = clicked_monster.take_damage(dmg_amount)
@@ -759,11 +779,13 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
         if not clicked_monster:
             floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
             return
-        if not _can_ranged_hit(hero, clicked_monster, ab):
-            if hero.distance_to(clicked_monster) > ab.range:
-                floating_texts.append(FloatingText(hero.x, hero.y - 30, "Too far!", (255, 150, 100)))
-            else:
-                floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
+        if hero.distance_to(clicked_monster) > ab.range:
+            # Queue walk-to-range
+            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
+            move_path = []
+            return
+        if not check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
+            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
             return
         _exec_fire_blast(hero, clicked_monster, ab)
         hero.gcd = hero.GCD_DURATION
@@ -1091,6 +1113,8 @@ while running:
                             hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
                             hero.swing_timer = 0.5  # Brief delay after cancel
                         selected_target = clicked_monster
+                        ambush_target = None
+                        pending_cast = None
                         move_path = []
                 else:
                     # Click ground = move (cancel channel)
@@ -1100,6 +1124,8 @@ while running:
                         hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
                     move_path = astar(dungeon, hero.x, hero.y, wx, wy)
                     selected_target = None
+                    ambush_target = None
+                    pending_cast = None
 
             elif event.button == 3:  # Right-click = cast RIGHT skill
                 # Stealth + right-click enemy + Ambush on right slot = queue ambush walk-to
@@ -1222,7 +1248,9 @@ while running:
             target_dist = f" target_dist={hero.distance_to(hero_ai.target):.0f}" if hero_ai.target and hero_ai.target.alive else ""
             target_hp = f" boss_hp={hero_ai.target.hp:.0f}/{hero_ai.target.max_hp}" if hero_ai.target and hero_ai.target.alive else ""
             action_name = ai_action['use_ability'] or ('DASH' if ai_action.get('dash') else ('MOVE' if ai_action.get('move_to') else ('BASIC_ATK' if ai_action.get('basic_attack') else ('EXPLORE' if not alive_count else 'IDLE'))))
-            print(f"[AI t={game_state.game_time:.1f}s] monsters={alive_count} hp={hero.hp:.0f}/{hero.max_hp} pos=({hero.x:.0f},{hero.y:.0f}) action={action_name}{target_dist}{target_hp}", flush=True)
+            target_pos = f" target_pos=({hero_ai.target.x:.0f},{hero_ai.target.y:.0f})" if hero_ai.target and hero_ai.target.alive else ""
+            path_len = f" path_len={len(move_path)}" if move_path else " path_len=0"
+            print(f"[AI t={game_state.game_time:.1f}s] monsters={alive_count} hp={hero.hp:.0f}/{hero.max_hp} pos=({hero.x:.0f},{hero.y:.0f}) action={action_name}{target_dist}{target_pos}{target_hp}{path_len}", flush=True)
             # Log all alive units
             for m in game_state.alive_monsters:
                 dist_to_hero = hero.distance_to(m)
@@ -1272,10 +1300,17 @@ while running:
             # Repath every 0.5s or if path empty
             if not hasattr(hero, '_ai_repath_timer'):
                 hero._ai_repath_timer = 0
+                hero._ai_unreachable = set()  # Track unreachable monster IDs
             hero._ai_repath_timer -= dt
             if hero._ai_repath_timer <= 0 or not move_path:
                 move_path = astar(dungeon, hero.x, hero.y, tx, ty)
                 hero._ai_repath_timer = 0.5
+                # If path is empty and target is nearby, it's unreachable
+                if not move_path and hero_ai.target and hero_ai.target.alive:
+                    dist_to_target = hero.distance_to(hero_ai.target)
+                    if dist_to_target < 300:
+                        hero._ai_unreachable.add(id(hero_ai.target))
+                        hero_ai.target = None  # Force retarget next frame
 
         else:
             # No enemies and no action — explore! Move toward next unexplored room
@@ -1293,16 +1328,22 @@ while running:
     if ambush_target and not ai_enabled:
         if not ambush_target.alive or not hero.stealthed:
             ambush_target = None
+            move_path = []
+        elif not check_los(hero.x, hero.y, ambush_target.x, ambush_target.y):
+            # Lost LOS — cancel
+            ambush_target = None
+            move_path = []
         else:
             dist = hero.distance_to(ambush_target)
             ab_ambush = hero.abilities.get("E")
-            if dist <= 55 and ab_ambush and ab_ambush.is_ready():
+            if dist <= ab_ambush.range and ab_ambush and ab_ambush.is_ready():
                 # In range — execute Ambush
                 _cast_ability("E", ab_ambush, ambush_target.x, ambush_target.y, ambush_target)
                 ambush_target = None
             else:
-                # Walk toward target at stealth speed
-                hero.move_toward(ambush_target.x, ambush_target.y, dt, is_wall)
+                # Walk toward target using pathfinding
+                if not move_path:
+                    move_path = astar(dungeon, hero.x, hero.y, ambush_target.x, ambush_target.y)
 
     # Auto-attack selected target (walk to range, attack when close)
     if selected_target and not ai_enabled and not frostbolt_channeling and not hero.stealthed and not hero.has_condition(Condition.IMMOBILIZED):
