@@ -533,3 +533,23 @@ Decided current repo is too entangled to incrementally refactor — will create 
 | Wizard | Haycock | 14 | 0 | 0 |
 | Wizard | Northshire | 13 | 0 | 0 |
 | Rogue | Northshire | 30 | 0 | 0 |
+
+---
+
+## Session 9 — 2026-08-05
+
+### Development Strategy Change
+- **Focus hero: Heskan (Wizard) only.** All gameplay optimization, AI tuning, and feature development uses Wizard as the sole test subject going forward. Other heroes will be reworked/rebalanced at a major milestone, not after every update. This reduces iteration overhead significantly.
+
+### Changes
+- **Removed extra lives system**: No more `life_tokens` / revive mechanic. 1 life — death = game over.
+- **Maximized window**: Game now starts at full screen size (resizable). Handles `VIDEORESIZE` events in all loops (map select, hero select, game loop).
+- **Health regeneration**: All entities regen HP passively.
+  - In combat (monster aggroed): 0.5% max HP/sec
+  - Out of combat: 2% max HP/sec
+  - `in_combat` flag set per-frame based on aggro state
+
+### Key Files Modified
+- `game/engine/entities.py` — removed `life_tokens`, simplified `check_hero_death()`, added regen (`in_combat`, `regen_rate_combat`, `regen_rate_ooc`) to `Entity`
+- `game/main.py` — removed lives HUD/init, maximized+resizable window, VIDEORESIZE handling, combat state update loop for regen
+- `WORKLOG.md` — session log

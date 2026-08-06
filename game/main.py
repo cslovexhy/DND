@@ -33,8 +33,10 @@ for i, arg in enumerate(sys.argv):
 
 # === INIT ===
 pygame.init()
-WIDTH, HEIGHT = 1024, 768
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+# Start maximized — get display size, then create resizable window
+_info = pygame.display.Info()
+WIDTH, HEIGHT = _info.current_w, _info.current_h - 50  # leave room for title bar
+screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
 pygame.display.set_caption("Wrath of Ashardalon — Adventure 1: Escape the Tunnel")
 clock = pygame.time.Clock()
 font = pygame.font.Font(None, 20)
@@ -187,6 +189,9 @@ if USE_MAP is None and not auto_mode:
     while map_selecting:
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if event.type == pygame.VIDEORESIZE:
+                WIDTH, HEIGHT = event.w, event.h
+                screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE: pygame.quit(); sys.exit()
                 if event.key in (pygame.K_UP, pygame.K_w):
@@ -266,6 +271,9 @@ if auto_mode:
 while selecting:
     for event in pygame.event.get():
         if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+        if event.type == pygame.VIDEORESIZE:
+            WIDTH, HEIGHT = event.w, event.h
+            screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE: pygame.quit(); sys.exit()
             if event.key in (pygame.K_LEFT, pygame.K_a):
@@ -373,7 +381,6 @@ hero.sprite = HERO_SPRITES[hero_info["sprite_key"]]
 
 game_state = GameState()
 game_state.heroes.append(hero)
-game_state.life_tokens = 2
 if USE_MAP:
     game_state.objective_text = "Explore Northshire and clear the area of monsters!"
 else:
@@ -1021,6 +1028,9 @@ while running:
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
+        if event.type == pygame.VIDEORESIZE:
+            WIDTH, HEIGHT = event.w, event.h
+            screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
         if event.type == pygame.MOUSEWHEEL:
             cam_zoom = max(CAM_ZOOM_MIN, min(CAM_ZOOM_MAX, cam_zoom + event.y * CAM_ZOOM_STEP))
         if event.type == pygame.KEYDOWN:
@@ -1170,6 +1180,17 @@ while running:
         heal = hero.heal(heal_amount)
         floating_texts.append(FloatingText(hero.x, hero.y - 30, f"+{heal:.0f} HP", (100, 255, 100)))
         del hero.buffs["Holy Light Casting"]
+
+    # Update combat state for health regeneration
+    hero.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == hero
+                         for m in game_state.monsters)
+    for comp, _ in companions:
+        if comp.alive:
+            comp.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == comp
+                                 for m in game_state.monsters)
+    for m in game_state.monsters:
+        if m.alive:
+            m.in_combat = getattr(m, 'aggro_state', '') == 'aggroed'
 
     game_state.update(dt)
     alive = game_state.alive_monsters
@@ -1916,7 +1937,7 @@ while running:
     pygame.draw.rect(screen, HP_RED, (20,20,202,18))
     pygame.draw.rect(screen, HP_GREEN, (20,20,int(202*hp_pct),18))
     screen.blit(font.render(f"HP {hero.hp:.0f}/{hero.max_hp}", True, WHITE), (25,23))
-    screen.blit(font.render(f"[F] Potions: {potions}  Lives: {game_state.life_tokens}", True, (200,150,150)), (20,44))
+    screen.blit(font.render(f"[F] Potions: {potions}", True, (200,150,150)), (20,44))
 
     # Skill list (left side)
     ab_y = 66

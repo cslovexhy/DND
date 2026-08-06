@@ -125,6 +125,11 @@ class Entity:
         self.facing_left = False
         self.conditions: list[ActiveCondition] = []
 
+        # Health regeneration
+        self.in_combat = False  # set externally by game loop
+        self.regen_rate_combat = 0.005     # 0.5% of max HP per second in combat
+        self.regen_rate_ooc = 0.02         # 2% of max HP per second out of combat
+
         # Active buffs/debuffs (name -> {remaining: float, ...data})
         self.buffs: dict[str, dict] = {}
 
@@ -258,6 +263,10 @@ class Entity:
         self.flash_timer = max(0, self.flash_timer - dt)
         self.swing_timer = max(0, self.swing_timer - dt)
         self.update_conditions(dt)
+        # Health regeneration
+        if self.alive and self.hp < self.max_hp:
+            rate = self.regen_rate_combat if self.in_combat else self.regen_rate_ooc
+            self.hp = min(self.max_hp, self.hp + self.max_hp * rate * dt)
         # Tick buff/debuff timers
         for k, v in list(self.buffs.items()):
             v["remaining"] -= dt
@@ -418,7 +427,6 @@ class GameState:
     def __init__(self):
         self.heroes: list[Hero] = []
         self.monsters: list[Monster] = []
-        self.life_tokens: int = 2  # shared healing surges
         self.game_time: float = 0.0
         self.adventure_complete: bool = False
         self.adventure_failed: bool = False
@@ -444,11 +452,5 @@ class GameState:
         """Handle hero at 0 HP. Returns True if game over."""
         if hero.alive:
             return False
-        if self.life_tokens > 0:
-            self.life_tokens -= 1
-            hero.hp = hero.surge_value
-            hero.alive = True
-            return False
-        else:
-            self.adventure_failed = True
-            return True
+        self.adventure_failed = True
+        return True
