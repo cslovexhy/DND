@@ -15,9 +15,6 @@ scratch/
 # PDFs (too large for git, 296MB)
 pdfs/
 
-# Unused asset packs
-assets/kenney_rpg/
-
 # Zip files
 *.zip
 

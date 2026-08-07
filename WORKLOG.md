@@ -553,3 +553,15 @@ Decided current repo is too entangled to incrementally refactor — will create 
 - `game/engine/entities.py` — removed `life_tokens`, simplified `check_hero_death()`, added regen (`in_combat`, `regen_rate_combat`, `regen_rate_ooc`) to `Entity`
 - `game/main.py` — removed lives HUD/init, maximized+resizable window, VIDEORESIZE handling, combat state update loop for regen
 - `WORKLOG.md` — session log
+
+---
+
+## Session 10 — 2026-08-07
+
+### Environment Setup (Windows)
+- Cloned repo on Windows machine for the first time
+- Installed Git 2.55.0 and Python 3.12.10 via winget (Windows Package Manager)
+- Created `.venv` and installed `pygame-ce` 2.5.7
+- Downloaded Kenney Roguelike RPG pack (CC0, OpenGameArt) — `roguelikeSheet_transparent.png` required by map editor
+- Removed `assets/kenney_rpg/` from `.gitignore` and checked in the spritesheet so the map editor works out of the box on a fresh clone
+- Verified map editor and game both launch successfully on Windows
