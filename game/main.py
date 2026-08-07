@@ -408,6 +408,7 @@ if USE_MAP:
         sys.exit(1)
     dungeon = world_map  # Duck-type compatible (is_wall, is_floor, get_start_pos)
     hero_wx, hero_wy = world_map.get_start_pos()
+    pygame.mixer.music.stop()
     start_map_music(world_map.music)
 else:
     world_map = None
