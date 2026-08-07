@@ -33,6 +33,41 @@ for i, arg in enumerate(sys.argv):
 
 # === INIT ===
 pygame.init()
+pygame.mixer.init()
+
+# === MUSIC ===
+_music_playlist = []
+_music_index = 0
+
+def start_map_music(music_list):
+    """Start playing a map's music playlist. Loops through tracks in order."""
+    global _music_playlist, _music_index
+    _music_playlist = [t for t in music_list if os.path.exists(t)]
+    _music_index = 0
+    if not _music_playlist:
+        return
+    try:
+        pygame.mixer.music.load(_music_playlist[0])
+        pygame.mixer.music.set_volume(0.6)
+        pygame.mixer.music.play()
+        pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)
+    except Exception as e:
+        print(f"[MUSIC] Failed to load {_music_playlist[0]}: {e}")
+
+def advance_music():
+    """Play the next track in the playlist (called on MUSIC_END event)."""
+    global _music_index
+    if not _music_playlist:
+        return
+    _music_index = (_music_index + 1) % len(_music_playlist)
+    try:
+        pygame.mixer.music.load(_music_playlist[_music_index])
+        pygame.mixer.music.play()
+    except Exception as e:
+        print(f"[MUSIC] Failed to load {_music_playlist[_music_index]}: {e}")
+
+MUSIC_END = pygame.USEREVENT + 1
+
 # Start maximized — get display size, then create resizable window
 _info = pygame.display.Info()
 WIDTH, HEIGHT = _info.current_w, _info.current_h - 50  # leave room for title bar
@@ -170,6 +205,9 @@ if auto_mode:
 
 # === MAP SELECT SCREEN ===
 import glob as _glob
+
+# Start title music — plays through map select, hero select, and any future pre-game screens
+start_map_music(["assets/music/01. Legends of Azeroth.mp3"])
 
 def _get_available_maps():
     """Scan data/maps/ for JSON map files."""
@@ -370,11 +408,13 @@ if USE_MAP:
         sys.exit(1)
     dungeon = world_map  # Duck-type compatible (is_wall, is_floor, get_start_pos)
     hero_wx, hero_wy = world_map.get_start_pos()
+    start_map_music(world_map.music)
 else:
     world_map = None
     dungeon = UnifiedDungeon()
     dungeon.generate(num_rooms=7, quest_room_name="Tunnel Exit")
     hero_wx, hero_wy = dungeon.get_start_pos()
+    pygame.mixer.music.stop()  # No music for dungeon mode
 hero_info = ALL_HEROES[selected_hero_idx]
 hero = hero_info["create"](hero_wx, hero_wy)
 hero.sprite = HERO_SPRITES[hero_info["sprite_key"]]
@@ -1028,6 +1068,7 @@ while running:
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
+        if event.type == MUSIC_END: advance_music()
         if event.type == pygame.VIDEORESIZE:
             WIDTH, HEIGHT = event.w, event.h
             screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)

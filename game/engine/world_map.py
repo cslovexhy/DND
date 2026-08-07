@@ -35,6 +35,7 @@ class WorldMap:
         self.objects = []  # 2D list of MapTile or None
         self.spawns: list[SpawnPoint] = []
         self.hero_start: Optional[tuple] = None  # (tx, ty)
+        self.music: list[str] = []  # list of music file paths to play in order
 
     @classmethod
     def load(cls, path: str) -> 'WorldMap':
@@ -76,6 +77,9 @@ class WorldMap:
                 m.hero_start = (spawn.x, spawn.y)
             else:
                 m.spawns.append(spawn)
+
+        # Load music playlist
+        m.music = data.get("music", [])
 
         return m
 

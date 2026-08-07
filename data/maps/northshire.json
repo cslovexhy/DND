@@ -2,6 +2,7 @@
   "width": 80,
   "height": 60,
   "tileset": "kenney_rpg",
+  "music": ["assets/music/elwynn_forest.mp3"],
   "layers": [
     {
       "name": "ground",

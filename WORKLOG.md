@@ -565,3 +565,17 @@ Decided current repo is too entangled to incrementally refactor — will create 
 - Downloaded Kenney Roguelike RPG pack (CC0, OpenGameArt) — `roguelikeSheet_transparent.png` required by map editor
 - Removed `assets/kenney_rpg/` from `.gitignore` and checked in the spritesheet so the map editor works out of the box on a fresh clone
 - Verified map editor and game both launch successfully on Windows
+
+### Music System
+- Added `music` list field to `WorldMap` — maps can specify a playlist in their JSON
+- `main.py` initializes `pygame.mixer` and plays/loops tracks when a map loads
+- Downloaded `assets/music/elwynn_forest.mp3` (WoW Classic, 3:03, 6MB) — assigned to Northshire maps
+
+### Important Asset Resources
+- **WoW Classic full music gamerip**: https://downloads.khinsider.com/game-soundtracks/album/world-of-warcraft-direct-game-rip
+  - All original in-game music tracks (~4-6MB each)
+  - Tracks of interest: Elwynn Forest, Stormwind, Ironforge, Tavern, Combat, etc.
+  - Download via browser → get lambda.vgmtreasurechest.com link → can wget/curl from there
+- **WoW Alpha Ambience Tracks (0.5.3)**: https://downloads.khinsider.com/game-soundtracks/album/world-of-warcraft-053-ambience-tracks-macos-windows-gamerip-2003
+  - Environmental ambience (chirps, wind, etc.) — 65 tracks, ~4.75MB each
+  - Useful for layering on top of music
