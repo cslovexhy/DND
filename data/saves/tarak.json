@@ -1,0 +1,19 @@
+{
+  "name": "Tarak",
+  "class_name": "Rogue",
+  "level": 9,
+  "xp": 547,
+  "gold": 8590,
+  "kills": 71,
+  "completed_quests": [
+    "a_threat_within",
+    "kobold_camp_cleanup",
+    "wolves_across_the_border",
+    "investigate_echo_ridge",
+    "brotherhood_of_thieves",
+    "skirmish_at_echo_ridge",
+    "millys_harvest",
+    "bounty_on_garrick_padfoot"
+  ],
+  "active_quests": []
+}

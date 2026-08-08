@@ -493,14 +493,14 @@ def save_game():
         "gold": hero.gold,
         "kills": hero.kills,
         "completed_quests": completed_quests,
-        "current_quest_id": current_quest_id,
+        "active_quests": active_quests,
     }
     with open(get_save_path(), "w") as f:
         json.dump(data, f, indent=2)
 
 def load_game():
     """Load hero progress from JSON file. Returns True if save existed."""
-    global current_quest_id
+    global active_quests
     path = get_save_path()
     if not os.path.exists(path):
         return False
@@ -525,20 +525,25 @@ def load_game():
                 quest_log[qid].completed = True
                 quest_log[qid].turned_in = True
             completed_quests.append(qid)
-        current_quest_id = data.get("current_quest_id", "a_threat_within")
-        # Auto-accept current quest if it exists
-        if current_quest_id and current_quest_id in quest_log:
-            q = quest_log[current_quest_id]
-            if not q.turned_in and not q.accepted and q.objectives:
-                pass  # Will be accepted when player visits NPC
-        print(f"[SAVE] Loaded: Lv{hero.level} XP={hero.xp} Gold={hero.gold} Kills={hero.kills}")
+        # Load active quests (new format) or migrate from old format
+        if "active_quests" in data:
+            active_quests = data["active_quests"]
+        elif "current_quest_id" in data and data["current_quest_id"]:
+            # Backward compat: old save with single current_quest_id
+            active_quests = [data["current_quest_id"]]
+        else:
+            active_quests = []
+        # Mark all active quests as accepted
+        for qid in active_quests:
+            if qid in quest_log:
+                quest_log[qid].accepted = True
+        print(f"[SAVE] Loaded: Lv{hero.level} XP={hero.xp} Gold={hero.gold} Kills={hero.kills} ActiveQuests={active_quests}")
         return True
     except Exception as e:
         print(f"[SAVE] Failed to load: {e}")
         return False
 
-# Load existing save
-load_game()
+# (load_game is called after quest system is defined)
 
 game_state = GameState()
 game_state.heroes.append(hero)
@@ -747,17 +752,181 @@ if USE_MAP:
     spawn_world_map_monsters()
 
 
+# === QUEST POPUP PANEL ===
+import subprocess
+import textwrap
+
+# TTS process handle (so we can kill it if a new quest is picked up)
+_tts_process = None
+
+def speak_text(text, voice="Daniel"):
+    """Speak text aloud using macOS 'say' command (async, non-blocking)."""
+    global _tts_process
+    # Kill any ongoing speech
+    if _tts_process and _tts_process.poll() is None:
+        _tts_process.terminate()
+    try:
+        _tts_process = subprocess.Popen(
+            ["say", "-v", voice, "-r", "175", text],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    except FileNotFoundError:
+        pass  # 'say' not available (non-macOS) — silently skip
+
+
+class QuestPopupPanel:
+    """A centered popup panel showing quest details. Stays visible until dismissed."""
+    def __init__(self, quest, mode="accept", npc_name="NPC"):
+        self.quest = quest
+        self.mode = mode  # "accept" or "turnin"
+        self.npc_name = npc_name
+        self.active = True
+        # Panel dimensions — calculate height based on content
+        self.width = 480
+        self.padding = 16
+        self.close_btn_size = 24
+        self.close_btn_x = self.width - self.close_btn_size - 8
+        self.close_btn_y = 8
+        # Pre-calculate wrapped description lines
+        self.desc_lines = textwrap.wrap(self.quest.description, width=56)
+        # Calculate height: header(30) + npc(22) + title(28) + desc(16*lines) + gap(8)
+        #   + objectives(16 + 16*n + 8) + rewards(16+16) + padding*2
+        h = self.padding + 30 + 22 + 28  # header + npc + title
+        h += len(self.desc_lines) * 16 + 8  # description
+        if self.mode == "accept" and self.quest.objectives:
+            h += 16 + len(self.quest.objectives) * 16 + 8  # objectives
+        h += 16 + 16  # rewards header + line
+        h += self.padding  # bottom padding
+        self.height = max(200, h)
+
+    def update(self, dt):
+        pass  # No auto-dismiss — player must click close
+
+    def dismiss(self):
+        self.active = False
+
+    def get_panel_rect(self):
+        """Return the screen-space rect of the panel."""
+        px = WIDTH // 2 - self.width // 2
+        py = HEIGHT // 2 - self.height // 2
+        return pygame.Rect(px, py, self.width, self.height)
+
+    def handle_click(self, mx, my):
+        """Handle a mouse click. Returns True if the popup consumed the click."""
+        if not self.active:
+            return False
+        panel_rect = self.get_panel_rect()
+        if not panel_rect.collidepoint(mx, my):
+            # Clicked outside panel — dismiss
+            self.dismiss()
+            return True
+        # Check close button
+        close_rect = pygame.Rect(
+            panel_rect.x + self.close_btn_x,
+            panel_rect.y + self.close_btn_y,
+            self.close_btn_size, self.close_btn_size
+        )
+        if close_rect.collidepoint(mx, my):
+            self.dismiss()
+            return True
+        # Click inside panel but not on close — consume but don't dismiss
+        return True
+
+    def draw(self, screen):
+        if not self.active:
+            return
+        # Semi-transparent dark panel centered on screen
+        px = WIDTH // 2 - self.width // 2
+        py = HEIGHT // 2 - self.height // 2
+        panel_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        panel_surf.fill((20, 20, 30, 230))
+        # Border
+        pygame.draw.rect(panel_surf, GOLD, (0, 0, self.width, self.height), 2, border_radius=6)
+
+        # Close button [X]
+        close_rect = pygame.Rect(self.close_btn_x, self.close_btn_y, self.close_btn_size, self.close_btn_size)
+        pygame.draw.rect(panel_surf, (80, 80, 80), close_rect, border_radius=4)
+        pygame.draw.rect(panel_surf, (200, 200, 200), close_rect, 1, border_radius=4)
+        x_surf = font.render("X", True, (255, 255, 255))
+        panel_surf.blit(x_surf, (self.close_btn_x + (self.close_btn_size - x_surf.get_width()) // 2,
+                                  self.close_btn_y + (self.close_btn_size - x_surf.get_height()) // 2))
+
+        y = self.padding
+        # Header
+        if self.mode == "accept":
+            header = "Quest Accepted"
+            header_color = GOLD
+        else:
+            header = "Quest Complete!"
+            header_color = (100, 255, 100)
+        hdr_surf = big_font.render(header, True, header_color)
+        panel_surf.blit(hdr_surf, (self.width // 2 - hdr_surf.get_width() // 2, y))
+        y += 30
+
+        # NPC name
+        npc_surf = font.render(f"— {self.npc_name} —", True, (180, 180, 180))
+        panel_surf.blit(npc_surf, (self.width // 2 - npc_surf.get_width() // 2, y))
+        y += 22
+
+        # Quest title
+        title_surf = big_font.render(self.quest.title, True, (255, 255, 255))
+        panel_surf.blit(title_surf, (self.padding, y))
+        y += 28
+
+        # Description (word-wrapped)
+        for line in self.desc_lines:
+            line_surf = font.render(line, True, (200, 200, 200))
+            panel_surf.blit(line_surf, (self.padding, y))
+            y += 16
+        y += 8
+
+        # Objectives (for accept mode)
+        if self.mode == "accept" and self.quest.objectives:
+            obj_header = font.render("Objectives:", True, (180, 180, 255))
+            panel_surf.blit(obj_header, (self.padding, y))
+            y += 16
+            for obj in self.quest.objectives:
+                obj_text = f"  • Kill {obj['count']} {obj['target']}"
+                obj_surf = font.render(obj_text, True, (220, 220, 220))
+                panel_surf.blit(obj_surf, (self.padding, y))
+                y += 16
+            y += 8
+
+        # Rewards
+        rewards_header = font.render("Rewards:", True, (255, 215, 0))
+        panel_surf.blit(rewards_header, (self.padding, y))
+        y += 16
+        reward_parts = []
+        if self.quest.rewards_xp > 0:
+            reward_parts.append(f"+{self.quest.rewards_xp} XP")
+        if self.quest.rewards_gold > 0:
+            reward_parts.append(f"+{self.quest.rewards_gold} Gold")
+        if reward_parts:
+            rew_surf = font.render("  " + "   ".join(reward_parts), True, (255, 255, 100))
+            panel_surf.blit(rew_surf, (self.padding, y))
+
+        # Blit panel to screen
+        screen.blit(panel_surf, (px, py))
+
+
+# Active quest popup (only one at a time)
+quest_popup_panel = None
+
+
 # === QUEST SYSTEM ===
 class Quest:
-    """A single quest with kill objectives."""
-    def __init__(self, quest_id, title, description, objectives, rewards_xp, rewards_gold, next_quest=None):
+    """A single quest with kill objectives, prerequisites, and NPC assignment."""
+    def __init__(self, quest_id, title, description, objectives, rewards_xp, rewards_gold,
+                 npc_id=None, level_req=1, prerequisites=None):
         self.quest_id = quest_id
         self.title = title
         self.description = description
         self.objectives = objectives  # list of {"target": "Monster Name", "count": N}
         self.rewards_xp = rewards_xp
         self.rewards_gold = rewards_gold
-        self.next_quest = next_quest  # quest_id of the next quest in chain
+        self.npc_id = npc_id  # which NPC offers/accepts this quest
+        self.level_req = level_req  # minimum hero level to accept
+        self.prerequisites = prerequisites or []  # list of quest_ids that must be turned in first
         # Runtime state
         self.progress = {}  # {"Monster Name": kills_so_far}
         self.accepted = False
@@ -765,6 +934,8 @@ class Quest:
         self.turned_in = False  # rewards claimed
 
     def is_complete(self):
+        if not self.objectives:
+            return True  # No-objective quests are always complete
         for obj in self.objectives:
             if self.progress.get(obj["target"], 0) < obj["count"]:
                 return False
@@ -788,33 +959,70 @@ class Quest:
             parts.append(f"{obj['target']}: {cur}/{obj['count']}")
         return "  ".join(parts)
 
+    def prerequisites_met(self):
+        """Check if all prerequisite quests have been turned in."""
+        for pre_id in self.prerequisites:
+            if pre_id not in completed_quests:
+                return False
+        return True
 
-# Northshire questline — based on WoW Classic
+
+# Northshire questlines — based on WoW Classic (from warcraft.wiki.gg)
+# NPCs: deputy_willem, marshal_mcbride, eagan_peltskinner, milly_osworth
 NORTHSHIRE_QUESTS = [
+    # === DEPUTY WILLEM CHAIN (intro + defias) ===
     Quest("a_threat_within", "A Threat Within",
-          "Marshal McBride needs your help defending Northshire Valley. Speak with him to begin.",
-          [],  # No kill objective — just talk to accept
-          rewards_xp=50, rewards_gold=0, next_quest="kobold_camp_cleanup"),
+          "The Stormwind guards are hard pressed to keep the peace here, with so many of us in distant lands and so many threats pressing close. And so we're enlisting the aid of anyone willing to defend their home. If you're here to answer the call, then speak with my superior, Marshal McBride. He's inside the abbey behind me.",
+          [],  # No kill objective — just talk to accept/turn-in
+          rewards_xp=50, rewards_gold=0,
+          npc_id="deputy_willem", level_req=1, prerequisites=[]),
 
+    # === MARSHAL MCBRIDE CHAIN (kobolds) ===
     Quest("kobold_camp_cleanup", "Kobold Camp Cleanup",
-          "The Kobold camps to the east are growing bolder. Thin their numbers!",
+          "Your first task is one of cleansing. A clan of kobolds have infested the woods to the north. Go there and fight the kobold vermin you find. Reduce their numbers so that we may one day drive them from Northshire.",
           [{"target": "Kobold Dragonshield", "count": 10}],
-          rewards_xp=250, rewards_gold=50, next_quest="wolves_across_the_border"),
+          rewards_xp=250, rewards_gold=50,
+          npc_id="marshal_mcbride", level_req=1, prerequisites=["a_threat_within"]),
 
+    Quest("investigate_echo_ridge", "Investigate Echo Ridge",
+          "My scouts tell me that the kobold infestation is larger than we had thought. A group of kobold workers has camped near the Echo Ridge Mine to the north. Go to the mine and remove them. We know there are at least ten.",
+          [{"target": "Kobold Dragonshield", "count": 10}],
+          rewards_xp=350, rewards_gold=75,
+          npc_id="marshal_mcbride", level_req=3, prerequisites=["kobold_camp_cleanup"]),
+
+    Quest("skirmish_at_echo_ridge", "Skirmish at Echo Ridge",
+          "Your previous investigations are proof that the Echo Ridge Mine needs purging. Return to the mine and help clear it of kobolds. Waste no time. The longer the kobolds are left unmolested in the mine, the deeper a foothold they gain in Northshire.",
+          [{"target": "Kobold Dragonshield", "count": 12}],
+          rewards_xp=450, rewards_gold=100,
+          npc_id="marshal_mcbride", level_req=4, prerequisites=["investigate_echo_ridge"]),
+
+    # === EAGAN PELTSKINNER CHAIN (wolves) ===
     Quest("wolves_across_the_border", "Wolves Across the Border",
-          "The wolves in the forest are becoming a threat to travelers. Hunt them down.",
+          "I hate those nasty timber wolves! But I sure like eating wolf steaks. Bring me tough wolf meat and I will exchange it for something you'll find useful. Tough wolf meat is gathered from hunting the timber wolves and young wolves wandering the Northshire countryside.",
           [{"target": "Grey Wolf", "count": 8}],
-          rewards_xp=250, rewards_gold=50, next_quest="brotherhood_of_thieves"),
+          rewards_xp=250, rewards_gold=50,
+          npc_id="eagan_peltskinner", level_req=2, prerequisites=["a_threat_within"]),
 
+    # === DEPUTY WILLEM CHAIN (defias) ===
     Quest("brotherhood_of_thieves", "Brotherhood of Thieves",
-          "Defias thugs have been spotted in the vineyards. Eliminate the cultist threat!",
+          "Recently, a new group of thieves has been hanging around Northshire. They call themselves the Defias Brotherhood, and have been seen across the river to the east. I don't know what they're up to, but I'm sure it's not good! Bring me the bandanas they wear, and I'll reward you with a weapon.",
           [{"target": "Human Cultist", "count": 12}],
-          rewards_xp=375, rewards_gold=75, next_quest="northshire_secured"),
+          rewards_xp=375, rewards_gold=75,
+          npc_id="deputy_willem", level_req=2, prerequisites=["a_threat_within"]),
 
-    Quest("northshire_secured", "Northshire Secured",
-          "The valley is safer now, but threats remain. Clear out the remaining hostiles: wolves, kobolds, and cultists.",
-          [{"target": "Grey Wolf", "count": 5}, {"target": "Kobold Dragonshield", "count": 5}, {"target": "Human Cultist", "count": 5}],
-          rewards_xp=500, rewards_gold=150, next_quest=None),
+    Quest("bounty_on_garrick_padfoot", "Bounty on Garrick Padfoot",
+          "The Defias have a leader in this area by the name of Garrick Padfoot. Kill him and bring me his head so we can send a message to those thieves that Northshire will not fall to their kind.",
+          [{"target": "Human Cultist", "count": 6}],
+          rewards_xp=450, rewards_gold=100,
+          npc_id="deputy_willem", level_req=4, prerequisites=["brotherhood_of_thieves"]),
+
+    # === MILLY OSWORTH CHAIN (vineyard) ===
+    Quest("millys_harvest", "Milly's Harvest",
+          "I was working in the vineyard behind the abbey when those wretched Defias thugs ran me off! I left behind a whole bushel of grapes. Could you go get them for me? You'll need to fight through those bandits to reach them.",
+          [{"target": "Human Cultist", "count": 8}],
+          rewards_xp=350, rewards_gold=75,
+          npc_id="milly_osworth", level_req=4,
+          prerequisites=["wolves_across_the_border", "brotherhood_of_thieves"]),
 ]
 
 # Quest state manager
@@ -822,32 +1030,92 @@ quest_log = {}  # quest_id -> Quest
 for q in NORTHSHIRE_QUESTS:
     quest_log[q.quest_id] = q
 
-current_quest_id = "a_threat_within"  # First available quest
+# All defined questlines — each is a list of quest_ids in sequential order per NPC chain.
+QUESTLINES = [
+    # McBride kobold chain
+    ["kobold_camp_cleanup", "investigate_echo_ridge", "skirmish_at_echo_ridge"],
+    # Willem intro + defias chain
+    ["a_threat_within", "brotherhood_of_thieves", "bounty_on_garrick_padfoot"],
+    # Eagan wolves chain
+    ["wolves_across_the_border"],
+    # Milly vineyard chain
+    ["millys_harvest"],
+]
+
+active_quests = []  # List of quest_ids currently accepted and in-progress
 completed_quests = []  # List of turned-in quest IDs
+
+
+def get_available_quests_for_npc(npc_id):
+    """Return quest_ids that a specific NPC can offer right now."""
+    available = []
+    for chain in QUESTLINES:
+        for qid in chain:
+            q = quest_log[qid]
+            if q.npc_id != npc_id:
+                continue
+            if q.turned_in:
+                continue  # Done, check next in chain
+            if q.accepted:
+                break  # In progress — no more from this chain
+            # Check prerequisites and level requirement
+            if q.prerequisites_met() and hero.level >= q.level_req:
+                if qid not in active_quests:
+                    available.append(qid)
+            break  # Only one quest per chain per NPC at a time
+    return available
+
+
+def get_available_quests():
+    """Return all quest_ids that can be offered across all NPCs."""
+    available = []
+    for chain in QUESTLINES:
+        for qid in chain:
+            q = quest_log[qid]
+            if q.turned_in:
+                continue
+            if q.accepted:
+                break
+            if q.prerequisites_met() and hero.level >= q.level_req:
+                if qid not in active_quests:
+                    available.append(qid)
+            break
+    return available
+
+
+def get_turn_ins_for_npc(npc_id):
+    """Return quest_ids that can be turned in at a specific NPC."""
+    turn_ins = []
+    for qid in active_quests:
+        q = quest_log.get(qid)
+        if q and q.npc_id == npc_id and q.accepted and q.is_complete() and not q.turned_in:
+            turn_ins.append(qid)
+    return turn_ins
+
+
+def get_active_quest_objects():
+    """Return list of Quest objects currently active (accepted, not turned in)."""
+    return [quest_log[qid] for qid in active_quests if qid in quest_log]
 
 
 class NPC(Entity):
     """A quest-giving NPC. Inherits all combat/entity attributes but doesn't fight by default."""
-    def __init__(self, name, x, y, level=1, sprite=None):
+    def __init__(self, name, x, y, npc_id, gender="male", level=1, sprite=None):
         # NPC has minimal combat stats (hp=5 gives 250 HP, ac=10 no armor, speed=0 stationary)
         super().__init__(name, x, y, hp=5, ac=10, speed=0)
+        self.npc_id = npc_id  # matches quest.npc_id
+        self.gender = gender  # "male" or "female" — used for TTS voice
         self.level = level
         self.sprite = sprite
         self.interact_range = 80  # pixels — how close hero must be to interact
 
     def has_available_quest(self):
         """Does this NPC have a quest to offer?"""
-        if current_quest_id and current_quest_id in quest_log:
-            q = quest_log[current_quest_id]
-            return not q.accepted and not q.turned_in
-        return False
+        return len(get_available_quests_for_npc(self.npc_id)) > 0
 
     def has_turn_in(self):
         """Does this NPC have a quest ready to turn in?"""
-        if current_quest_id and current_quest_id in quest_log:
-            q = quest_log[current_quest_id]
-            return q.accepted and q.is_complete() and not q.turned_in
-        return False
+        return len(get_turn_ins_for_npc(self.npc_id)) > 0
 
     def is_in_range(self, hx, hy):
         dx = self.x - hx
@@ -855,19 +1123,34 @@ class NPC(Entity):
         return (dx*dx + dy*dy) <= self.interact_range * self.interact_range
 
 
-# Create the NPC — Marshal McBride, south of church (hero_start is 26,24 = church area)
-# Place NPC at tile 26, 27 (3 tiles south of hero start)
-npc_mcbride = None
+# Create NPCs — positioned relative to hero_start (26,24)
+# Based on WoW Classic Northshire layout:
+#   Deputy Willem: south of abbey entrance (guards the road)
+#   Marshal McBride: inside the abbey (south of hero start)
+#   Eagan Peltskinner: west side of church, near wolf area
+#   Milly Osworth: northeast of church, near vineyard
+npcs = []
 if USE_MAP:
-    npc_tx, npc_ty = 26, 27
-    npc_wx, npc_wy = world_map.get_spawn_world_pos(npc_tx, npc_ty)
-    npc_mcbride = NPC("Marshal McBride", npc_wx, npc_wy)
-    npc_mcbride.sprite = get_dungeon_tile(1, 8)  # Use a human sprite from dungeon tilemap
+    npc_defs = [
+        # (name, npc_id, gender, tile_x, tile_y, sprite_col, sprite_row)
+        ("Deputy Willem",       "deputy_willem",       "male",   26, 26, 1, 8),
+        ("Marshal McBride",     "marshal_mcbride",     "male",   26, 28, 2, 8),
+        ("Eagan Peltskinner",   "eagan_peltskinner",   "male",   22, 25, 5, 8),
+        ("Milly Osworth",       "milly_osworth",       "female", 30, 22, 4, 8),
+    ]
+    for npc_name, npc_id, gender, tx, ty, spr_col, spr_row in npc_defs:
+        wx, wy = world_map.get_spawn_world_pos(tx, ty)
+        npc = NPC(npc_name, wx, wy, npc_id=npc_id, gender=gender)
+        npc.sprite = get_dungeon_tile(spr_col, spr_row)
+        npcs.append(npc)
 
 # Quest interaction state
 quest_popup_timer = 0.0  # How long to show quest accepted/completed popup
 quest_popup_text = ""
 quest_popup_color = GOLD
+
+# Load existing save (must be after quest_log and completed_quests are defined)
+load_game()
 
 def get_monster_at_screen(sx, sy):
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
@@ -876,6 +1159,67 @@ def get_monster_at_screen(sx, sy):
         if abs(m.x - wx) < TILE_SIZE and abs(m.y - wy) < TILE_SIZE:
             return m
     return None
+
+
+def get_npc_at_screen(sx, sy):
+    """Check if a screen click hit an NPC sprite."""
+    wx = (sx - WIDTH//2) / cam_zoom + hero.x
+    wy = (sy - HEIGHT//2) / cam_zoom + hero.y
+    for npc in npcs:
+        if abs(npc.x - wx) < TILE_SIZE and abs(npc.y - wy) < TILE_SIZE:
+            return npc
+    return None
+
+
+def interact_with_npc(npc):
+    """Handle quest turn-in and acceptance for a specific NPC. Returns True if interaction happened."""
+    global quest_popup_panel
+    interacted = False
+
+    # First: turn in any completed quests at this NPC
+    turn_ins = get_turn_ins_for_npc(npc.npc_id)
+    for qid in turn_ins:
+        q = quest_log[qid]
+        q.turned_in = True
+        hero.xp += q.rewards_xp
+        hero.gold += q.rewards_gold
+        completed_quests.append(qid)
+        active_quests.remove(qid)
+        floating_texts.append(FloatingText(hero.x, hero.y - 40,
+            f"+{q.rewards_xp}xp +{q.rewards_gold}g", GOLD))
+        # Show turn-in popup panel
+        quest_popup_panel = QuestPopupPanel(q, mode="turnin", npc_name=npc.name)
+        voice = "Samantha" if npc.gender == "female" else "Daniel"
+        speak_text(f"Well done! {q.title} complete. Here's your reward: {q.rewards_xp} experience and {q.rewards_gold} gold.", voice)
+        save_game()
+        interacted = True
+
+    # Second: offer and accept all available quests from this NPC
+    if not interacted:  # Don't pile accept on top of turn-in
+        available = get_available_quests_for_npc(npc.npc_id)
+        for qid in available:
+            q = quest_log[qid]
+            q.accepted = True
+            if not q.objectives:
+                # No-objective quest (intro) — auto-complete and turn in
+                q.completed = True
+                q.turned_in = True
+                hero.xp += q.rewards_xp
+                hero.gold += q.rewards_gold
+                completed_quests.append(qid)
+                quest_popup_panel = QuestPopupPanel(q, mode="turnin", npc_name=npc.name)
+                voice = "Samantha" if npc.gender == "female" else "Daniel"
+                speak_text(q.description, voice)
+            else:
+                active_quests.append(qid)
+                # Show accept popup panel
+                quest_popup_panel = QuestPopupPanel(q, mode="accept", npc_name=npc.name)
+                voice = "Samantha" if npc.gender == "female" else "Daniel"
+                speak_text(q.description, voice)
+            interacted = True
+            break  # One quest popup at a time
+
+    return interacted
 
 
 # === SHARED ABILITY EXECUTION HELPERS ===
@@ -1394,6 +1738,10 @@ while running:
 
         if event.type == pygame.MOUSEBUTTONDOWN and not victory and not game_state.adventure_failed:
             mx_s, my_s = event.pos
+            # If quest popup panel is open, intercept clicks
+            if quest_popup_panel and quest_popup_panel.active:
+                quest_popup_panel.handle_click(mx_s, my_s)
+                continue
             wx = (mx_s - WIDTH//2) / cam_zoom + hero.x
             wy = (my_s - HEIGHT//2) / cam_zoom + hero.y
             clicked_monster = get_monster_at_screen(mx_s, my_s)
@@ -1441,9 +1789,17 @@ while running:
                     ambush_target = None
                     pending_cast = None
 
-            elif event.button == 3:  # Right-click = cast RIGHT skill
+            elif event.button == 3:  # Right-click = cast RIGHT skill or interact with NPC
+                # Check if clicking on an NPC first
+                clicked_npc = get_npc_at_screen(mx_s, my_s)
+                if clicked_npc and clicked_npc.is_in_range(hero.x, hero.y):
+                    interact_with_npc(clicked_npc)
+                elif clicked_npc and not clicked_npc.is_in_range(hero.x, hero.y):
+                    # Walk to NPC
+                    move_path = astar(dungeon, hero.x, hero.y, clicked_npc.x, clicked_npc.y)
+                    selected_target = None
                 # Stealth + right-click enemy + Ambush on right slot = queue ambush walk-to
-                if hero.stealthed and clicked_monster and ability_keys[right_skill_idx] == "E":
+                elif hero.stealthed and clicked_monster and ability_keys[right_skill_idx] == "E":
                     ab_ambush = hero.abilities.get("E")
                     if ab_ambush and ab_ambush.is_ready():
                         ambush_target = clicked_monster
@@ -1935,16 +2291,15 @@ while running:
             hero.kills += 1
             floating_texts.append(FloatingText(m.x, m.y+10, f"+{m.experience}xp", GOLD))
             # Quest kill tracking
-            if current_quest_id and current_quest_id in quest_log:
-                active_quest = quest_log[current_quest_id]
-                if active_quest.accepted and not active_quest.turned_in:
-                    if active_quest.record_kill(m.name):
+            for aq in get_active_quest_objects():
+                if aq.accepted and not aq.turned_in:
+                    if aq.record_kill(m.name):
                         # Show progress
-                        prog = active_quest.get_progress_text()
+                        prog = aq.get_progress_text()
                         floating_texts.append(FloatingText(hero.x, hero.y - 50, prog, (200, 200, 255)))
-                    if active_quest.is_complete() and not active_quest.completed:
-                        active_quest.completed = True
-                        quest_popup_text = f"Quest Complete: {active_quest.title} — Return to {npc_mcbride.name if npc_mcbride else 'NPC'}"
+                    if aq.is_complete() and not aq.completed:
+                        aq.completed = True
+                        quest_popup_text = f"Quest Complete: {aq.title} — Return to NPC"
                         quest_popup_timer = 3.0
                         quest_popup_color = (100, 255, 100)
             m.experience = 0
@@ -1985,57 +2340,12 @@ while running:
                 still_pending.append((sp, death_time))
         respawn_queue[:] = still_pending
 
-    # NPC Quest Interaction — auto-interact when hero is close
-    if npc_mcbride and npc_mcbride.is_in_range(hero.x, hero.y) and current_quest_id:
-        active_quest = quest_log.get(current_quest_id)
-        if active_quest:
-            if not active_quest.accepted:
-                # Accept quest automatically
-                active_quest.accepted = True
-                if not active_quest.objectives:
-                    # No-objective quest (intro) — auto-complete and turn in
-                    active_quest.completed = True
-                    active_quest.turned_in = True
-                    hero.xp += active_quest.rewards_xp
-                    hero.gold += active_quest.rewards_gold
-                    completed_quests.append(current_quest_id)
-                    quest_popup_text = f"Quest Complete: {active_quest.title}"
-                    quest_popup_timer = 2.5
-                    quest_popup_color = (100, 255, 100)
-                    current_quest_id = active_quest.next_quest
-                    # Auto-accept next quest if available
-                    if current_quest_id and current_quest_id in quest_log:
-                        next_q = quest_log[current_quest_id]
-                        next_q.accepted = True
-                        quest_popup_text = f"New Quest: {next_q.title}"
-                        quest_popup_timer = 3.0
-                        quest_popup_color = GOLD
-                else:
-                    quest_popup_text = f"Quest Accepted: {active_quest.title}"
-                    quest_popup_timer = 3.0
-                    quest_popup_color = GOLD
-            elif active_quest.is_complete() and not active_quest.turned_in:
-                # Turn in quest
-                active_quest.turned_in = True
-                hero.xp += active_quest.rewards_xp
-                hero.gold += active_quest.rewards_gold
-                completed_quests.append(current_quest_id)
-                quest_popup_text = f"Quest Turned In: {active_quest.title} (+{active_quest.rewards_xp}xp +{active_quest.rewards_gold}g)"
-                quest_popup_timer = 3.0
-                quest_popup_color = (100, 255, 100)
-                floating_texts.append(FloatingText(hero.x, hero.y - 40,
-                    f"+{active_quest.rewards_xp}xp +{active_quest.rewards_gold}g", GOLD))
-                # Advance to next quest
-                current_quest_id = active_quest.next_quest
-                if current_quest_id and current_quest_id in quest_log:
-                    next_q = quest_log[current_quest_id]
-                    next_q.accepted = True
-                    quest_popup_text += f"\n New Quest: {next_q.title}"
-                save_game()
-
     # Quest popup timer
     if quest_popup_timer > 0:
         quest_popup_timer -= dt
+    # Quest popup panel update
+    if quest_popup_panel and quest_popup_panel.active:
+        quest_popup_panel.update(dt)
 
     if not hero.alive:
         game_state.check_hero_death(hero)
@@ -2329,26 +2639,28 @@ while running:
         pygame.draw.rect(screen, (150, 200, 255), (bar_x, bar_y, int(bar_w * progress), bar_h))
 
     # NPC rendering
-    if npc_mcbride:
-        npc_sx = int((npc_mcbride.x - cx) * cam_zoom + WIDTH // 2)
-        npc_sy = int((npc_mcbride.y - cy) * cam_zoom + HEIGHT // 2)
+    for npc in npcs:
+        npc_sx = int((npc.x - cx) * cam_zoom + WIDTH // 2)
+        npc_sy = int((npc.y - cy) * cam_zoom + HEIGHT // 2)
         # Draw NPC sprite
-        if npc_mcbride.sprite:
+        if npc.sprite:
             sz = int(TILE_SIZE * cam_zoom)
-            scaled = pygame.transform.scale(npc_mcbride.sprite, (sz, sz))
+            scaled = pygame.transform.scale(npc.sprite, (sz, sz))
             screen.blit(scaled, (npc_sx - sz // 2, npc_sy - sz // 2))
         else:
             pygame.draw.circle(screen, (100, 200, 100), (npc_sx, npc_sy), int(12 * cam_zoom))
         # Quest indicator above NPC
-        indicator_y = npc_sy - int(30 * cam_zoom)
-        if npc_mcbride.has_available_quest():
-            # Yellow "!" for available quest
-            screen.blit(font.render("!", True, GOLD), (npc_sx - 3, indicator_y))
-        elif npc_mcbride.has_turn_in():
+        indicator_y = npc_sy - int(38 * cam_zoom)
+        if npc.has_turn_in():
             # Yellow "?" for turn-in ready
-            screen.blit(font.render("?", True, GOLD), (npc_sx - 3, indicator_y))
+            ind_surf = big_font.render("?", True, GOLD)
+            screen.blit(ind_surf, (npc_sx - ind_surf.get_width() // 2, indicator_y))
+        elif npc.has_available_quest():
+            # Yellow "!" for available quest
+            ind_surf = big_font.render("!", True, GOLD)
+            screen.blit(ind_surf, (npc_sx - ind_surf.get_width() // 2, indicator_y))
         # NPC name
-        name_surf = font.render(npc_mcbride.name, True, (100, 255, 100))
+        name_surf = font.render(npc.name, True, (100, 255, 100))
         screen.blit(name_surf, (npc_sx - name_surf.get_width() // 2, npc_sy - int(22 * cam_zoom)))
 
     # Floating text
@@ -2428,30 +2740,40 @@ while running:
         screen.blit(font.render(f"Room: {dungeon.current_room.name}", True, BLUE), (WIDTH-160, 40))
 
     # Quest HUD (top center)
-    if current_quest_id and current_quest_id in quest_log:
-        active_quest = quest_log[current_quest_id]
-        if active_quest.accepted and not active_quest.turned_in:
-            quest_title = f"[Quest] {active_quest.title}"
-            screen.blit(font.render(quest_title, True, GOLD), (WIDTH//2 - 120, 10))
-            if active_quest.objectives:
-                prog_text = active_quest.get_progress_text()
-                prog_color = (100, 255, 100) if active_quest.is_complete() else (200, 200, 200)
-                screen.blit(font.render(prog_text, True, prog_color), (WIDTH//2 - 120, 26))
-                if active_quest.is_complete():
-                    screen.blit(font.render(f"Return to {npc_mcbride.name if npc_mcbride else 'NPC'}", True, (100, 255, 100)), (WIDTH//2 - 120, 42))
-        elif not active_quest.accepted:
-            screen.blit(font.render(f"Visit {npc_mcbride.name if npc_mcbride else 'NPC'} for a new quest", True, (200, 200, 150)), (WIDTH//2 - 120, 10))
-    elif not current_quest_id:
-        screen.blit(font.render("All quests completed! Northshire is safe.", True, (100, 255, 100)), (WIDTH//2 - 160, 10))
+    quest_hud_y = 10
+    active_quest_objs = get_active_quest_objects()
+    if active_quest_objs:
+        for aq in active_quest_objs:
+            if aq.accepted and not aq.turned_in:
+                quest_title = f"[Quest] {aq.title}"
+                screen.blit(font.render(quest_title, True, GOLD), (WIDTH//2 - 120, quest_hud_y))
+                quest_hud_y += 16
+                if aq.objectives:
+                    prog_text = aq.get_progress_text()
+                    prog_color = (100, 255, 100) if aq.is_complete() else (200, 200, 200)
+                    screen.blit(font.render(prog_text, True, prog_color), (WIDTH//2 - 120, quest_hud_y))
+                    quest_hud_y += 16
+                    if aq.is_complete():
+                        screen.blit(font.render("Return to NPC", True, (100, 255, 100)), (WIDTH//2 - 120, quest_hud_y))
+                        quest_hud_y += 16
+                quest_hud_y += 4  # spacing between quests
+    elif get_available_quests():
+        screen.blit(font.render("Visit an NPC for a new quest", True, (200, 200, 150)), (WIDTH//2 - 120, quest_hud_y))
+    elif not active_quests and not get_available_quests():
+        screen.blit(font.render("All quests completed! Northshire is safe.", True, (100, 255, 100)), (WIDTH//2 - 160, quest_hud_y))
     else:
         screen.blit(font.render(game_state.objective_text, True, (200,200,150)), (WIDTH//2-180, 10))
 
-    # Quest popup (center screen notification)
+    # Quest popup (center screen notification — for kill-tracking "Quest Complete" etc.)
     if quest_popup_timer > 0 and quest_popup_text:
         alpha = min(255, int(255 * quest_popup_timer / 0.5)) if quest_popup_timer < 0.5 else 255
         for i, line in enumerate(quest_popup_text.split("\n")):
             popup_surf = font.render(line.strip(), True, quest_popup_color)
             screen.blit(popup_surf, (WIDTH//2 - popup_surf.get_width()//2, HEIGHT//3 + i * 20))
+
+    # Quest popup panel (detailed accept/turn-in panel)
+    if quest_popup_panel and quest_popup_panel.active:
+        quest_popup_panel.draw(screen)
 
     # FPS counter
     fps = int(clock.get_fps())

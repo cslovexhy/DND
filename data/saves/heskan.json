@@ -1,0 +1,20 @@
+{
+  "name": "Heskan",
+  "class_name": "Wizard",
+  "level": 12,
+  "xp": 233,
+  "gold": 48725,
+  "kills": 387,
+  "completed_quests": [
+    "a_threat_within",
+    "kobold_camp_cleanup",
+    "wolves_across_the_border",
+    "investigate_echo_ridge",
+    "brotherhood_of_thieves",
+    "millys_harvest"
+  ],
+  "active_quests": [
+    "skirmish_at_echo_ridge",
+    "bounty_on_garrick_padfoot"
+  ]
+}

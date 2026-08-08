@@ -1,0 +1,577 @@
+{
+  "source": "https://warcraft.wiki.gg/wiki/Elwynn_Forest_(Classic)_quests",
+  "wowhead_url": "https://www.wowhead.com/classic/quests/eastern-kingdoms/elwynn-forest",
+  "zone": "Elwynn Forest",
+  "faction": "Alliance",
+  "subzones": ["Northshire Valley", "Northshire Abbey", "Goldshire", "Eastvale Logging Camp", "The Stonefield Farm", "The Maclure Vineyards", "Westbrook Garrison", "Tower of Azora"],
+  "quests": [
+    {
+      "id": "a_threat_within",
+      "name": "A Threat Within",
+      "level": 1,
+      "quest_giver": "Deputy Willem",
+      "subzone": "Northshire Valley",
+      "prerequisite": null,
+      "chain": "northshire_troubles",
+      "class_restriction": null,
+      "notes": "Intro quest — sends you to Marshal McBride"
+    },
+    {
+      "id": "kobold_camp_cleanup",
+      "name": "Kobold Camp Cleanup",
+      "level": 2,
+      "quest_giver": "Marshal McBride",
+      "subzone": "Northshire Abbey",
+      "prerequisite": "a_threat_within",
+      "chain": "northshire_troubles_kobolds",
+      "class_restriction": null,
+      "notes": "Kill Kobold Vermin. Unlocks class-specific trainer quests."
+    },
+    {
+      "id": "eagan_peltskinner_breadcrumb",
+      "name": "Eagan Peltskinner",
+      "level": 2,
+      "quest_giver": "Deputy Willem",
+      "subzone": "Northshire Valley",
+      "prerequisite": "a_threat_within",
+      "chain": "northshire_troubles_wolves",
+      "class_restriction": null,
+      "notes": "Breadcrumb quest — sends you to Eagan Peltskinner"
+    },
+    {
+      "id": "wolves_across_the_border",
+      "name": "Wolves Across the Border",
+      "level": 3,
+      "quest_giver": "Eagan Peltskinner",
+      "subzone": "Northshire Valley",
+      "prerequisite": "eagan_peltskinner_breadcrumb",
+      "chain": "northshire_troubles_wolves",
+      "class_restriction": null,
+      "notes": "Kill wolves / collect 8 Tough Wolf Meat"
+    },
+    {
+      "id": "investigate_echo_ridge",
+      "name": "Investigate Echo Ridge",
+      "level": 4,
+      "quest_giver": "Marshal McBride",
+      "subzone": "Northshire Abbey",
+      "prerequisite": "kobold_camp_cleanup",
+      "chain": "northshire_troubles_kobolds",
+      "class_restriction": null,
+      "notes": "Kill Kobold Workers in Echo Ridge Mine"
+    },
+    {
+      "id": "brotherhood_of_thieves",
+      "name": "Brotherhood of Thieves",
+      "level": 4,
+      "quest_giver": "Deputy Willem",
+      "subzone": "Northshire Valley",
+      "prerequisite": "a_threat_within",
+      "chain": "northshire_troubles_defias",
+      "class_restriction": null,
+      "notes": "Kill Defias Thugs, collect red bandanas"
+    },
+    {
+      "id": "milly_osworth_breadcrumb",
+      "name": "Milly Osworth",
+      "level": 4,
+      "quest_giver": "Deputy Willem",
+      "subzone": "Northshire Valley",
+      "prerequisite": ["wolves_across_the_border", "brotherhood_of_thieves"],
+      "chain": "northshire_troubles_milly",
+      "class_restriction": null,
+      "notes": "Requires BOTH Wolves and Brotherhood completed. Sends you to Milly."
+    },
+    {
+      "id": "millys_harvest",
+      "name": "Milly's Harvest",
+      "level": 4,
+      "quest_giver": "Milly Osworth",
+      "subzone": "Northshire Valley",
+      "prerequisite": "milly_osworth_breadcrumb",
+      "chain": "northshire_troubles_milly",
+      "class_restriction": null,
+      "notes": "Collect grape bunches from the vineyard (gather quest)"
+    },
+    {
+      "id": "grape_manifest",
+      "name": "Grape Manifest",
+      "level": 4,
+      "quest_giver": "Milly Osworth",
+      "subzone": "Northshire Valley",
+      "prerequisite": "millys_harvest",
+      "chain": "northshire_troubles_milly",
+      "class_restriction": null,
+      "notes": "Deliver manifest to Brother Neals"
+    },
+    {
+      "id": "skirmish_at_echo_ridge",
+      "name": "Skirmish at Echo Ridge",
+      "level": 5,
+      "quest_giver": "Marshal McBride",
+      "subzone": "Northshire Abbey",
+      "prerequisite": "investigate_echo_ridge",
+      "chain": "northshire_troubles_kobolds",
+      "class_restriction": null,
+      "notes": "Kill Kobold Laborers in Echo Ridge Mine"
+    },
+    {
+      "id": "bounty_on_garrick_padfoot",
+      "name": "Bounty on Garrick Padfoot",
+      "level": 5,
+      "quest_giver": "Deputy Willem",
+      "subzone": "Northshire Valley",
+      "prerequisite": "brotherhood_of_thieves",
+      "chain": "northshire_troubles_defias",
+      "class_restriction": null,
+      "notes": "Kill named mob Garrick Padfoot"
+    },
+    {
+      "id": "report_to_goldshire",
+      "name": "Report to Goldshire",
+      "level": 5,
+      "quest_giver": "Marshal McBride",
+      "subzone": "Northshire Abbey",
+      "prerequisite": "skirmish_at_echo_ridge",
+      "chain": "northshire_troubles_kobolds",
+      "class_restriction": null,
+      "notes": "Breadcrumb to Goldshire — leaves Northshire"
+    },
+    {
+      "id": "rest_and_relaxation",
+      "name": "Rest and Relaxation",
+      "level": 6,
+      "quest_giver": "Falkhaan Isenstrider",
+      "subzone": "Northshire Valley (exit)",
+      "prerequisite": null,
+      "chain": null,
+      "class_restriction": null,
+      "notes": "Standalone breadcrumb at Northshire exit to Goldshire inn"
+    },
+    {
+      "id": "the_fargodeep_mine",
+      "name": "The Fargodeep Mine",
+      "level": 7,
+      "quest_giver": "Marshal Dughan",
+      "subzone": "Goldshire",
+      "prerequisite": null,
+      "chain": "goldshire_mines",
+      "class_restriction": null,
+      "notes": "Investigate the Fargodeep Mine (explore quest)"
+    },
+    {
+      "id": "kobold_candles",
+      "name": "Kobold Candles",
+      "level": 7,
+      "quest_giver": "William Pestle",
+      "subzone": "Goldshire",
+      "prerequisite": null,
+      "chain": "goldshire_pestle",
+      "class_restriction": null,
+      "notes": "Collect 8 Large Candles from kobolds"
+    },
+    {
+      "id": "shipment_to_stormwind",
+      "name": "Shipment to Stormwind",
+      "level": 7,
+      "quest_giver": "William Pestle",
+      "subzone": "Goldshire",
+      "prerequisite": "kobold_candles",
+      "chain": "goldshire_pestle",
+      "class_restriction": null,
+      "notes": "Deliver candles to Stormwind"
+    },
+    {
+      "id": "gold_dust_exchange",
+      "name": "Gold Dust Exchange",
+      "level": 8,
+      "quest_giver": "Remy \"Two Times\"",
+      "subzone": "Goldshire",
+      "prerequisite": null,
+      "chain": null,
+      "class_restriction": null,
+      "notes": "Collect 10 Gold Dust from kobolds in Fargodeep Mine"
+    },
+    {
+      "id": "lost_necklace",
+      "name": "Lost Necklace",
+      "level": 6,
+      "quest_giver": "\"Auntie\" Bernice Stonefield",
+      "subzone": "The Stonefield Farm",
+      "prerequisite": null,
+      "chain": "lost_necklace",
+      "class_restriction": null,
+      "notes": "Start of Lost Necklace chain"
+    },
+    {
+      "id": "pie_for_billy",
+      "name": "Pie for Billy",
+      "level": 6,
+      "quest_giver": "Billy Maclure",
+      "subzone": "The Maclure Vineyards",
+      "prerequisite": "lost_necklace",
+      "chain": "lost_necklace",
+      "class_restriction": null,
+      "notes": "Bring a pork belly pie to Billy"
+    },
+    {
+      "id": "back_to_billy",
+      "name": "Back to Billy",
+      "level": 7,
+      "quest_giver": "\"Auntie\" Bernice Stonefield",
+      "subzone": "The Stonefield Farm",
+      "prerequisite": "pie_for_billy",
+      "chain": "lost_necklace",
+      "class_restriction": null,
+      "notes": "Return to Billy with the pie"
+    },
+    {
+      "id": "goldtooth",
+      "name": "Goldtooth",
+      "level": 9,
+      "quest_giver": "Billy Maclure",
+      "subzone": "The Maclure Vineyards",
+      "prerequisite": "back_to_billy",
+      "chain": "lost_necklace",
+      "class_restriction": null,
+      "notes": "Kill Goldtooth (kobold named mob) in Fargodeep Mine, recover necklace"
+    },
+    {
+      "id": "young_lovers",
+      "name": "Young Lovers",
+      "level": 6,
+      "quest_giver": "Maybell Maclure",
+      "subzone": "The Maclure Vineyards",
+      "prerequisite": null,
+      "chain": "young_lovers",
+      "class_restriction": null,
+      "notes": "Start of Young Lovers chain — Romeo/Juliet storyline"
+    },
+    {
+      "id": "speak_with_gramma",
+      "name": "Speak with Gramma",
+      "level": 6,
+      "quest_giver": "Tommy Joe Stonefield",
+      "subzone": "The Stonefield Farm",
+      "prerequisite": "young_lovers",
+      "chain": "young_lovers",
+      "class_restriction": null,
+      "notes": "Talk to Gramma Stonefield"
+    },
+    {
+      "id": "note_to_william",
+      "name": "Note to William",
+      "level": 6,
+      "quest_giver": "Gramma Stonefield",
+      "subzone": "The Stonefield Farm",
+      "prerequisite": "speak_with_gramma",
+      "chain": "young_lovers",
+      "class_restriction": null,
+      "notes": "Deliver note to William Pestle in Goldshire"
+    },
+    {
+      "id": "collecting_kelp",
+      "name": "Collecting Kelp",
+      "level": 7,
+      "quest_giver": "William Pestle",
+      "subzone": "Goldshire",
+      "prerequisite": "note_to_william",
+      "chain": "young_lovers",
+      "class_restriction": null,
+      "notes": "Collect Crystal Kelp Fronds from murlocs"
+    },
+    {
+      "id": "the_escape",
+      "name": "The Escape",
+      "level": 7,
+      "quest_giver": "William Pestle",
+      "subzone": "Goldshire",
+      "prerequisite": "collecting_kelp",
+      "chain": "young_lovers",
+      "class_restriction": null,
+      "notes": "Deliver invisibility potion to Maybell — chain ends"
+    },
+    {
+      "id": "a_fishy_peril",
+      "name": "A Fishy Peril",
+      "level": 10,
+      "quest_giver": "Remy \"Two Times\"",
+      "subzone": "Goldshire",
+      "prerequisite": null,
+      "chain": "rolf_and_the_murlocs",
+      "class_restriction": null,
+      "notes": "Start of murloc chain — report to Marshal Dughan"
+    },
+    {
+      "id": "further_concerns",
+      "name": "Further Concerns",
+      "level": 10,
+      "quest_giver": "Marshal Dughan",
+      "subzone": "Goldshire",
+      "prerequisite": "a_fishy_peril",
+      "chain": "rolf_and_the_murlocs",
+      "class_restriction": null,
+      "notes": "Go to Guard Thomas at Eastvale Logging Camp"
+    },
+    {
+      "id": "find_the_lost_guards",
+      "name": "Find the Lost Guards",
+      "level": 10,
+      "quest_giver": "Guard Thomas",
+      "subzone": "Eastvale Logging Camp",
+      "prerequisite": "further_concerns",
+      "chain": "rolf_and_the_murlocs",
+      "class_restriction": null,
+      "notes": "Find the two missing guards"
+    },
+    {
+      "id": "discover_rolfs_fate",
+      "name": "Discover Rolf's Fate",
+      "level": 10,
+      "quest_giver": "A half-eaten body",
+      "subzone": "Eastvale Logging Camp",
+      "prerequisite": "find_the_lost_guards",
+      "chain": "rolf_and_the_murlocs",
+      "class_restriction": null,
+      "notes": "Find Rolf's corpse"
+    },
+    {
+      "id": "report_to_thomas",
+      "name": "Report to Thomas",
+      "level": 10,
+      "quest_giver": "Rolf's corpse",
+      "subzone": "Eastvale Logging Camp",
+      "prerequisite": "discover_rolfs_fate",
+      "chain": "rolf_and_the_murlocs",
+      "class_restriction": null,
+      "notes": "Return to Guard Thomas with the news"
+    },
+    {
+      "id": "deliver_thomas_report",
+      "name": "Deliver Thomas' Report",
+      "level": 10,
+      "quest_giver": "Guard Thomas",
+      "subzone": "Eastvale Logging Camp",
+      "prerequisite": "report_to_thomas",
+      "chain": "rolf_and_the_murlocs",
+      "class_restriction": null,
+      "notes": "Deliver report to Marshal Dughan. Unlocks Bounty on Murlocs + Cloth and Leather Armor"
+    },
+    {
+      "id": "bounty_on_murlocs",
+      "name": "Bounty on Murlocs",
+      "level": 10,
+      "quest_giver": "Guard Thomas",
+      "subzone": "Eastvale Logging Camp",
+      "prerequisite": "deliver_thomas_report",
+      "chain": "rolf_and_the_murlocs",
+      "class_restriction": null,
+      "notes": "Kill 10 Murloc Lurkers and 10 Murloc Streamrunners"
+    },
+    {
+      "id": "cloth_and_leather_armor",
+      "name": "Cloth and Leather Armor",
+      "level": 10,
+      "quest_giver": "Marshal Dughan",
+      "subzone": "Goldshire",
+      "prerequisite": "deliver_thomas_report",
+      "chain": "rolf_and_the_murlocs",
+      "class_restriction": null,
+      "notes": "Go to Sara Timberlain at Eastvale Logging Camp"
+    },
+    {
+      "id": "red_linen_goods",
+      "name": "Red Linen Goods",
+      "level": 9,
+      "quest_giver": "Sara Timberlain",
+      "subzone": "Eastvale Logging Camp",
+      "prerequisite": null,
+      "chain": null,
+      "class_restriction": null,
+      "notes": "Collect 6 Red Linen Bandanas from Defias in the area"
+    },
+    {
+      "id": "a_bundle_of_trouble",
+      "name": "A Bundle of Trouble",
+      "level": 9,
+      "quest_giver": "Supervisor Raelen",
+      "subzone": "Eastvale Logging Camp",
+      "prerequisite": null,
+      "chain": null,
+      "class_restriction": null,
+      "notes": "Collect 8 Bundles of Wood from around the camp"
+    },
+    {
+      "id": "protect_the_frontier",
+      "name": "Protect the Frontier",
+      "level": 10,
+      "quest_giver": "Guard Thomas",
+      "subzone": "Eastvale Logging Camp",
+      "prerequisite": null,
+      "chain": null,
+      "class_restriction": null,
+      "notes": "Kill 8 Prowlers and 5 Young Forest Bears"
+    },
+    {
+      "id": "the_jasperlode_mine",
+      "name": "The Jasperlode Mine",
+      "level": 10,
+      "quest_giver": "Marshal Dughan",
+      "subzone": "Goldshire",
+      "prerequisite": "the_fargodeep_mine",
+      "chain": "goldshire_mines",
+      "class_restriction": null,
+      "notes": "Investigate the Jasperlode Mine"
+    },
+    {
+      "id": "westbrook_garrison_needs_help",
+      "name": "Westbrook Garrison Needs Help!",
+      "level": 10,
+      "quest_giver": "Marshal Dughan",
+      "subzone": "Goldshire",
+      "prerequisite": "the_jasperlode_mine",
+      "chain": "goldshire_mines",
+      "class_restriction": null,
+      "notes": "Go to Deputy Rainer at Westbrook Garrison"
+    },
+    {
+      "id": "riverpaw_gnoll_bounty",
+      "name": "Riverpaw Gnoll Bounty",
+      "level": 10,
+      "quest_giver": "Deputy Rainer",
+      "subzone": "Westbrook Garrison",
+      "prerequisite": "westbrook_garrison_needs_help",
+      "chain": "goldshire_mines",
+      "class_restriction": null,
+      "notes": "Kill 10 Riverpaw Runts and 6 Riverpaw Outrunners"
+    },
+    {
+      "id": "princess_must_die",
+      "name": "Princess Must Die!",
+      "level": 10,
+      "quest_giver": "Ma Stonefield",
+      "subzone": "The Stonefield Farm",
+      "prerequisite": null,
+      "chain": null,
+      "class_restriction": null,
+      "notes": "Kill Princess the prize pig (named mob)"
+    },
+    {
+      "id": "wanted_hogger",
+      "name": "Wanted: \"Hogger\"",
+      "level": 11,
+      "quest_giver": "Wanted Poster",
+      "subzone": "Westbrook Garrison",
+      "prerequisite": null,
+      "chain": null,
+      "class_restriction": null,
+      "notes": "Elite quest — kill Hogger (iconic boss)"
+    },
+    {
+      "id": "the_collector",
+      "name": "The Collector",
+      "level": 10,
+      "quest_giver": "Gold Pickup Schedule (item drop)",
+      "subzone": "Hogger Hill",
+      "prerequisite": null,
+      "chain": "the_collector",
+      "class_restriction": null,
+      "notes": "Drops from Riverpaw Gnolls — starts chain to Manhunt"
+    },
+    {
+      "id": "manhunt",
+      "name": "Manhunt",
+      "level": 10,
+      "quest_giver": "Marshal Dughan",
+      "subzone": "Goldshire",
+      "prerequisite": "the_collector",
+      "chain": "the_collector",
+      "class_restriction": null,
+      "notes": "Kill Morgan the Collector (named mob)"
+    }
+  ],
+  "quest_chains": {
+    "northshire_troubles_kobolds": {
+      "name": "Northshire Kobolds (Marshal McBride)",
+      "subzone": "Northshire",
+      "level_range": [1, 5],
+      "quests": ["a_threat_within", "kobold_camp_cleanup", "investigate_echo_ridge", "skirmish_at_echo_ridge", "report_to_goldshire"]
+    },
+    "northshire_troubles_wolves": {
+      "name": "Northshire Wolves (Eagan Peltskinner)",
+      "subzone": "Northshire",
+      "level_range": [2, 3],
+      "quests": ["eagan_peltskinner_breadcrumb", "wolves_across_the_border"]
+    },
+    "northshire_troubles_defias": {
+      "name": "Northshire Defias (Deputy Willem)",
+      "subzone": "Northshire",
+      "level_range": [4, 5],
+      "quests": ["brotherhood_of_thieves", "bounty_on_garrick_padfoot"]
+    },
+    "northshire_troubles_milly": {
+      "name": "Milly's Harvest (Milly Osworth)",
+      "subzone": "Northshire",
+      "level_range": [4, 4],
+      "quests": ["milly_osworth_breadcrumb", "millys_harvest", "grape_manifest"]
+    },
+    "goldshire_mines": {
+      "name": "Goldshire Mines (Marshal Dughan)",
+      "subzone": "Goldshire",
+      "level_range": [7, 10],
+      "quests": ["the_fargodeep_mine", "the_jasperlode_mine", "westbrook_garrison_needs_help", "riverpaw_gnoll_bounty"]
+    },
+    "goldshire_pestle": {
+      "name": "Kobold Candles (William Pestle)",
+      "subzone": "Goldshire",
+      "level_range": [7, 7],
+      "quests": ["kobold_candles", "shipment_to_stormwind"]
+    },
+    "lost_necklace": {
+      "name": "Lost Necklace (Stonefield/Maclure)",
+      "subzone": "Stonefield Farm / Maclure Vineyards",
+      "level_range": [6, 9],
+      "quests": ["lost_necklace", "pie_for_billy", "back_to_billy", "goldtooth"]
+    },
+    "young_lovers": {
+      "name": "Young Lovers (Maclure/Stonefield)",
+      "subzone": "Maclure Vineyards / Stonefield Farm / Goldshire",
+      "level_range": [6, 7],
+      "quests": ["young_lovers", "speak_with_gramma", "note_to_william", "collecting_kelp", "the_escape"]
+    },
+    "rolf_and_the_murlocs": {
+      "name": "Rolf and the Murlocs (Guard Thomas)",
+      "subzone": "Goldshire / Eastvale Logging Camp",
+      "level_range": [10, 10],
+      "quests": ["a_fishy_peril", "further_concerns", "find_the_lost_guards", "discover_rolfs_fate", "report_to_thomas", "deliver_thomas_report", "bounty_on_murlocs", "cloth_and_leather_armor"]
+    },
+    "the_collector": {
+      "name": "The Collector (Marshal Dughan)",
+      "subzone": "Hogger Hill / Goldshire",
+      "level_range": [10, 10],
+      "quests": ["the_collector", "manhunt"]
+    }
+  },
+  "npcs": {
+    "deputy_willem": {"name": "Deputy Willem", "location": "Northshire Valley", "coords": [48.2, 42.9]},
+    "marshal_mcbride": {"name": "Marshal McBride", "location": "Northshire Abbey", "coords": [48.9, 41.6]},
+    "eagan_peltskinner": {"name": "Eagan Peltskinner", "location": "Northshire Valley", "coords": [48.9, 40.1]},
+    "milly_osworth": {"name": "Milly Osworth", "location": "Northshire Valley", "coords": [50.7, 39.4]},
+    "falkhaan_isenstrider": {"name": "Falkhaan Isenstrider", "location": "Northshire Valley (exit)", "coords": [45.6, 47.8]},
+    "marshal_dughan": {"name": "Marshal Dughan", "location": "Goldshire", "coords": [42.1, 65.9]},
+    "william_pestle": {"name": "William Pestle", "location": "Goldshire", "coords": [43.3, 65.8]},
+    "remy_two_times": {"name": "Remy \"Two Times\"", "location": "Goldshire", "coords": [42.1, 67.2]},
+    "guard_thomas": {"name": "Guard Thomas", "location": "Eastvale Logging Camp", "coords": [73.9, 72.2]},
+    "sara_timberlain": {"name": "Sara Timberlain", "location": "Eastvale Logging Camp", "coords": [79.5, 68.7]},
+    "supervisor_raelen": {"name": "Supervisor Raelen", "location": "Eastvale Logging Camp", "coords": [81.4, 66.1]},
+    "bernice_stonefield": {"name": "\"Auntie\" Bernice Stonefield", "location": "The Stonefield Farm", "coords": [34.5, 84.3]},
+    "billy_maclure": {"name": "Billy Maclure", "location": "The Maclure Vineyards", "coords": [43.1, 85.8]},
+    "ma_stonefield": {"name": "Ma Stonefield", "location": "The Stonefield Farm", "coords": [34.6, 84.4]},
+    "maybell_maclure": {"name": "Maybell Maclure", "location": "The Maclure Vineyards", "coords": [43.1, 89.6]},
+    "tommy_joe_stonefield": {"name": "Tommy Joe Stonefield", "location": "The Stonefield Farm", "coords": [29.9, 86.0]},
+    "gramma_stonefield": {"name": "Gramma Stonefield", "location": "The Stonefield Farm", "coords": [34.9, 83.9]},
+    "deputy_rainer": {"name": "Deputy Rainer", "location": "Westbrook Garrison", "coords": [24.3, 74.6]},
+    "priestess_anetta": {"name": "Priestess Anetta", "location": "Northshire Abbey", "coords": [49.8, 39.6]},
+    "drusilla_la_salle": {"name": "Drusilla La Salle", "location": "Northshire Valley", "coords": [49.9, 42.7]}
+  }
+}

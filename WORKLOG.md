@@ -579,6 +579,11 @@ Decided current repo is too entangled to incrementally refactor — will create 
 - **WoW Alpha Ambience Tracks (0.5.3)**: https://downloads.khinsider.com/game-soundtracks/album/world-of-warcraft-053-ambience-tracks-macos-windows-gamerip-2003
   - Environmental ambience (chirps, wind, etc.) — 65 tracks, ~4.75MB each
   - Useful for layering on top of music
+- **Elwynn Forest Classic Quests** (wowhead): https://www.wowhead.com/classic/quests/eastern-kingdoms/elwynn-forest
+  - JS-rendered, not scrapable directly
+- **Elwynn Forest Classic Quests** (warcraft.wiki.gg): https://warcraft.wiki.gg/wiki/Elwynn_Forest_(Classic)_quests
+  - Full quest table with levels, givers, subzones, prerequisites, chains
+  - Parsed and cached locally at `data/quests/elwynn_forest.json`
 
 ---
 
@@ -641,3 +646,82 @@ Decided current repo is too entangled to incrementally refactor — will create 
 - `game/main.py` — Respawn, leveling, quests, NPC, save/load, companion HUD/dismiss
 - `data/maps/northshire.json` — Added npc_mcbride spawn point
 - `.gitignore` — Added data/saves/
+
+---
+
+## Session 11 — 2026-08-08
+
+### Multi-Quest System
+- **Replaced single `current_quest_id` with `active_quests` list** — player can now have multiple quests active simultaneously from different questlines
+- **QUESTLINES** structure: list of quest chains, each independently tracks progress
+- **Save format**: `active_quests: [...]` replaces `current_quest_id`. Backward compatible with old saves.
+- Kill tracking counts against ALL active quests (e.g., killing a wolf progresses every quest that needs wolves)
+- Quest HUD stacks all active quest objectives vertically
+
+### Multi-NPC Quest System (WoW Classic Faithful)
+- **4 NPCs added** with distinct sprites and positions:
+  - Deputy Willem (26, 26) — intro + Defias chain
+  - Marshal McBride (26, 28) — Kobold chain (camp cleanup → echo ridge → skirmish)
+  - Eagan Peltskinner (22, 25) — Wolf chain
+  - Milly Osworth (30, 22) — Vineyard chain (requires wolves + defias done first)
+- **NPC gender** metadata for TTS voice selection
+- **Quest prerequisites**: each quest specifies required completed quests + level requirement
+- **Per-NPC quest tracking**: `get_available_quests_for_npc()`, `get_turn_ins_for_npc()`
+- **Right-click to interact**: removed auto-proximity, NPC interaction requires right-clicking on them (walks to NPC if out of range)
+
+### Real WoW Classic Quest Text
+- Scraped all Elwynn Forest Classic quests from warcraft.wiki.gg
+- Cached as `data/quests/elwynn_forest.json` (44 quests, 10 chains, 20 NPCs with coordinates)
+- All quest descriptions use the real in-game text (not made up)
+- Source URLs saved in WORKLOG Important Asset Resources section
+
+### Quest Popup Panel
+- **QuestPopupPanel class**: centered dark panel with gold border showing:
+  - Header ("Quest Accepted" / "Quest Complete!")
+  - NPC name
+  - Quest title
+  - Full word-wrapped description (no truncation)
+  - Objectives list with kill counts
+  - Rewards (XP + Gold)
+- **Close button [X]** in top-right corner
+- Click outside panel or on X to dismiss
+- While popup is open, all mouse clicks intercepted (no accidental movement)
+- Panel dynamically sizes based on content length
+- Only one popup at a time
+
+### Text-to-Speech (Quest Narration)
+- **macOS `say` command** — zero dependencies, async non-blocking
+- Male NPCs → "Daniel" voice (British English)
+- Female NPCs → "Samantha" voice (US English)
+- Reads quest description on accept, completion message on turn-in
+- Previous speech killed if new quest triggers
+- Rate: 175 words/min
+
+### Quest Indicator Improvements
+- NPC `!` and `?` indicators now use `big_font` (32px, was 20px) — much more visible
+- Properly centered above NPC sprite
+- `?` shows for turn-in ready, `!` for available quest (priority: ? over !)
+
+### Other Changes
+- **Removed `data/saves/` from .gitignore** — saves now tracked in git (shared)
+- Added wowhead + warcraft.wiki.gg links to Important Asset Resources
+- Fixed quest load bug where current quest wasn't marked `accepted` on load
+
+### Northshire Quest Structure
+| Quest | NPC | Level | Prerequisites |
+|-------|-----|-------|---------------|
+| A Threat Within | Willem | 1 | — |
+| Kobold Camp Cleanup | McBride | 1 | A Threat Within |
+| Investigate Echo Ridge | McBride | 3 | Kobold Camp Cleanup |
+| Skirmish at Echo Ridge | McBride | 4 | Investigate Echo Ridge |
+| Wolves Across the Border | Eagan | 2 | A Threat Within |
+| Brotherhood of Thieves | Willem | 2 | A Threat Within |
+| Bounty on Garrick Padfoot | Willem | 4 | Brotherhood of Thieves |
+| Milly's Harvest | Milly | 4 | Wolves + Brotherhood |
+
+### Key Files Modified
+- `game/main.py` — Quest system overhaul, multi-NPC, popup panel, TTS, right-click interact
+- `data/quests/elwynn_forest.json` — Parsed WoW Classic quest database (new)
+- `data/saves/heskan.json` — Save file now tracked
+- `.gitignore` — Removed data/saves/
+- `WORKLOG.md` — Session log + resource links

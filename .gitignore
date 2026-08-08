@@ -21,6 +21,3 @@ pdfs/
 # IDE
 .idea/
 .vscode/
-
-# Save files (per-player progress)
-data/saves/
