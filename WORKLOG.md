@@ -579,3 +579,65 @@ Decided current repo is too entangled to incrementally refactor — will create 
 - **WoW Alpha Ambience Tracks (0.5.3)**: https://downloads.khinsider.com/game-soundtracks/album/world-of-warcraft-053-ambience-tracks-macos-windows-gamerip-2003
   - Environmental ambience (chirps, wind, etc.) — 65 tracks, ~4.75MB each
   - Useful for layering on top of music
+
+---
+
+## Session 7 — 2026-08-07
+
+### Mob Respawn System
+- Killed mobs respawn after 60 seconds at their original spawn position
+- Fresh HP, aggro, and patrol route on respawn
+- Bosses never respawn
+- Timer uses in-game time (affected by game speed multiplier)
+
+### Leveling System
+- XP curve: 100 base, tiered multiplier (1.3× levels 1-10, 1.2× 11-20, 1.1× 21-30)
+- Max level 30
+- On level-up: stat growth per class (Fighter +30HP/+3dmg, Wizard +18HP/+4dmg, etc.)
+- Full health restore on level-up
+- Gold expanding ring visual effect + floating "LEVEL UP!" text
+- Purple XP bar in HUD below HP bar showing "Lv X  XP current/needed"
+
+### Mob XP Values (5× base)
+- Kobold/Snake/Cultist: 5 XP
+- Wolf/Orc Smasher/Duergar/Grell: 10 XP
+- Gibbering Mouther/Legion Devil: 15 XP
+- Bosses: 25-50 XP
+
+### Quest System (WoW Classic Northshire)
+- Quest data structure with kill objectives, rewards, chaining
+- 5-quest Northshire chain based on Classic WoW:
+  1. A Threat Within (intro, talk to NPC)
+  2. Kobold Camp Cleanup (kill 10 Kobold Dragonshields)
+  3. Wolves Across the Border (kill 8 Grey Wolves)
+  4. Brotherhood of Thieves (kill 12 Human Cultists)
+  5. Northshire Secured (kill 5 of each type)
+- NPC: Marshal McBride south of church with yellow !/? indicators
+- Auto-interact: walk within range to accept/turn-in quests
+- Quest HUD: title + objective progress at top center
+- Quest popup notifications for accept/complete/turn-in
+- Kill tracking with floating progress text
+
+### Entity Refactor
+- Moved `level`, `abilities`, `stealthed`, `gcd`, `add_ability()` from Hero up to Entity base class
+- All entities (Hero/Monster/NPC) now share: level, abilities, stealth, combat stats
+- NPC class now inherits Entity (with minimal combat stats: hp=5, ac=10, speed=0)
+- Monster gets `level` attribute for future XP scaling
+- Zero behavioral change — attribute access unchanged for existing code
+
+### Save System
+- Persists to `data/saves/<hero_name>.json`
+- Saves: level, XP, gold, kills, completed quests, current quest ID
+- Auto-saves on: level-up, quest turn-in, game exit
+- Auto-loads on game start (applies level bonuses retroactively)
+
+### Companion Improvements
+- **Health bars in HUD**: Blue bars with name below potions (shows "(dead)" status)
+- **F1-F4 toggle**: Press same key to dismiss companion (removes from party)
+- Skill list auto-shifts down to make room for companion bars
+
+### Key Files Modified
+- `game/engine/entities.py` — Entity refactor (level, abilities, stealth, gcd moved up)
+- `game/main.py` — Respawn, leveling, quests, NPC, save/load, companion HUD/dismiss
+- `data/maps/northshire.json` — Added npc_mcbride spawn point
+- `.gitignore` — Added data/saves/

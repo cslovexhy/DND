@@ -12,9 +12,10 @@ import math
 import random
 import sys
 import os
+import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from game.engine.entities import Hero, Monster, Ability, Condition, GameState, Projectile
+from game.engine.entities import Entity, Hero, Monster, Ability, Condition, GameState, Projectile
 from game.engine.dungeon import UnifiedDungeon, RoomType, TILE_SIZE
 from game.engine.world_map import WorldMap
 from game.engine.ai import run_monster_ai, setup_monster_aggro, call_for_help, generate_patrol_route
@@ -169,6 +170,61 @@ BOSS_SPRITE = get_creature(9, 7, int(TILE_SIZE * BOSS_SCALE))
 floating_texts = []
 effects = []
 projectiles = []  # Active projectiles (Wanding etc.)
+
+# === LEVELING SYSTEM ===
+MAX_LEVEL = 30
+XP_BASE = 100  # XP needed for level 2
+
+def xp_multiplier(level):
+    """Tiered growth: 1.3x early, flattens later."""
+    if level <= 10:
+        return 1.3
+    elif level <= 20:
+        return 1.2
+    else:
+        return 1.1
+
+def xp_to_next_level(level):
+    """XP needed from current level to reach the next."""
+    return int(XP_BASE * (xp_multiplier(level) ** (level - 1)))
+
+# Stat growth per level (HP bonus in raw points, damage as multiplier of base_damage)
+GROWTH_RATES = {
+    "Fighter":  {"hp": 30, "damage": 3.0},
+    "Cleric":   {"hp": 25, "damage": 2.0},
+    "Paladin":  {"hp": 28, "damage": 2.5},
+    "Rogue":    {"hp": 20, "damage": 3.5},
+    "Wizard":   {"hp": 18, "damage": 4.0},
+}
+
+
+class LevelUpEffect:
+    """Gold expanding ring + floating 'LEVEL UP!' text for level-up celebration."""
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+        self.timer = 1.5  # total duration
+        self.max_timer = 1.5
+    def update(self, dt):
+        self.timer -= dt
+    def draw(self, s, cx, cy):
+        sx = int((self.x - cx) * cam_zoom + WIDTH // 2)
+        sy = int((self.y - cy) * cam_zoom + HEIGHT // 2)
+        progress = 1.0 - self.timer / self.max_timer
+        # Expanding gold ring
+        ring_r = int(20 + 80 * progress)
+        alpha = int(255 * (self.timer / self.max_timer))
+        if alpha > 0 and ring_r > 0:
+            surf = pygame.Surface((ring_r * 2, ring_r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(surf, (255, 215, 0, alpha), (ring_r, ring_r), ring_r, 4)
+            pygame.draw.circle(surf, (255, 255, 100, alpha // 3), (ring_r, ring_r), ring_r)
+            s.blit(surf, (sx - ring_r, sy - ring_r))
+        # Floating "LEVEL UP!" text rising
+        text_y = sy - 40 - int(30 * progress)
+        if alpha > 0:
+            txt = font.render("LEVEL UP!", True, (255, 215, 0))
+            txt.set_alpha(alpha)
+            s.blit(txt, (sx - txt.get_width() // 2, text_y))
+
 
 class FloatingText:
     def __init__(self, x, y, text, color):
@@ -420,6 +476,70 @@ hero_info = ALL_HEROES[selected_hero_idx]
 hero = hero_info["create"](hero_wx, hero_wy)
 hero.sprite = HERO_SPRITES[hero_info["sprite_key"]]
 
+# === SAVE/LOAD SYSTEM ===
+SAVE_DIR = os.path.join("data", "saves")
+os.makedirs(SAVE_DIR, exist_ok=True)
+
+def get_save_path():
+    return os.path.join(SAVE_DIR, f"{hero.name.lower()}.json")
+
+def save_game():
+    """Persist hero progress to JSON file."""
+    data = {
+        "name": hero.name,
+        "class_name": hero.class_name,
+        "level": hero.level,
+        "xp": hero.xp,
+        "gold": hero.gold,
+        "kills": hero.kills,
+        "completed_quests": completed_quests,
+        "current_quest_id": current_quest_id,
+    }
+    with open(get_save_path(), "w") as f:
+        json.dump(data, f, indent=2)
+
+def load_game():
+    """Load hero progress from JSON file. Returns True if save existed."""
+    global current_quest_id
+    path = get_save_path()
+    if not os.path.exists(path):
+        return False
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        # Restore hero stats
+        hero.level = data.get("level", 1)
+        hero.xp = data.get("xp", 0)
+        hero.gold = data.get("gold", 0)
+        hero.kills = data.get("kills", 0)
+        # Apply level-up stat bonuses retroactively
+        growth = GROWTH_RATES.get(hero.class_name, {"hp": 25, "damage": 2.5})
+        for _ in range(hero.level - 1):
+            hero.max_hp += growth["hp"]
+            hero.base_damage += growth["damage"]
+        hero.hp = hero.max_hp
+        # Restore quest state
+        for qid in data.get("completed_quests", []):
+            if qid in quest_log:
+                quest_log[qid].accepted = True
+                quest_log[qid].completed = True
+                quest_log[qid].turned_in = True
+            completed_quests.append(qid)
+        current_quest_id = data.get("current_quest_id", "a_threat_within")
+        # Auto-accept current quest if it exists
+        if current_quest_id and current_quest_id in quest_log:
+            q = quest_log[current_quest_id]
+            if not q.turned_in and not q.accepted and q.objectives:
+                pass  # Will be accepted when player visits NPC
+        print(f"[SAVE] Loaded: Lv{hero.level} XP={hero.xp} Gold={hero.gold} Kills={hero.kills}")
+        return True
+    except Exception as e:
+        print(f"[SAVE] Failed to load: {e}")
+        return False
+
+# Load existing save
+load_game()
+
 game_state = GameState()
 game_state.heroes.append(hero)
 if USE_MAP:
@@ -567,50 +687,187 @@ if auto_mode:
 
 # World map monster stats lookup
 SPAWN_STATS = {
-    "kobold_dragonshield": {"name": "Kobold Dragonshield", "hp": 1, "ac": 16, "speed": 5, "atk": 7, "dmg": 1, "xp": 1},
-    "snake": {"name": "Snake", "hp": 1, "ac": 13, "speed": 6, "atk": 7, "dmg": 0, "xp": 1, "condition": (Condition.POISONED, 3.0)},
-    "orc_smasher": {"name": "Orc Smasher", "hp": 2, "ac": 15, "speed": 4, "atk": 9, "dmg": 1, "xp": 2},
-    "orc_archer": {"name": "Orc Archer", "hp": 1, "ac": 13, "speed": 4, "atk": 6, "dmg": 1, "xp": 1, "ranged": True},
-    "grey_wolf": {"name": "Grey Wolf", "hp": 2, "ac": 14, "speed": 5, "atk": 8, "dmg": 2, "xp": 2},
-    "duergar_guard": {"name": "Duergar Guard", "hp": 2, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 2},
-    "gibbering_mouther": {"name": "Gibbering Mouther", "hp": 2, "ac": 14, "speed": 3, "atk": 8, "dmg": 1, "xp": 3},
-    "grell": {"name": "Grell", "hp": 2, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 2, "condition": (Condition.POISONED, 3.0)},
-    "human_cultist": {"name": "Human Cultist", "hp": 1, "ac": 14, "speed": 5, "atk": 6, "dmg": 1, "xp": 1, "condition": (Condition.POISONED, 3.0)},
-    "legion_devil": {"name": "Legion Devil", "hp": 1, "ac": 16, "speed": 5, "atk": 11, "dmg": 1, "xp": 3},
-    "meerak": {"name": "Meerak", "hp": 6, "ac": 17, "speed": 5, "atk": 8, "dmg": 1, "xp": 5, "boss": True},
-    "ashardalon": {"name": "Ashardalon", "hp": 12, "ac": 16, "speed": 4, "atk": 10, "dmg": 2, "xp": 10, "boss": True},
-    "bellax": {"name": "Bellax", "hp": 9, "ac": 17, "speed": 4, "atk": 8, "dmg": 2, "xp": 8, "boss": True},
-    "karash": {"name": "Karash", "hp": 5, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 5, "boss": True},
-    "margrath": {"name": "Margrath", "hp": 5, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 5, "boss": True},
-    "rage_drake": {"name": "Rage Drake", "hp": 5, "ac": 15, "speed": 6, "atk": 9, "dmg": 2, "xp": 5, "boss": True},
-    "otyugh": {"name": "Otyugh", "hp": 5, "ac": 14, "speed": 3, "atk": 8, "dmg": 2, "xp": 5, "boss": True},
+    "kobold_dragonshield": {"name": "Kobold Dragonshield", "hp": 1, "ac": 16, "speed": 5, "atk": 7, "dmg": 1, "xp": 5},
+    "snake": {"name": "Snake", "hp": 1, "ac": 13, "speed": 6, "atk": 7, "dmg": 0, "xp": 5, "condition": (Condition.POISONED, 3.0)},
+    "orc_smasher": {"name": "Orc Smasher", "hp": 2, "ac": 15, "speed": 4, "atk": 9, "dmg": 1, "xp": 10},
+    "orc_archer": {"name": "Orc Archer", "hp": 1, "ac": 13, "speed": 4, "atk": 6, "dmg": 1, "xp": 5, "ranged": True},
+    "grey_wolf": {"name": "Grey Wolf", "hp": 2, "ac": 14, "speed": 5, "atk": 8, "dmg": 2, "xp": 10},
+    "duergar_guard": {"name": "Duergar Guard", "hp": 2, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 10},
+    "gibbering_mouther": {"name": "Gibbering Mouther", "hp": 2, "ac": 14, "speed": 3, "atk": 8, "dmg": 1, "xp": 15},
+    "grell": {"name": "Grell", "hp": 2, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 10, "condition": (Condition.POISONED, 3.0)},
+    "human_cultist": {"name": "Human Cultist", "hp": 1, "ac": 14, "speed": 5, "atk": 6, "dmg": 1, "xp": 5, "condition": (Condition.POISONED, 3.0)},
+    "legion_devil": {"name": "Legion Devil", "hp": 1, "ac": 16, "speed": 5, "atk": 11, "dmg": 1, "xp": 15},
+    "meerak": {"name": "Meerak", "hp": 6, "ac": 17, "speed": 5, "atk": 8, "dmg": 1, "xp": 25, "boss": True},
+    "ashardalon": {"name": "Ashardalon", "hp": 12, "ac": 16, "speed": 4, "atk": 10, "dmg": 2, "xp": 50, "boss": True},
+    "bellax": {"name": "Bellax", "hp": 9, "ac": 17, "speed": 4, "atk": 8, "dmg": 2, "xp": 40, "boss": True},
+    "karash": {"name": "Karash", "hp": 5, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 25, "boss": True},
+    "margrath": {"name": "Margrath", "hp": 5, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 25, "boss": True},
+    "rage_drake": {"name": "Rage Drake", "hp": 5, "ac": 15, "speed": 6, "atk": 9, "dmg": 2, "xp": 25, "boss": True},
+    "otyugh": {"name": "Otyugh", "hp": 5, "ac": 14, "speed": 3, "atk": 8, "dmg": 2, "xp": 25, "boss": True},
 }
+
+def spawn_single_world_monster(sp):
+    """Spawn a single monster from a SpawnPoint. Returns the Monster or None."""
+    mt = SPAWN_STATS.get(sp.type)
+    if mt is None:
+        return None
+    wx, wy = world_map.get_spawn_world_pos(sp.x, sp.y)
+    is_boss = mt.get("boss", False)
+    m = Monster(mt["name"], "Monster", wx, wy,
+                hp=mt["hp"], ac=mt["ac"], speed=mt["speed"],
+                attack_bonus=mt["atk"], attack_damage=mt["dmg"],
+                experience=mt["xp"], is_boss=is_boss)
+    m.sprite = BOSS_SPRITE if is_boss else MONSTER_SPRITES.get(mt["name"])
+    if mt.get("condition"):
+        m.on_hit_condition = mt["condition"]
+    if mt.get("ranged"):
+        m.ranged_attack_range = 250
+        m.ranged_attack_damage = m.base_damage
+    # Track spawn origin for respawn system
+    m.spawn_point = sp
+    setup_monster_aggro(m, nav_dungeon=dungeon)
+    generate_patrol_route(m, patrol_radius=100, collision_fn=is_wall)
+    return m
+
 
 def spawn_world_map_monsters():
     """Spawn all monsters from world map spawn data."""
     for sp in world_map.get_monster_spawns():
-        mt = SPAWN_STATS.get(sp.type)
-        if mt is None:
-            continue
-        wx, wy = world_map.get_spawn_world_pos(sp.x, sp.y)
-        is_boss = mt.get("boss", False)
-        m = Monster(mt["name"], "Monster", wx, wy,
-                    hp=mt["hp"], ac=mt["ac"], speed=mt["speed"],
-                    attack_bonus=mt["atk"], attack_damage=mt["dmg"],
-                    experience=mt["xp"], is_boss=is_boss)
-        m.sprite = BOSS_SPRITE if is_boss else MONSTER_SPRITES.get(mt["name"])
-        if mt.get("condition"):
-            m.on_hit_condition = mt["condition"]
-        if mt.get("ranged"):
-            m.ranged_attack_range = 250
-            m.ranged_attack_damage = m.base_damage
-        setup_monster_aggro(m, nav_dungeon=dungeon)
-        generate_patrol_route(m, patrol_radius=100, collision_fn=is_wall)
-        game_state.monsters.append(m)
+        m = spawn_single_world_monster(sp)
+        if m:
+            game_state.monsters.append(m)
+
+
+# Respawn system — dead mobs respawn after RESPAWN_TIME seconds
+RESPAWN_TIME = 60.0  # seconds before a killed mob respawns
+respawn_queue = []    # list of (SpawnPoint, death_game_time)
 
 # Spawn monsters for world map mode at start
 if USE_MAP:
     spawn_world_map_monsters()
+
+
+# === QUEST SYSTEM ===
+class Quest:
+    """A single quest with kill objectives."""
+    def __init__(self, quest_id, title, description, objectives, rewards_xp, rewards_gold, next_quest=None):
+        self.quest_id = quest_id
+        self.title = title
+        self.description = description
+        self.objectives = objectives  # list of {"target": "Monster Name", "count": N}
+        self.rewards_xp = rewards_xp
+        self.rewards_gold = rewards_gold
+        self.next_quest = next_quest  # quest_id of the next quest in chain
+        # Runtime state
+        self.progress = {}  # {"Monster Name": kills_so_far}
+        self.accepted = False
+        self.completed = False  # objectives met
+        self.turned_in = False  # rewards claimed
+
+    def is_complete(self):
+        for obj in self.objectives:
+            if self.progress.get(obj["target"], 0) < obj["count"]:
+                return False
+        return True
+
+    def record_kill(self, monster_name):
+        """Record a kill. Returns True if this kill progressed the quest."""
+        for obj in self.objectives:
+            if obj["target"] == monster_name:
+                current = self.progress.get(obj["target"], 0)
+                if current < obj["count"]:
+                    self.progress[obj["target"]] = current + 1
+                    return True
+        return False
+
+    def get_progress_text(self):
+        """Return objective progress string."""
+        parts = []
+        for obj in self.objectives:
+            cur = self.progress.get(obj["target"], 0)
+            parts.append(f"{obj['target']}: {cur}/{obj['count']}")
+        return "  ".join(parts)
+
+
+# Northshire questline — based on WoW Classic
+NORTHSHIRE_QUESTS = [
+    Quest("a_threat_within", "A Threat Within",
+          "Marshal McBride needs your help defending Northshire Valley. Speak with him to begin.",
+          [],  # No kill objective — just talk to accept
+          rewards_xp=50, rewards_gold=0, next_quest="kobold_camp_cleanup"),
+
+    Quest("kobold_camp_cleanup", "Kobold Camp Cleanup",
+          "The Kobold camps to the east are growing bolder. Thin their numbers!",
+          [{"target": "Kobold Dragonshield", "count": 10}],
+          rewards_xp=250, rewards_gold=50, next_quest="wolves_across_the_border"),
+
+    Quest("wolves_across_the_border", "Wolves Across the Border",
+          "The wolves in the forest are becoming a threat to travelers. Hunt them down.",
+          [{"target": "Grey Wolf", "count": 8}],
+          rewards_xp=250, rewards_gold=50, next_quest="brotherhood_of_thieves"),
+
+    Quest("brotherhood_of_thieves", "Brotherhood of Thieves",
+          "Defias thugs have been spotted in the vineyards. Eliminate the cultist threat!",
+          [{"target": "Human Cultist", "count": 12}],
+          rewards_xp=375, rewards_gold=75, next_quest="northshire_secured"),
+
+    Quest("northshire_secured", "Northshire Secured",
+          "The valley is safer now, but threats remain. Clear out the remaining hostiles: wolves, kobolds, and cultists.",
+          [{"target": "Grey Wolf", "count": 5}, {"target": "Kobold Dragonshield", "count": 5}, {"target": "Human Cultist", "count": 5}],
+          rewards_xp=500, rewards_gold=150, next_quest=None),
+]
+
+# Quest state manager
+quest_log = {}  # quest_id -> Quest
+for q in NORTHSHIRE_QUESTS:
+    quest_log[q.quest_id] = q
+
+current_quest_id = "a_threat_within"  # First available quest
+completed_quests = []  # List of turned-in quest IDs
+
+
+class NPC(Entity):
+    """A quest-giving NPC. Inherits all combat/entity attributes but doesn't fight by default."""
+    def __init__(self, name, x, y, level=1, sprite=None):
+        # NPC has minimal combat stats (hp=5 gives 250 HP, ac=10 no armor, speed=0 stationary)
+        super().__init__(name, x, y, hp=5, ac=10, speed=0)
+        self.level = level
+        self.sprite = sprite
+        self.interact_range = 80  # pixels — how close hero must be to interact
+
+    def has_available_quest(self):
+        """Does this NPC have a quest to offer?"""
+        if current_quest_id and current_quest_id in quest_log:
+            q = quest_log[current_quest_id]
+            return not q.accepted and not q.turned_in
+        return False
+
+    def has_turn_in(self):
+        """Does this NPC have a quest ready to turn in?"""
+        if current_quest_id and current_quest_id in quest_log:
+            q = quest_log[current_quest_id]
+            return q.accepted and q.is_complete() and not q.turned_in
+        return False
+
+    def is_in_range(self, hx, hy):
+        dx = self.x - hx
+        dy = self.y - hy
+        return (dx*dx + dy*dy) <= self.interact_range * self.interact_range
+
+
+# Create the NPC — Marshal McBride, south of church (hero_start is 26,24 = church area)
+# Place NPC at tile 26, 27 (3 tiles south of hero start)
+npc_mcbride = None
+if USE_MAP:
+    npc_tx, npc_ty = 26, 27
+    npc_wx, npc_wy = world_map.get_spawn_world_pos(npc_tx, npc_ty)
+    npc_mcbride = NPC("Marshal McBride", npc_wx, npc_wy)
+    npc_mcbride.sprite = get_dungeon_tile(1, 8)  # Use a human sprite from dungeon tilemap
+
+# Quest interaction state
+quest_popup_timer = 0.0  # How long to show quest accepted/completed popup
+quest_popup_text = ""
+quest_popup_color = GOLD
 
 def get_monster_at_screen(sx, sy):
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
@@ -1109,14 +1366,19 @@ while running:
                 potions -= 1
                 heal = hero.heal(150)
                 floating_texts.append(FloatingText(hero.x, hero.y-30, f"+{heal:.0f}", (100,255,100)))
-            # Summon AI companions (F1-F4)
+            # Summon AI companions (F1-F4) — press again to dismiss
             summon_keys = [pygame.K_F1, pygame.K_F2, pygame.K_F3, pygame.K_F4]
             for ki, sk in enumerate(summon_keys):
                 if event.key == sk and ki < len(available_companions):
                     comp_info = available_companions[ki]
-                    # Check not already summoned
-                    already = any(c.name == comp_info["name"] for c, _ in companions)
-                    if not already:
+                    # Check if already summoned — if so, dismiss
+                    existing = [(i, c) for i, (c, _) in enumerate(companions) if c.name == comp_info["name"]]
+                    if existing:
+                        idx, comp = existing[0]
+                        companions.pop(idx)
+                        game_state.heroes.remove(comp)
+                        floating_texts.append(FloatingText(comp.x, comp.y - 30, f"{comp.name} dismissed", (200, 150, 150)))
+                    else:
                         cx, cy = find_walkable_nearby(hero.x, hero.y, radius=60)
                         comp = comp_info["create"](cx, cy)
                         comp.sprite = HERO_SPRITES[comp_info["sprite_key"]]
@@ -1672,12 +1934,108 @@ while running:
             hero.gold += random.randint(10,30) * m.experience
             hero.kills += 1
             floating_texts.append(FloatingText(m.x, m.y+10, f"+{m.experience}xp", GOLD))
+            # Quest kill tracking
+            if current_quest_id and current_quest_id in quest_log:
+                active_quest = quest_log[current_quest_id]
+                if active_quest.accepted and not active_quest.turned_in:
+                    if active_quest.record_kill(m.name):
+                        # Show progress
+                        prog = active_quest.get_progress_text()
+                        floating_texts.append(FloatingText(hero.x, hero.y - 50, prog, (200, 200, 255)))
+                    if active_quest.is_complete() and not active_quest.completed:
+                        active_quest.completed = True
+                        quest_popup_text = f"Quest Complete: {active_quest.title} — Return to {npc_mcbride.name if npc_mcbride else 'NPC'}"
+                        quest_popup_timer = 3.0
+                        quest_popup_color = (100, 255, 100)
             m.experience = 0
+            # Queue for respawn (non-bosses with a spawn point)
+            if not m.is_boss and hasattr(m, 'spawn_point') and m.spawn_point:
+                respawn_queue.append((m.spawn_point, game_state.game_time))
             if m.is_boss:
                 # Victory only when ALL bosses are dead
                 all_bosses_dead = all(not b.alive for b in game_state.monsters if b.is_boss)
                 if all_bosses_dead:
                     victory = True
+
+    # Level-up check
+    while hero.level < MAX_LEVEL and hero.xp >= xp_to_next_level(hero.level):
+        hero.xp -= xp_to_next_level(hero.level)
+        hero.level += 1
+        # Stat growth
+        growth = GROWTH_RATES.get(hero.class_name, {"hp": 25, "damage": 2.5})
+        hero.max_hp += growth["hp"]
+        hero.base_damage += growth["damage"]
+        # Full heal on level-up
+        hero.hp = hero.max_hp
+        # Visual celebration
+        effects.append(LevelUpEffect(hero.x, hero.y))
+        floating_texts.append(FloatingText(hero.x, hero.y - 30,
+            f"Lv {hero.level}! +{growth['hp']:.0f}HP +{growth['damage']:.0f}dmg", GOLD))
+        save_game()
+
+    # Respawn system — check if any mobs are ready to respawn
+    if USE_MAP and respawn_queue:
+        still_pending = []
+        for sp, death_time in respawn_queue:
+            if game_state.game_time - death_time >= RESPAWN_TIME:
+                m = spawn_single_world_monster(sp)
+                if m:
+                    game_state.monsters.append(m)
+            else:
+                still_pending.append((sp, death_time))
+        respawn_queue[:] = still_pending
+
+    # NPC Quest Interaction — auto-interact when hero is close
+    if npc_mcbride and npc_mcbride.is_in_range(hero.x, hero.y) and current_quest_id:
+        active_quest = quest_log.get(current_quest_id)
+        if active_quest:
+            if not active_quest.accepted:
+                # Accept quest automatically
+                active_quest.accepted = True
+                if not active_quest.objectives:
+                    # No-objective quest (intro) — auto-complete and turn in
+                    active_quest.completed = True
+                    active_quest.turned_in = True
+                    hero.xp += active_quest.rewards_xp
+                    hero.gold += active_quest.rewards_gold
+                    completed_quests.append(current_quest_id)
+                    quest_popup_text = f"Quest Complete: {active_quest.title}"
+                    quest_popup_timer = 2.5
+                    quest_popup_color = (100, 255, 100)
+                    current_quest_id = active_quest.next_quest
+                    # Auto-accept next quest if available
+                    if current_quest_id and current_quest_id in quest_log:
+                        next_q = quest_log[current_quest_id]
+                        next_q.accepted = True
+                        quest_popup_text = f"New Quest: {next_q.title}"
+                        quest_popup_timer = 3.0
+                        quest_popup_color = GOLD
+                else:
+                    quest_popup_text = f"Quest Accepted: {active_quest.title}"
+                    quest_popup_timer = 3.0
+                    quest_popup_color = GOLD
+            elif active_quest.is_complete() and not active_quest.turned_in:
+                # Turn in quest
+                active_quest.turned_in = True
+                hero.xp += active_quest.rewards_xp
+                hero.gold += active_quest.rewards_gold
+                completed_quests.append(current_quest_id)
+                quest_popup_text = f"Quest Turned In: {active_quest.title} (+{active_quest.rewards_xp}xp +{active_quest.rewards_gold}g)"
+                quest_popup_timer = 3.0
+                quest_popup_color = (100, 255, 100)
+                floating_texts.append(FloatingText(hero.x, hero.y - 40,
+                    f"+{active_quest.rewards_xp}xp +{active_quest.rewards_gold}g", GOLD))
+                # Advance to next quest
+                current_quest_id = active_quest.next_quest
+                if current_quest_id and current_quest_id in quest_log:
+                    next_q = quest_log[current_quest_id]
+                    next_q.accepted = True
+                    quest_popup_text += f"\n New Quest: {next_q.title}"
+                save_game()
+
+    # Quest popup timer
+    if quest_popup_timer > 0:
+        quest_popup_timer -= dt
 
     if not hero.alive:
         game_state.check_hero_death(hero)
@@ -1970,6 +2328,29 @@ while running:
         pygame.draw.rect(screen, (60, 60, 80), (bar_x, bar_y, bar_w, bar_h))
         pygame.draw.rect(screen, (150, 200, 255), (bar_x, bar_y, int(bar_w * progress), bar_h))
 
+    # NPC rendering
+    if npc_mcbride:
+        npc_sx = int((npc_mcbride.x - cx) * cam_zoom + WIDTH // 2)
+        npc_sy = int((npc_mcbride.y - cy) * cam_zoom + HEIGHT // 2)
+        # Draw NPC sprite
+        if npc_mcbride.sprite:
+            sz = int(TILE_SIZE * cam_zoom)
+            scaled = pygame.transform.scale(npc_mcbride.sprite, (sz, sz))
+            screen.blit(scaled, (npc_sx - sz // 2, npc_sy - sz // 2))
+        else:
+            pygame.draw.circle(screen, (100, 200, 100), (npc_sx, npc_sy), int(12 * cam_zoom))
+        # Quest indicator above NPC
+        indicator_y = npc_sy - int(30 * cam_zoom)
+        if npc_mcbride.has_available_quest():
+            # Yellow "!" for available quest
+            screen.blit(font.render("!", True, GOLD), (npc_sx - 3, indicator_y))
+        elif npc_mcbride.has_turn_in():
+            # Yellow "?" for turn-in ready
+            screen.blit(font.render("?", True, GOLD), (npc_sx - 3, indicator_y))
+        # NPC name
+        name_surf = font.render(npc_mcbride.name, True, (100, 255, 100))
+        screen.blit(name_surf, (npc_sx - name_surf.get_width() // 2, npc_sy - int(22 * cam_zoom)))
+
     # Floating text
     for t in floating_texts: t.draw(screen, cx, cy)
 
@@ -1979,10 +2360,32 @@ while running:
     pygame.draw.rect(screen, HP_RED, (20,20,202,18))
     pygame.draw.rect(screen, HP_GREEN, (20,20,int(202*hp_pct),18))
     screen.blit(font.render(f"HP {hero.hp:.0f}/{hero.max_hp}", True, WHITE), (25,23))
-    screen.blit(font.render(f"[F] Potions: {potions}", True, (200,150,150)), (20,44))
+
+    # XP bar (below HP bar)
+    xp_needed = xp_to_next_level(hero.level) if hero.level < MAX_LEVEL else 1
+    xp_pct = min(1.0, hero.xp / xp_needed) if hero.level < MAX_LEVEL else 1.0
+    pygame.draw.rect(screen, HP_BG, (18, 42, 206, 12))
+    pygame.draw.rect(screen, (60, 20, 80), (20, 44, 202, 8))
+    pygame.draw.rect(screen, (180, 130, 255), (20, 44, int(202 * xp_pct), 8))
+    xp_text = f"Lv {hero.level}  XP {hero.xp}/{xp_needed}" if hero.level < MAX_LEVEL else f"Lv {hero.level} MAX"
+    screen.blit(font.render(xp_text, True, (200, 180, 255)), (25, 43))
+
+    screen.blit(font.render(f"[F] Potions: {potions}", True, (200,150,150)), (20,58))
+
+    # Companion health bars (top HUD, below potions)
+    comp_hud_y = 74
+    for comp, _ in companions:
+        comp_hp_pct = comp.hp / comp.max_hp if comp.max_hp > 0 else 0
+        bar_color = (100, 150, 255) if comp.alive else (80, 80, 80)
+        pygame.draw.rect(screen, HP_BG, (18, comp_hud_y, 156, 14))
+        pygame.draw.rect(screen, (40, 40, 60), (20, comp_hud_y + 2, 152, 10))
+        pygame.draw.rect(screen, bar_color, (20, comp_hud_y + 2, int(152 * comp_hp_pct), 10))
+        status = "" if comp.alive else " (dead)"
+        screen.blit(font.render(f"{comp.name}{status}", True, WHITE), (22, comp_hud_y + 1))
+        comp_hud_y += 16
 
     # Skill list (left side)
-    ab_y = 66
+    ab_y = max(78, comp_hud_y + 4)
     for i, key in enumerate(ability_keys):
         ab = hero.abilities[key]
         ready = ab.is_ready()
@@ -2023,7 +2426,32 @@ while running:
         screen.blit(font.render("Northshire", True, BLUE), (WIDTH-160, 40))
     else:
         screen.blit(font.render(f"Room: {dungeon.current_room.name}", True, BLUE), (WIDTH-160, 40))
-    screen.blit(font.render(game_state.objective_text, True, (200,200,150)), (WIDTH//2-180, 10))
+
+    # Quest HUD (top center)
+    if current_quest_id and current_quest_id in quest_log:
+        active_quest = quest_log[current_quest_id]
+        if active_quest.accepted and not active_quest.turned_in:
+            quest_title = f"[Quest] {active_quest.title}"
+            screen.blit(font.render(quest_title, True, GOLD), (WIDTH//2 - 120, 10))
+            if active_quest.objectives:
+                prog_text = active_quest.get_progress_text()
+                prog_color = (100, 255, 100) if active_quest.is_complete() else (200, 200, 200)
+                screen.blit(font.render(prog_text, True, prog_color), (WIDTH//2 - 120, 26))
+                if active_quest.is_complete():
+                    screen.blit(font.render(f"Return to {npc_mcbride.name if npc_mcbride else 'NPC'}", True, (100, 255, 100)), (WIDTH//2 - 120, 42))
+        elif not active_quest.accepted:
+            screen.blit(font.render(f"Visit {npc_mcbride.name if npc_mcbride else 'NPC'} for a new quest", True, (200, 200, 150)), (WIDTH//2 - 120, 10))
+    elif not current_quest_id:
+        screen.blit(font.render("All quests completed! Northshire is safe.", True, (100, 255, 100)), (WIDTH//2 - 160, 10))
+    else:
+        screen.blit(font.render(game_state.objective_text, True, (200,200,150)), (WIDTH//2-180, 10))
+
+    # Quest popup (center screen notification)
+    if quest_popup_timer > 0 and quest_popup_text:
+        alpha = min(255, int(255 * quest_popup_timer / 0.5)) if quest_popup_timer < 0.5 else 255
+        for i, line in enumerate(quest_popup_text.split("\n")):
+            popup_surf = font.render(line.strip(), True, quest_popup_color)
+            screen.blit(popup_surf, (WIDTH//2 - popup_surf.get_width()//2, HEIGHT//3 + i * 20))
 
     # FPS counter
     fps = int(clock.get_fps())
@@ -2050,4 +2478,5 @@ while running:
     screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill  1/2/3=Switch  F=Pot  F1-F4=Summon", True, (70,70,70)), (10, HEIGHT-18))
     pygame.display.flip()
 
+save_game()
 pygame.quit()

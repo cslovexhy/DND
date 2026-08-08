@@ -104,6 +104,9 @@ class Entity:
         self.x = x
         self.y = y
 
+        # Level
+        self.level = 1
+
         # Stats (scaled from board game)
         self.max_hp = hp * HP_SCALE
         self.hp = self.max_hp
@@ -119,6 +122,14 @@ class Entity:
         self.crit_chance = 0.05   # 5% base crit chance
         self.crit_multiplier = 2.0  # crits deal 2x damage
         self.last_crit = False  # whether last attack was a crit
+
+        # Abilities & cooldowns
+        self.abilities: dict[str, 'Ability'] = {}
+        self.gcd = 0.0  # Global cooldown
+        self.GCD_DURATION = 0.5
+
+        # Stealth
+        self.stealthed: bool = False
 
         # State
         self.alive = True
@@ -262,7 +273,11 @@ class Entity:
         """Per-frame update."""
         self.flash_timer = max(0, self.flash_timer - dt)
         self.swing_timer = max(0, self.swing_timer - dt)
+        self.gcd = max(0, self.gcd - dt)
         self.update_conditions(dt)
+        # Ability cooldowns
+        for ab in self.abilities.values():
+            ab.update(dt)
         # Health regeneration
         if self.alive and self.hp < self.max_hp:
             rate = self.regen_rate_combat if self.in_combat else self.regen_rate_ooc
@@ -277,6 +292,10 @@ class Entity:
         expired = [k for k, v in self.buffs.items() if v["remaining"] <= 0]
         for k in expired:
             del self.buffs[k]
+
+    def add_ability(self, key: str, ability: 'Ability'):
+        """Add an ability to this entity."""
+        self.abilities[key] = ability
 
     def can_swing(self) -> bool:
         """Check if entity can swing (weapon timer ready)."""
@@ -322,31 +341,13 @@ class Hero(Entity):
         self.surge_value = surge_value * HP_SCALE
         self.special_ability = special_ability
 
-        # Abilities
-        self.abilities: dict[str, Ability] = {}
-        self.gcd = 0.0  # Global cooldown
-        self.GCD_DURATION = 0.5
-
         # Progression
         self.xp = 0
         self.gold = 0
         self.kills = 0
-        self.level = 1
-
-        # Stealth state (Rogue)
-        self.stealthed: bool = False
 
         # Equipment (slot -> item)
         self.equipment: dict[str, dict] = {}
-
-    def add_ability(self, key: str, ability: Ability):
-        self.abilities[key] = ability
-
-    def update(self, dt: float):
-        super().update(dt)
-        self.gcd = max(0, self.gcd - dt)
-        for ab in self.abilities.values():
-            ab.update(dt)
 
     def use_ability(self, key: str, targets: list['Entity'],
                     target_pos: tuple = None) -> list[tuple[str, float]]:
