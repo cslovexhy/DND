@@ -389,7 +389,7 @@ AI_BEHAVIORS = {
     "Grell": ai_melee,
     "Gibbering Mouther": ai_melee,
     "Orc Archer": ai_ranged,
-    "Human Cultist": ai_ranged,
+    "Human Cultist": ai_melee,
     "Meerak": ai_boss,
     "Ashardalon": ai_boss,
     "Gauth": ai_boss,
@@ -424,7 +424,7 @@ ATTACK_RANGES = {
     "Grell": 50,
     "Gibbering Mouther": 60,
     "Orc Archer": 220,
-    "Human Cultist": 200,
+    "Human Cultist": 50,
     # Bosses
     "Meerak": 55,
     "Ashardalon": 70,

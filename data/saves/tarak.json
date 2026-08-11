@@ -1,10 +1,10 @@
 {
   "name": "Tarak",
   "class_name": "Rogue",
-  "level": 9,
-  "xp": 547,
-  "gold": 8590,
-  "kills": 71,
+  "level": 10,
+  "xp": 262,
+  "gold": 19560,
+  "kills": 134,
   "completed_quests": [
     "a_threat_within",
     "kobold_camp_cleanup",

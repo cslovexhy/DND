@@ -44,6 +44,7 @@ class WorldMap:
             data = json.load(f)
 
         m = cls()
+        m.data = data  # keep raw JSON for extensible fields (npcs, etc.)
         m.width = data["width"]
         m.height = data["height"]
         m.tile_size = data.get("tile_size", TILE_SIZE)

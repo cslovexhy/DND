@@ -165,6 +165,11 @@ MONSTER_SPRITES = {
     "Gibbering Mouther": get_creature(4, 8),
 }
 BOSS_SPRITE = get_creature(9, 7, int(TILE_SIZE * BOSS_SCALE))
+GARRICK_SPRITE = get_creature(7, 6, int(TILE_SIZE * BOSS_SCALE))  # Scaled-up Human Cultist
+
+BOSS_SPRITES = {
+    "Garrick Padfoot": GARRICK_SPRITE,
+}
 
 # === EFFECTS ===
 floating_texts = []
@@ -556,8 +561,6 @@ else:
 move_path = []
 selected_target = None
 potions = 3
-victory = False
-
 # Queued ability cast (walk to range then fire)
 pending_cast = None  # (ab_key, ab, target_monster) or None
 
@@ -709,6 +712,7 @@ SPAWN_STATS = {
     "margrath": {"name": "Margrath", "hp": 5, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 25, "boss": True},
     "rage_drake": {"name": "Rage Drake", "hp": 5, "ac": 15, "speed": 6, "atk": 9, "dmg": 2, "xp": 25, "boss": True},
     "otyugh": {"name": "Otyugh", "hp": 5, "ac": 14, "speed": 3, "atk": 8, "dmg": 2, "xp": 25, "boss": True},
+    "garrick_padfoot": {"name": "Garrick Padfoot", "hp": 4, "ac": 15, "speed": 5, "atk": 8, "dmg": 2, "xp": 30, "boss": True, "sprite": "garrick_padfoot"},
 }
 
 def spawn_single_world_monster(sp):
@@ -722,7 +726,7 @@ def spawn_single_world_monster(sp):
                 hp=mt["hp"], ac=mt["ac"], speed=mt["speed"],
                 attack_bonus=mt["atk"], attack_damage=mt["dmg"],
                 experience=mt["xp"], is_boss=is_boss)
-    m.sprite = BOSS_SPRITE if is_boss else MONSTER_SPRITES.get(mt["name"])
+    m.sprite = BOSS_SPRITES.get(mt["name"], BOSS_SPRITE) if is_boss else MONSTER_SPRITES.get(mt["name"])
     if mt.get("condition"):
         m.on_hit_condition = mt["condition"]
     if mt.get("ranged"):
@@ -1123,25 +1127,15 @@ class NPC(Entity):
         return (dx*dx + dy*dy) <= self.interact_range * self.interact_range
 
 
-# Create NPCs — positioned relative to hero_start (26,24)
-# Based on WoW Classic Northshire layout:
-#   Deputy Willem: south of abbey entrance (guards the road)
-#   Marshal McBride: inside the abbey (south of hero start)
-#   Eagan Peltskinner: west side of church, near wolf area
-#   Milly Osworth: northeast of church, near vineyard
+# Create NPCs from map data (each map defines its own NPCs in the JSON)
 npcs = []
 if USE_MAP:
-    npc_defs = [
-        # (name, npc_id, gender, tile_x, tile_y, sprite_col, sprite_row)
-        ("Deputy Willem",       "deputy_willem",       "male",   26, 26, 1, 8),
-        ("Marshal McBride",     "marshal_mcbride",     "male",   26, 28, 2, 8),
-        ("Eagan Peltskinner",   "eagan_peltskinner",   "male",   22, 25, 5, 8),
-        ("Milly Osworth",       "milly_osworth",       "female", 30, 22, 4, 8),
-    ]
-    for npc_name, npc_id, gender, tx, ty, spr_col, spr_row in npc_defs:
+    npc_defs = world_map.data.get("npcs", [])
+    for npc_def in npc_defs:
+        tx, ty = npc_def["x"], npc_def["y"]
         wx, wy = world_map.get_spawn_world_pos(tx, ty)
-        npc = NPC(npc_name, wx, wy, npc_id=npc_id, gender=gender)
-        npc.sprite = get_dungeon_tile(spr_col, spr_row)
+        npc = NPC(npc_def["name"], wx, wy, npc_id=npc_def["npc_id"], gender=npc_def.get("gender", "male"))
+        npc.sprite = get_dungeon_tile(npc_def["sprite_col"], npc_def["sprite_row"])
         npcs.append(npc)
 
 # Quest interaction state
@@ -1736,7 +1730,7 @@ while running:
                         floating_texts.append(FloatingText(cx, cy - 30, f"{comp.name} joined!", GOLD))
                     break
 
-        if event.type == pygame.MOUSEBUTTONDOWN and not victory and not game_state.adventure_failed:
+        if event.type == pygame.MOUSEBUTTONDOWN and not game_state.adventure_failed:
             mx_s, my_s = event.pos
             # If quest popup panel is open, intercept clicks
             if quest_popup_panel and quest_popup_panel.active:
@@ -1818,17 +1812,17 @@ while running:
                         selected_target = None
 
     # --- End screen ---
-    if victory or game_state.adventure_failed:
+    if game_state.adventure_failed:
         screen.fill(BG)
-        msg = "VICTORY! You escaped the tunnel!" if victory else "DEFEATED..."
-        t = title_font.render(msg, True, GOLD if victory else HP_RED)
+        msg = "DEFEATED..."
+        t = title_font.render(msg, True, HP_RED)
         screen.blit(t, (WIDTH//2-t.get_width()//2, HEIGHT//2-20))
         stats = f"Time: {game_state.game_time:.1f}s  HP: {hero.hp:.0f}/{hero.max_hp}  Kills: {hero.kills}"
         screen.blit(big_font.render(stats, True, WHITE), (WIDTH//2-150, HEIGHT//2+20))
         screen.blit(font.render("Press ESC to quit (auto-closing in 5s)", True, GRAY), (WIDTH//2-100, HEIGHT//2+55))
         pygame.display.flip()
         if auto_mode:
-            print(f"RESULT: {'VICTORY' if victory else 'DEFEATED'} time={game_state.game_time:.1f}s hp={hero.hp:.0f}/{hero.max_hp} kills={hero.kills}", flush=True)
+            print(f"RESULT: DEFEATED time={game_state.game_time:.1f}s hp={hero.hp:.0f}/{hero.max_hp} kills={hero.kills}", flush=True)
             pygame.time.wait(5000)
             running = False
         continue
@@ -2306,11 +2300,6 @@ while running:
             # Queue for respawn (non-bosses with a spawn point)
             if not m.is_boss and hasattr(m, 'spawn_point') and m.spawn_point:
                 respawn_queue.append((m.spawn_point, game_state.game_time))
-            if m.is_boss:
-                # Victory only when ALL bosses are dead
-                all_bosses_dead = all(not b.alive for b in game_state.monsters if b.is_boss)
-                if all_bosses_dead:
-                    victory = True
 
     # Level-up check
     while hero.level < MAX_LEVEL and hero.xp >= xp_to_next_level(hero.level):
