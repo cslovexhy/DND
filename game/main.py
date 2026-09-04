@@ -34,7 +34,12 @@ for i, arg in enumerate(sys.argv):
 
 # === INIT ===
 pygame.init()
-pygame.mixer.init()
+_audio_available = False
+try:
+    pygame.mixer.init()
+    _audio_available = True
+except Exception as e:
+    print(f"[AUDIO] Audio unavailable: {e}. Music disabled.")
 
 # === MUSIC ===
 _music_playlist = []
@@ -469,14 +474,16 @@ if USE_MAP:
         sys.exit(1)
     dungeon = world_map  # Duck-type compatible (is_wall, is_floor, get_start_pos)
     hero_wx, hero_wy = world_map.get_start_pos()
-    pygame.mixer.music.stop()
+    if _audio_available:
+        pygame.mixer.music.stop()
     start_map_music(world_map.music)
 else:
     world_map = None
     dungeon = UnifiedDungeon()
     dungeon.generate(num_rooms=7, quest_room_name="Tunnel Exit")
     hero_wx, hero_wy = dungeon.get_start_pos()
-    pygame.mixer.music.stop()  # No music for dungeon mode
+    if _audio_available:
+        pygame.mixer.music.stop()  # No music for dungeon mode
 hero_info = ALL_HEROES[selected_hero_idx]
 hero = hero_info["create"](hero_wx, hero_wy)
 hero.sprite = HERO_SPRITES[hero_info["sprite_key"]]
