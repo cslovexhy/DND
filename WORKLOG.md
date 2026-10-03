@@ -725,3 +725,61 @@ Decided current repo is too entangled to incrementally refactor — will create 
 - `data/saves/heskan.json` — Save file now tracked
 - `.gitignore` — Removed data/saves/
 - `WORKLOG.md` — Session log + resource links
+
+---
+
+## Session 12 — 2026-10-03
+
+### Stranger Things Monster Set (Upside Down)
+Added a themed monster set. These are generic/original creatures given Stranger-Things-flavored names in game data — the art is original or from the existing CC0 Tiny Creatures pack (no copyrighted creature art used).
+
+| Monster | Sprite source | Spawn key |
+|---------|---------------|-----------|
+| Demogorgon | Original hand-drawn 24×24 (flower-faced grey humanoid) | `demogorgon` |
+| Demodog | Hellhound (CC0 Tiny Creatures, as-is) | `demodog` |
+| Demobat | Bat (CC0 Tiny Creatures) | `demobat` |
+| Vecna | Lich (CC0 Tiny Creatures), boss | `vecna` |
+
+### Demogorgon Sprite (original art)
+- Hand-drawn by the user via an editable text-grid workflow (`scratch/demogorgon.grid` + `scratch/draw_from_grid.py` renderer → transparent 24×24 PNG).
+- Final art committed at `assets/stranger_things/sprites/demogorgon.png`.
+- Built on a lean body silhouette with an original 5-petal bloom "face" in the foreground, full ~2px outline using the pack's shared outline color `(63,38,49)`.
+- Rendered at **200% size** in-game (`CHAR_SIZE * 2`) so it looms over regular mobs.
+
+### Demogorgon Stats & Skills
+- Stats: `hp 8, ac 16, speed 9 (1.5× player), atk 10, dmg 3, xp 20`. Not a boss. Aggro/sense range `340`.
+- **Auto-stealth**: goes invisible after **6s** without attacking. Stealth = fully gone (not rendered, not clickable, ignored by hero/companion AI target selection). Reveals the instant it attacks OR takes any damage (single-target or AoE).
+- **Slow/chill aura**: heroes within 90px get a real **20% slow**; the player also gets a blue "chill" visual (tint + ice ring) — visual only, not a movement lock.
+
+### New Reusable Monster Features (data-driven, in SPAWN_STATS)
+- **`relentless`** (bool): monster never leash-resets aggro — hunts forever once pulled. Generalizes the existing boss leash exemption. Wired through `init_monster_aggro` / `setup_monster_aggro` / `check_aggro`.
+- **`hive_mind`** `(range, [spawn_types])`: when any monster of the listed spawn-types is attacked within `range`, this monster also aggros. Folded into `call_for_help` so all existing attack sites trigger it; monsters now store `spawn_type` for matching. Demogorgon uses `(1000, ["demogorgon", "vecna"])`.
+
+### Reveal/damage plumbing
+- `Entity.take_damage` now sets a generic `was_hit` flag (covers single-target, AoE, shield-absorbed, lethal) — consumed by the Demogorgon stealth logic to reveal on any hit.
+
+### Map Editor
+- Added Demogorgon / Demodog / Demobat to the monster spawn palette, Vecna to the boss palette.
+
+### New Map
+- `data/maps/upside_down.json` (created in the editor).
+
+### Housekeeping
+- Added `.aider*` to `.gitignore` (ignore aider tool cruft).
+
+### Key Files Modified
+- `game/main.py` — sprite registry + external PNG loader, SPAWN_STATS entries, Demogorgon skills (`update_demogorgon_skills`), relentless/hive_mind/spawn_type wiring at spawn, stealth-aware rendering + click targeting
+- `game/engine/ai.py` — `relentless` + `hive_mind` in aggro init/setup, leash exemption, `call_for_help` hive_mind propagation, Demogorgon sense range
+- `game/engine/entities.py` — `was_hit` flag in `take_damage`
+- `game/engine/hero_ai.py` — exclude stealthed monsters from AI target selection
+- `map_editor.py` — spawn palette entries
+- `assets/stranger_things/sprites/demogorgon.png` — original sprite (new)
+- `data/maps/upside_down.json` — new map
+- `.gitignore` — ignore `.aider*`
+
+### Commits
+- `dd36109` — Add Stranger Things monsters (Upside Down set)
+
+### Notes / Follow-ups
+- Verification was done via `py_compile`, static tracing, and an isolated unit test of `hive_mind` propagation (range gating + type filter confirmed). The live game window was not run during this session.
+- Demodog/Demobat/Vecna currently reuse pack sprites; could get original art later like the Demogorgon.
