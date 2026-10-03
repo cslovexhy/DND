@@ -33,13 +33,18 @@ class AggroState:
     RESETTING = "reset"  # Walking back to spawn (lost aggro)
 
 
-def init_monster_aggro(monster: Monster, sense_range=180, call_range=120, leash_range=500, group_id=None):
+def init_monster_aggro(monster: Monster, sense_range=180, call_range=120, leash_range=500,
+                       group_id=None, relentless=False, hive_mind=None):
     """Attach aggro data to a monster. Call after creating the monster."""
     monster.aggro_state = AggroState.IDLE
     monster.sense_range = sense_range        # Detection radius (pixels)
     monster.stealth_sense_range = sense_range * 0.1  # Detection radius vs stealthed hero (10% default)
     monster.call_range = call_range          # Call-for-help radius when attacked
     monster.leash_range = leash_range        # Max chase distance from spawn
+    monster.relentless = relentless          # If True, never leash-resets aggro (hunts forever)
+    # hive_mind: optional (range, [spawn_type_names]). If any monster of the listed
+    # types is attacked within `range`, this monster also aggros. None = disabled.
+    monster.hive_mind = hive_mind
     monster.spawn_x = monster.x             # Remember where it spawned
     monster.spawn_y = monster.y
     monster.group_id = group_id             # Linked group (pull one = pull all)
@@ -150,10 +155,11 @@ def resume_patrol_from_nearest(monster: Monster):
 def check_aggro(monster: Monster, heroes: list[Hero], all_monsters: list[Monster]):
     """Check if monster should aggro based on sense range."""
     if monster.aggro_state == AggroState.AGGROED:
-        # Check leash
+        # Check leash — bosses and relentless monsters never leash-reset.
         dx = monster.x - monster.spawn_x
         dy = monster.y - monster.spawn_y
-        if not monster.is_boss and math.sqrt(dx*dx + dy*dy) > monster.leash_range:
+        exempt = monster.is_boss or getattr(monster, 'relentless', False)
+        if not exempt and math.sqrt(dx*dx + dy*dy) > monster.leash_range:
             monster.aggro_state = AggroState.RESETTING
             monster.aggro_target = None
         return
@@ -204,18 +210,33 @@ def aggro_monster(monster: Monster, target: Hero, all_monsters: list[Monster]):
 
 
 def call_for_help(attacked_monster: Monster, all_monsters: list[Monster], target: Hero):
-    """When a monster is attacked, nearby monsters within call_range also aggro."""
+    """When a monster is attacked, nearby monsters also aggro.
+
+    Two mechanics are applied:
+    1. call_range: idle monsters within the attacked monster's call_range aggro.
+    2. hive_mind: a monster with hive_mind=(range, [spawn_types]) aggros when a
+       monster whose spawn_type is in its list is attacked within that range.
+    """
+    attacked_type = getattr(attacked_monster, 'spawn_type', None)
     for m in all_monsters:
         if m == attacked_monster or not m.alive:
             continue
-        if not hasattr(m, 'aggro_state'):
+        if not hasattr(m, 'aggro_state') or m.aggro_state != AggroState.IDLE:
             continue
-        if m.aggro_state != AggroState.IDLE:
-            continue
-        dist = attacked_monster.distance_to(m)
-        if dist <= attacked_monster.call_range:
+
+        # 1) Standard proximity call-for-help
+        if attacked_monster.distance_to(m) <= attacked_monster.call_range:
             m.aggro_state = AggroState.AGGROED
             m.aggro_target = target
+            continue
+
+        # 2) Hive mind: m watches for specific types being attacked within range
+        hive = getattr(m, 'hive_mind', None)
+        if hive and attacked_type is not None:
+            hive_range, hive_types = hive
+            if attacked_type in hive_types and attacked_monster.distance_to(m) <= hive_range:
+                m.aggro_state = AggroState.AGGROED
+                m.aggro_target = target
 
 
 # === MOVEMENT WITH PROPER SPACING ===
@@ -411,6 +432,7 @@ SENSE_RANGES = {
     "Cave Bear": 200,
     "Grell": 180,
     "Gibbering Mouther": 140,
+    "Demogorgon": 340,  # extra-large sense range — hunts from far away
 }
 
 # Attack ranges (pixels) - NONE are 0
@@ -439,7 +461,11 @@ def setup_monster_aggro(monster: Monster, nav_dungeon=None):
     sense = SENSE_RANGES.get(monster.name, 170)
     atk_range = ATTACK_RANGES.get(monster.name, 50)
     monster.attack_range = atk_range
-    init_monster_aggro(monster, sense_range=sense, call_range=120, leash_range=500)
+    # relentless / hive_mind may be pre-set on the monster from spawn data.
+    relentless = getattr(monster, 'relentless', False)
+    hive_mind = getattr(monster, 'hive_mind', None)
+    init_monster_aggro(monster, sense_range=sense, call_range=120, leash_range=500,
+                       relentless=relentless, hive_mind=hive_mind)
     monster._nav_dungeon = nav_dungeon  # Reference for A* pathfinding
 
 

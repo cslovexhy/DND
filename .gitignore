@@ -21,3 +21,6 @@ pdfs/
 # IDE
 .idea/
 .vscode/
+
+# Aider (AI pair-programming tool cruft)
+.aider*

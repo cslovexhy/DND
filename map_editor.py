@@ -304,6 +304,10 @@ SPAWN_TYPES = [
     {"id": "human_cultist", "name": "Human Cultist", "color": (80, 80, 80)},
     {"id": "legion_devil", "name": "Legion Devil", "color": (200, 50, 50)},
     {"id": "snake", "name": "Snake", "color": (50, 150, 50)},
+    # Stranger Things (Upside Down)
+    {"id": "demogorgon", "name": "Demogorgon", "color": (150, 30, 34)},
+    {"id": "demodog", "name": "Demodog", "color": (190, 150, 150)},
+    {"id": "demobat", "name": "Demobat", "color": (120, 70, 70)},
     # Villains/Bosses
     {"id": "ashardalon", "name": "Ashardalon (Boss)", "color": (255, 0, 0)},
     {"id": "bellax", "name": "Bellax Gauth (Boss)", "color": (200, 0, 200)},
@@ -312,6 +316,7 @@ SPAWN_TYPES = [
     {"id": "margrath", "name": "Margrath (Boss)", "color": (180, 140, 60)},
     {"id": "rage_drake", "name": "Rage Drake (Boss)", "color": (200, 80, 0)},
     {"id": "otyugh", "name": "Otyugh (Boss)", "color": (80, 120, 0)},
+    {"id": "vecna", "name": "Vecna (Boss)", "color": (120, 130, 150)},
 ]
 
 # Combined list for rendering (lookup by id)

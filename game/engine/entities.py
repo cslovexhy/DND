@@ -217,6 +217,8 @@ class Entity:
         if not self.alive:
             return 0
 
+        self.was_hit = True  # flag for stealth-reveal logic (any incoming damage)
+
         if ignore_armor:
             actual = raw_damage
         else:

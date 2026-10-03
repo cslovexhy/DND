@@ -157,6 +157,13 @@ HERO_SPRITES = {
 }
 
 # Monster sprites
+def load_sprite_file(path, scale=None):
+    """Load an external PNG sprite (e.g. custom 24x24 art) scaled to CHAR_SIZE."""
+    if scale is None:
+        scale = CHAR_SIZE
+    img = pygame.image.load(path).convert_alpha()
+    return pygame.transform.scale(img, (scale, scale))
+
 MONSTER_SPRITES = {
     "Kobold Dragonshield": get_creature(9, 7),
     "Snake": get_creature(0, 4),
@@ -168,12 +175,19 @@ MONSTER_SPRITES = {
     "Grey Wolf": get_creature(3, 2),
     "Grell": get_creature(5, 0),
     "Gibbering Mouther": get_creature(4, 8),
+    "Demodog": get_creature(2, 10),  # Hellhound (CC0 Tiny Creatures)
+    "Demobat": get_creature(8, 13),  # Bat (CC0 Tiny Creatures)
+    "Vecna": get_creature(6, 9),     # Lich (CC0 Tiny Creatures)
+    # Demogorgon: original art, rendered 200% size so it looms over regular mobs
+    "Demogorgon": load_sprite_file("assets/stranger_things/sprites/demogorgon.png", CHAR_SIZE * 2),
 }
 BOSS_SPRITE = get_creature(9, 7, int(TILE_SIZE * BOSS_SCALE))
 GARRICK_SPRITE = get_creature(7, 6, int(TILE_SIZE * BOSS_SCALE))  # Scaled-up Human Cultist
+VECNA_SPRITE = get_creature(6, 9, int(TILE_SIZE * BOSS_SCALE))    # Scaled-up Lich
 
 BOSS_SPRITES = {
     "Garrick Padfoot": GARRICK_SPRITE,
+    "Vecna": VECNA_SPRITE,
 }
 
 # === EFFECTS ===
@@ -712,6 +726,11 @@ SPAWN_STATS = {
     "grell": {"name": "Grell", "hp": 2, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 10, "condition": (Condition.POISONED, 3.0)},
     "human_cultist": {"name": "Human Cultist", "hp": 1, "ac": 14, "speed": 5, "atk": 6, "dmg": 1, "xp": 5, "condition": (Condition.POISONED, 3.0)},
     "legion_devil": {"name": "Legion Devil", "hp": 1, "ac": 16, "speed": 5, "atk": 11, "dmg": 1, "xp": 15},
+    # Stranger Things set (Upside Down). Demogorgon: fast (1.5x player speed 6 = 9) and hits hard.
+    "demogorgon": {"name": "Demogorgon", "hp": 8, "ac": 16, "speed": 9, "atk": 10, "dmg": 3, "xp": 20, "relentless": True, "hive_mind": (1000, ["demogorgon", "vecna"])},
+    "demodog": {"name": "Demodog", "hp": 2, "ac": 15, "speed": 7, "atk": 8, "dmg": 2, "xp": 10},
+    "demobat": {"name": "Demobat", "hp": 1, "ac": 14, "speed": 8, "atk": 7, "dmg": 1, "xp": 5},
+    "vecna": {"name": "Vecna", "hp": 10, "ac": 18, "speed": 5, "atk": 11, "dmg": 3, "xp": 50, "boss": True},
     "meerak": {"name": "Meerak", "hp": 6, "ac": 17, "speed": 5, "atk": 8, "dmg": 1, "xp": 25, "boss": True},
     "ashardalon": {"name": "Ashardalon", "hp": 12, "ac": 16, "speed": 4, "atk": 10, "dmg": 2, "xp": 50, "boss": True},
     "bellax": {"name": "Bellax", "hp": 9, "ac": 17, "speed": 4, "atk": 8, "dmg": 2, "xp": 40, "boss": True},
@@ -739,6 +758,11 @@ def spawn_single_world_monster(sp):
     if mt.get("ranged"):
         m.ranged_attack_range = 250
         m.ranged_attack_damage = m.base_damage
+    if mt.get("relentless"):
+        m.relentless = True  # never leash-resets aggro (set before setup_monster_aggro)
+    if mt.get("hive_mind"):
+        m.hive_mind = mt["hive_mind"]  # (range, [spawn_types]) — type-filtered aggro share
+    m.spawn_type = sp.type  # spawn-type key (e.g. "demogorgon") for hive_mind matching
     # Track spawn origin for respawn system
     m.spawn_point = sp
     setup_monster_aggro(m, nav_dungeon=dungeon)
@@ -752,6 +776,61 @@ def spawn_world_map_monsters():
         m = spawn_single_world_monster(sp)
         if m:
             game_state.monsters.append(m)
+
+
+# --- Demogorgon special skills ---
+DEMOGORGON_STEALTH_DELAY = 6.0   # seconds since last attack before auto-stealth
+DEMOGORGON_AURA_RADIUS = 90.0    # pixels; aura reaches this far
+DEMOGORGON_AURA_SLOW = 0.8       # enemies move at 80% speed (20% slow) in aura
+
+
+def update_demogorgon_skills(dt):
+    """Per-frame skills for every Demogorgon:
+    1. Auto-stealth: becomes invisible after DEMOGORGON_STEALTH_DELAY seconds have
+       passed since its last attack; reveals the moment it attacks.
+    2. Aura: slows nearby heroes by 20% (SLOWED) and shows a blue "chill" visual on
+       the player (visual only — not a real freeze/movement lock).
+    """
+    from game.engine.entities import Condition
+    # Decay the player's chill visual each frame (re-set to 0.3 while in an aura).
+    if getattr(hero, 'chill_visual', 0.0) > 0:
+        hero.chill_visual = max(0.0, hero.chill_visual - dt)
+    for m in game_state.monsters:
+        if not m.alive or m.name != "Demogorgon":
+            continue
+
+        # 1) Auto-stealth based purely on time since last attack.
+        #    (_last_attack_time is stamped in the AI loop when it lands a hit.)
+        #    Taking ANY damage (single-target or AoE) also counts as activity and
+        #    reveals it, restarting the stealth timer.
+        if getattr(m, 'was_hit', False):
+            m._last_attack_time = game_state.game_time
+            m.was_hit = False
+        last_atk = getattr(m, '_last_attack_time', None)
+        if last_atk is None:
+            # Never attacked yet — start stealthed after the delay from spawn.
+            m._last_attack_time = -DEMOGORGON_STEALTH_DELAY
+            last_atk = m._last_attack_time
+        if game_state.game_time - last_atk >= DEMOGORGON_STEALTH_DELAY:
+            m.stealthed = True
+        else:
+            m.stealthed = False
+
+        # 2) Slow / chill aura — affects heroes (player + companions) in radius.
+        #    Gameplay effect is a 20% slow (NOT a movement lock). The player also
+        #    gets a visual blue "chill" marker so the aura reads on-screen.
+        targets = [hero] + [c for c, _ in companions]
+        for t in targets:
+            if not t.alive:
+                continue
+            if m.distance_to(t) <= DEMOGORGON_AURA_RADIUS:
+                # 20% slow (refreshed each frame so it persists while in aura)
+                t.apply_condition(Condition.SLOWED, 0.3, source="Demogorgon Aura",
+                                  slow_factor=DEMOGORGON_AURA_SLOW)
+                # Blue chill VISUAL on the player (not a real freeze) — timer-based
+                # so it fades shortly after leaving the aura.
+                if t is hero:
+                    t.chill_visual = 0.3
 
 
 # Respawn system — dead mobs respawn after RESPAWN_TIME seconds
@@ -1157,6 +1236,8 @@ def get_monster_at_screen(sx, sy):
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
     wy = (sy - HEIGHT//2) / cam_zoom + hero.y
     for m in game_state.alive_monsters:
+        if getattr(m, 'stealthed', False):
+            continue  # stealthed monsters can't be clicked/targeted
         if abs(m.x - wx) < TILE_SIZE and abs(m.y - wy) < TILE_SIZE:
             return m
     return None
@@ -1853,6 +1934,9 @@ while running:
         if m.alive:
             m.in_combat = getattr(m, 'aggro_state', '') == 'aggroed'
 
+    # --- Demogorgon special skills (auto-stealth + slow/freeze aura) ---
+    update_demogorgon_skills(dt)
+
     game_state.update(dt)
     alive = game_state.alive_monsters
 
@@ -2275,6 +2359,10 @@ while running:
         if result and result[0] in ("attack", "ranged_attack", "aoe_attack"):
             hit_hero = result[1]
             floating_texts.append(FloatingText(hit_hero.x+random.randint(-10,10), hit_hero.y-30, f"{result[2]:.0f}", HP_RED))
+            # Demogorgon reveals when it attacks; stealth timer restarts from now.
+            if m.name == "Demogorgon":
+                m._last_attack_time = game_state.game_time
+                m.stealthed = False
         elif result and result[0] == "ranged_attack_projectile":
             target_hero = result[1]
             proj_damage = result[2]
@@ -2486,6 +2574,7 @@ while running:
     # Monsters
     for m in game_state.monsters:
         if not m.alive: continue
+        if getattr(m, 'stealthed', False): continue  # fully invisible when stealthed
         spr = m.sprite
         if not spr: continue
         sw, sh = int(spr.get_width() * cam_zoom), int(spr.get_height() * cam_zoom)
@@ -2592,7 +2681,17 @@ while running:
     elif hero.has_condition(Condition.POISONED):
         s = s.copy()
         s.fill((0, 80, 0, 0), special_flags=pygame.BLEND_RGBA_ADD)  # Green tint
+    elif getattr(hero, 'chill_visual', 0.0) > 0:
+        s = s.copy()
+        s.fill((100, 150, 255, 0), special_flags=pygame.BLEND_RGBA_ADD)  # Blue chill tint
     screen.blit(s, (sx, sy))
+
+    # Demogorgon chill aura visual (blue ring) — visual only, player is slowed not frozen
+    if getattr(hero, 'chill_visual', 0.0) > 0:
+        pulse_c = int(70 + 30 * math.sin(game_state.game_time * 6))
+        chill_surf = pygame.Surface((sw + 8, sh + 8), pygame.SRCALPHA)
+        pygame.draw.circle(chill_surf, (150, 200, 255, pulse_c), (sw//2 + 4, sh//2 + 4), sw//2 + 4, 2)
+        screen.blit(chill_surf, (sx - 4, sy - 4))
 
     # Poison drip visual
     if hero.has_condition(Condition.POISONED):

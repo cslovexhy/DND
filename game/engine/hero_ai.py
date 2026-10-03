@@ -36,14 +36,14 @@ class HeroAI:
     def get_engaged_monsters(self, monsters: list[Monster]) -> list[Monster]:
         """Return only monsters that are currently aggroed (engaged in combat).
         AI should only target these and avoid pulling new monsters until the
-        current engagement is cleared."""
+        current engagement is cleared. Stealthed monsters are invisible to AI."""
         from game.engine.ai import AggroState
-        engaged = [m for m in monsters if m.alive and
+        engaged = [m for m in monsters if m.alive and not getattr(m, 'stealthed', False) and
                    hasattr(m, 'aggro_state') and m.aggro_state == AggroState.AGGROED]
         if engaged:
             return engaged
-        # Nothing engaged — allow targeting any alive monster (start new pull)
-        return [m for m in monsters if m.alive]
+        # Nothing engaged — allow targeting any alive, visible monster (start new pull)
+        return [m for m in monsters if m.alive and not getattr(m, 'stealthed', False)]
 
     def has_los(self, target) -> bool:
         """Check if hero has line of sight to target."""

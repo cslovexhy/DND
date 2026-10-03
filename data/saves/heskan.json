@@ -1,10 +1,10 @@
 {
   "name": "Heskan",
   "class_name": "Wizard",
-  "level": 14,
-  "xp": 404,
-  "gold": 66440,
-  "kills": 508,
+  "level": 15,
+  "xp": 485,
+  "gold": 89740,
+  "kills": 577,
   "completed_quests": [
     "a_threat_within",
     "kobold_camp_cleanup",
