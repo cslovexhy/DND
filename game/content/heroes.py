@@ -1,5 +1,8 @@
 """
-Wrath of Ashardalon Heroes — all 5 heroes with stats and abilities from card data.
+Wrath of Ashardalon hero classes — stats and abilities from card data.
+
+Each class has a factory create_<class>(name, x, y); the player picks a class and a name when
+creating a character (see game/saves.py).
 """
 from game.engine.entities import Hero, Ability
 
@@ -11,9 +14,9 @@ ROGUE_COLOR = (180, 255, 180)
 WIZARD_COLOR = (255, 130, 50)
 
 
-def create_vistra(x: float, y: float) -> Hero:
-    """Vistra — Dwarf Fighter. 1H Sword + Shield — balanced speed and defense."""
-    h = Hero("Vistra", "Dwarf", "Fighter", x, y, hp=8, ac=17, speed=5, surge_value=4,
+def create_fighter(name: str, x: float, y: float) -> Hero:
+    """Fighter. 1H Sword + Shield — balanced speed and defense."""
+    h = Hero(name, "Fighter", x, y, hp=8, ac=17, speed=5, surge_value=4,
              special_ability="Cast-Iron Stomach: Immune to Poison")
     # Weapon: 1H Sword + Shield — balanced
     h.base_damage = 40
@@ -36,9 +39,9 @@ def create_vistra(x: float, y: float) -> Hero:
     return h
 
 
-def create_quinn(x: float, y: float) -> Hero:
-    """Quinn — Human Cleric. Ranged healer/support with projectile auto-attack."""
-    h = Hero("Quinn", "Human", "Cleric", x, y, hp=8, ac=16, speed=5, surge_value=4,
+def create_cleric(name: str, x: float, y: float) -> Hero:
+    """Cleric. Ranged healer/support with projectile auto-attack."""
+    h = Hero(name, "Cleric", x, y, hp=8, ac=16, speed=5, surge_value=4,
              special_ability="Divine Warding: Protective wards and healing over time")
     # Weapon: Wand — ranged, moderate speed (30 base / 1.2s = 25 dps)
     h.base_damage = 30
@@ -59,9 +62,9 @@ def create_quinn(x: float, y: float) -> Hero:
                                power_type="utility", color=(100, 255, 150)))
     return h
 
-def create_keyleth(x: float, y: float) -> Hero:
-    """Keyleth — Elf Paladin. 2H Mace — Seal/Smite/Judgement holy warrior."""
-    h = Hero("Keyleth", "Elf", "Paladin", x, y, hp=8, ac=17, speed=6, surge_value=4,
+def create_paladin(name: str, x: float, y: float) -> Hero:
+    """Paladin. 2H Mace — Seal/Smite/Judgement holy warrior."""
+    h = Hero(name, "Paladin", x, y, hp=8, ac=17, speed=6, surge_value=4,
              special_ability="Seal System: Seals buff Smite and empower Judgement")
     # Weapon: 2H Mace — slow, hard hits
     h.base_damage = 55
@@ -86,9 +89,9 @@ def create_keyleth(x: float, y: float) -> Hero:
                                power_type="utility", color=(255, 255, 220)))
     return h
 
-def create_tarak(x: float, y: float) -> Hero:
-    """Tarak — Half-Orc Rogue. Fast melee assassin with stealth and burst."""
-    h = Hero("Tarak", "Half-Orc", "Rogue", x, y, hp=8, ac=14, speed=6, surge_value=4,
+def create_rogue(name: str, x: float, y: float) -> Hero:
+    """Rogue. Fast melee assassin with stealth and burst."""
+    h = Hero(name, "Rogue", x, y, hp=8, ac=14, speed=6, surge_value=4,
              special_ability="Stealth: Vanish from sight, Ambush from shadows")
     # Weapon: Daggers — very fast (18.75 base / 0.5s = 37.5 dps, 1.5x fighter)
     h.base_damage = 18.75
@@ -111,9 +114,9 @@ def create_tarak(x: float, y: float) -> Hero:
     return h
 
 
-def create_heskan(x: float, y: float) -> Hero:
-    """Heskan — Dragonborn Wizard. Channeled ranged DPS with crowd control."""
-    h = Hero("Heskan", "Dragonborn", "Wizard", x, y, hp=6, ac=14, speed=6, surge_value=3,
+def create_wizard(name: str, x: float, y: float) -> Hero:
+    """Wizard. Channeled ranged DPS with crowd control."""
+    h = Hero(name, "Wizard", x, y, hp=6, ac=14, speed=6, surge_value=3,
              special_ability="Frostbolt Channel: Immobile while casting, slows enemies")
     # Weapon: Staff — channeled ranged (36 base / 1.2s = 30 dps, 120% of baseline)
     h.base_damage = 36
@@ -135,16 +138,17 @@ def create_heskan(x: float, y: float) -> Hero:
     return h
 
 
-# Hero registry for selection
-ALL_HEROES = [
-    {"create": create_vistra, "name": "Vistra", "race": "Dwarf", "class": "Fighter",
-     "desc": "Tank — 1H Sword+Shield, AoE melee", "sprite_key": "vistra", "wip": False},
-    {"create": create_quinn, "name": "Quinn", "race": "Human", "class": "Cleric",
-     "desc": "Healer — Ranged Wand, Ward, HoT", "sprite_key": "quinn", "wip": False},
-    {"create": create_keyleth, "name": "Keyleth", "race": "Elf", "class": "Paladin",
-     "desc": "Holy Warrior — 2H Mace, Seal/Smite/Judgement", "sprite_key": "keyleth", "wip": False},
-    {"create": create_tarak, "name": "Tarak", "race": "Half-Orc", "class": "Rogue",
-     "desc": "Assassin — Fast Daggers, Stealth, Ambush", "sprite_key": "tarak", "wip": False},
-    {"create": create_heskan, "name": "Heskan", "race": "Dragonborn", "class": "Wizard",
-     "desc": "Caster — Channeled Frostbolt, AoE spells", "sprite_key": "heskan", "wip": False},
+# Class registry. `companion_name` is the name AI companions of that class go by.
+HERO_CLASSES = [
+    {"class": "Fighter", "create": create_fighter, "sprite_key": "fighter", "companion_name": "Vistra",
+     "desc": "Tank — 1H Sword+Shield, AoE melee"},
+    {"class": "Cleric", "create": create_cleric, "sprite_key": "cleric", "companion_name": "Quinn",
+     "desc": "Healer — Ranged Wand, Ward, HoT"},
+    {"class": "Paladin", "create": create_paladin, "sprite_key": "paladin", "companion_name": "Keyleth",
+     "desc": "Holy Warrior — 2H Mace, Seal/Smite/Judgement"},
+    {"class": "Rogue", "create": create_rogue, "sprite_key": "rogue", "companion_name": "Tarak",
+     "desc": "Assassin — Fast Daggers, Stealth, Ambush"},
+    {"class": "Wizard", "create": create_wizard, "sprite_key": "wizard", "companion_name": "Heskan",
+     "desc": "Caster — Channeled Frostbolt, AoE spells"},
 ]
+HERO_CLASS_BY_NAME = {c["class"]: c for c in HERO_CLASSES}

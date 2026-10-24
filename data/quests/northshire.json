@@ -1,0 +1,161 @@
+{
+  "map": "northshire",
+  "quests": [
+    {
+      "id": "a_threat_within",
+      "title": "A Threat Within",
+      "description": "The Stormwind guards are hard pressed to keep the peace here, with so many of us in distant lands and so many threats pressing close. And so we're enlisting the aid of anyone willing to defend their home. If you're here to answer the call, then speak with my superior, Marshal McBride. He's inside the abbey behind me.",
+      "objectives": [],
+      "rewards_xp": 50,
+      "rewards_gold": 0,
+      "npc_id": "deputy_willem",
+      "level_req": 1,
+      "prerequisites": []
+    },
+    {
+      "id": "kobold_camp_cleanup",
+      "title": "Kobold Camp Cleanup",
+      "description": "Your first task is one of cleansing. A clan of kobolds have infested the woods to the north. Go there and fight the kobold vermin you find. Reduce their numbers so that we may one day drive them from Northshire.",
+      "objectives": [
+        {
+          "target": "Kobold Dragonshield",
+          "count": 10
+        }
+      ],
+      "rewards_xp": 250,
+      "rewards_gold": 50,
+      "npc_id": "marshal_mcbride",
+      "level_req": 1,
+      "prerequisites": [
+        "a_threat_within"
+      ]
+    },
+    {
+      "id": "investigate_echo_ridge",
+      "title": "Investigate Echo Ridge",
+      "description": "My scouts tell me that the kobold infestation is larger than we had thought. A group of kobold workers has camped near the Echo Ridge Mine to the north. Go to the mine and remove them. We know there are at least ten.",
+      "objectives": [
+        {
+          "target": "Kobold Dragonshield",
+          "count": 10
+        }
+      ],
+      "rewards_xp": 350,
+      "rewards_gold": 75,
+      "npc_id": "marshal_mcbride",
+      "level_req": 3,
+      "prerequisites": [
+        "kobold_camp_cleanup"
+      ]
+    },
+    {
+      "id": "skirmish_at_echo_ridge",
+      "title": "Skirmish at Echo Ridge",
+      "description": "Your previous investigations are proof that the Echo Ridge Mine needs purging. Return to the mine and help clear it of kobolds. Waste no time. The longer the kobolds are left unmolested in the mine, the deeper a foothold they gain in Northshire.",
+      "objectives": [
+        {
+          "target": "Kobold Dragonshield",
+          "count": 12
+        }
+      ],
+      "rewards_xp": 450,
+      "rewards_gold": 100,
+      "npc_id": "marshal_mcbride",
+      "level_req": 4,
+      "prerequisites": [
+        "investigate_echo_ridge"
+      ]
+    },
+    {
+      "id": "wolves_across_the_border",
+      "title": "Wolves Across the Border",
+      "description": "I hate those nasty timber wolves! But I sure like eating wolf steaks. Bring me tough wolf meat and I will exchange it for something you'll find useful. Tough wolf meat is gathered from hunting the timber wolves and young wolves wandering the Northshire countryside.",
+      "objectives": [
+        {
+          "target": "Grey Wolf",
+          "count": 8
+        }
+      ],
+      "rewards_xp": 250,
+      "rewards_gold": 50,
+      "npc_id": "eagan_peltskinner",
+      "level_req": 2,
+      "prerequisites": [
+        "a_threat_within"
+      ]
+    },
+    {
+      "id": "brotherhood_of_thieves",
+      "title": "Brotherhood of Thieves",
+      "description": "Recently, a new group of thieves has been hanging around Northshire. They call themselves the Defias Brotherhood, and have been seen across the river to the east. I don't know what they're up to, but I'm sure it's not good! Bring me the bandanas they wear, and I'll reward you with a weapon.",
+      "objectives": [
+        {
+          "target": "Human Cultist",
+          "count": 12
+        }
+      ],
+      "rewards_xp": 375,
+      "rewards_gold": 75,
+      "npc_id": "deputy_willem",
+      "level_req": 2,
+      "prerequisites": [
+        "a_threat_within"
+      ]
+    },
+    {
+      "id": "bounty_on_garrick_padfoot",
+      "title": "Bounty on Garrick Padfoot",
+      "description": "The Defias have a leader in this area by the name of Garrick Padfoot. Kill him and bring me his head so we can send a message to those thieves that Northshire will not fall to their kind.",
+      "objectives": [
+        {
+          "target": "Human Cultist",
+          "count": 6
+        }
+      ],
+      "rewards_xp": 450,
+      "rewards_gold": 100,
+      "npc_id": "deputy_willem",
+      "level_req": 4,
+      "prerequisites": [
+        "brotherhood_of_thieves"
+      ]
+    },
+    {
+      "id": "millys_harvest",
+      "title": "Milly's Harvest",
+      "description": "I was working in the vineyard behind the abbey when those wretched Defias thugs ran me off! I left behind a whole bushel of grapes. Could you go get them for me? You'll need to fight through those bandits to reach them.",
+      "objectives": [
+        {
+          "target": "Human Cultist",
+          "count": 8
+        }
+      ],
+      "rewards_xp": 350,
+      "rewards_gold": 75,
+      "npc_id": "milly_osworth",
+      "level_req": 4,
+      "prerequisites": [
+        "wolves_across_the_border",
+        "brotherhood_of_thieves"
+      ]
+    }
+  ],
+  "questlines": [
+    [
+      "kobold_camp_cleanup",
+      "investigate_echo_ridge",
+      "skirmish_at_echo_ridge"
+    ],
+    [
+      "a_threat_within",
+      "brotherhood_of_thieves",
+      "bounty_on_garrick_padfoot"
+    ],
+    [
+      "wolves_across_the_border"
+    ],
+    [
+      "millys_harvest"
+    ]
+  ]
+}

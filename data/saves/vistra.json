@@ -1,0 +1,15 @@
+{
+  "name": "vistra",
+  "class_name": "Fighter",
+  "level": 1,
+  "xp": 0,
+  "gold": 0,
+  "kills": 0,
+  "quests": {
+    "northshire": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    }
+  }
+}

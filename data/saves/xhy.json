@@ -1,0 +1,29 @@
+{
+  "name": "xhy",
+  "class_name": "Cleric",
+  "level": 10,
+  "xp": 2,
+  "gold": 13945,
+  "kills": 110,
+  "quests": {
+    "northshire": {
+      "completed": [
+        "a_threat_within",
+        "kobold_camp_cleanup",
+        "investigate_echo_ridge",
+        "wolves_across_the_border",
+        "skirmish_at_echo_ridge",
+        "brotherhood_of_thieves",
+        "millys_harvest",
+        "bounty_on_garrick_padfoot"
+      ],
+      "active": [],
+      "progress": {}
+    },
+    "goldshire": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    }
+  }
+}

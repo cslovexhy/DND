@@ -1,32 +1,37 @@
 """
-Wrath of Ashardalon — Adventure 1: Escape the Tunnel
+Wrath of Ashardalon — ARPG
+Flow: character select -> map select -> game. ESC steps back one level (game -> character
+select, map select -> character select, character select -> quit).
 Controls (WoW-style):
   Right-click = Move to location
   Left-click = Select target / Cast ability at location
   1, 2, 3 = Abilities
   F = Health potion
-  ESC = Quit
+  ESC = Back to character select (progress is saved)
 """
 import pygame
 import math
 import random
 import sys
 import os
-import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from game.engine.entities import Entity, Hero, Monster, Ability, Condition, GameState, Projectile
-from game.engine.dungeon import UnifiedDungeon, RoomType, TILE_SIZE
+from game.engine.world_map import TILE_SIZE
 from game.engine.world_map import WorldMap
 from game.engine.ai import run_monster_ai, setup_monster_aggro, call_for_help, generate_patrol_route
 from game.engine.pathfinding import astar, has_line_of_sight
-from game.content.heroes import ALL_HEROES
+from game.content.heroes import HERO_CLASSES, HERO_CLASS_BY_NAME
+from game.progression import (MAX_LEVEL, xp_to_next_level, apply_level_growth, set_hero_level, growth_for)
+from game.quests import load_quest_log
+from game import saves
+from game.menus import MenuContext, run_menus
 import game.engine.entities as _entities
 
 os.chdir(os.path.dirname(os.path.dirname(__file__)))
 
 # === CLI ARGS ===
-USE_MAP = None  # Path to world map JSON, or None for dungeon mode
+USE_MAP = None  # Path to world map JSON. If given on the CLI the map-select screen is skipped.
 DEBUG = "--debug" in sys.argv  # Pass --debug to enable frame/AI logging
 for i, arg in enumerate(sys.argv):
     if arg == "--map" and i + 1 < len(sys.argv):
@@ -78,7 +83,7 @@ MUSIC_END = pygame.USEREVENT + 1
 _info = pygame.display.Info()
 WIDTH, HEIGHT = _info.current_w, _info.current_h - 50  # leave room for title bar
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
-pygame.display.set_caption("Wrath of Ashardalon — Adventure 1: Escape the Tunnel")
+pygame.display.set_caption("Wrath of Ashardalon")
 clock = pygame.time.Clock()
 font = pygame.font.Font(None, 20)
 big_font = pygame.font.Font(None, 32)
@@ -148,12 +153,12 @@ SPR_FLOOR2 = get_rpg_tile(8, 10)  # same for now
 SPR_WALL = get_rpg_tile(13, 9)    # wall
 
 # Hero sprites
-HERO_SPRITES = {
-    "vistra": get_dungeon_tile(0, 8),
-    "quinn": get_dungeon_tile(3, 8),
-    "keyleth": get_dungeon_tile(4, 7),
-    "tarak": get_dungeon_tile(2, 7),
-    "heskan": get_dungeon_tile(0, 7),
+HERO_SPRITES = {  # keyed by HERO_CLASSES[...]["sprite_key"]
+    "fighter": get_dungeon_tile(0, 8),
+    "cleric": get_dungeon_tile(3, 8),
+    "paladin": get_dungeon_tile(4, 7),
+    "rogue": get_dungeon_tile(2, 7),
+    "wizard": get_dungeon_tile(0, 7),
 }
 
 # Monster sprites
@@ -195,31 +200,7 @@ floating_texts = []
 effects = []
 projectiles = []  # Active projectiles (Wanding etc.)
 
-# === LEVELING SYSTEM ===
-MAX_LEVEL = 30
-XP_BASE = 100  # XP needed for level 2
-
-def xp_multiplier(level):
-    """Tiered growth: 1.3x early, flattens later."""
-    if level <= 10:
-        return 1.3
-    elif level <= 20:
-        return 1.2
-    else:
-        return 1.1
-
-def xp_to_next_level(level):
-    """XP needed from current level to reach the next."""
-    return int(XP_BASE * (xp_multiplier(level) ** (level - 1)))
-
-# Stat growth per level (HP bonus in raw points, damage as multiplier of base_damage)
-GROWTH_RATES = {
-    "Fighter":  {"hp": 30, "damage": 3.0},
-    "Cleric":   {"hp": 25, "damage": 2.0},
-    "Paladin":  {"hp": 28, "damage": 2.5},
-    "Rogue":    {"hp": 20, "damage": 3.5},
-    "Wizard":   {"hp": 18, "damage": 4.0},
-}
+# Leveling rules live in game/progression.py
 
 
 class LevelUpEffect:
@@ -275,308 +256,80 @@ class AoeRing:
             pygame.draw.circle(surf, (*self.color,a//4), (r,r), r)
             s.blit(surf, (sx-r, sy-r))
 
-# === AUTO MODE (for testing) ===
+# === AUTO MODE (AI playtesting) ===
+# --auto [--hero CLASS_IDX] [--map PATH] runs a throwaway level-1 hero with the AI on.
+# It NEVER reads or writes real character saves.
 auto_mode = "--auto" in sys.argv
-auto_hero_idx = 0  # Default to Fighter for auto mode
+auto_hero_idx = 0  # index into HERO_CLASSES (0=Fighter, 1=Cleric, 2=Paladin, 3=Rogue, 4=Wizard)
 if auto_mode:
     for i, arg in enumerate(sys.argv):
         if arg == "--hero" and i + 1 < len(sys.argv):
             auto_hero_idx = int(sys.argv[i + 1])
+    if USE_MAP is None:
+        USE_MAP = "data/maps/northshire.json"
+SAVING = not auto_mode
 
-# === MAP SELECT SCREEN ===
-import glob as _glob
-
-# Start title music — plays through map select, hero select, and any future pre-game screens
+# Start title music — plays through the character and map select screens
 start_map_music(["assets/music/01. Legends of Azeroth.mp3"])
 
-def _get_available_maps():
-    """Scan data/maps/ for JSON map files."""
-    map_files = sorted(_glob.glob("data/maps/*.json"))
-    maps = [{"path": None, "name": "Dungeon Mode", "desc": "Procedural dungeon (Adventure 1)"}]
-    for mf in map_files:
-        name = mf.split("/")[-1].replace(".json", "").replace("_", " ").title()
-        maps.append({"path": mf, "name": name, "desc": mf})
-    return maps
-
-if USE_MAP is None and not auto_mode:
-    # No --map specified on CLI: show map select screen
-    available_maps = _get_available_maps()
-    selected_map_idx = 0
-    map_selecting = True
-
-    while map_selecting:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.VIDEORESIZE:
-                WIDTH, HEIGHT = event.w, event.h
-                screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE: pygame.quit(); sys.exit()
-                if event.key in (pygame.K_UP, pygame.K_w):
-                    selected_map_idx = (selected_map_idx - 1) % len(available_maps)
-                if event.key in (pygame.K_DOWN, pygame.K_s):
-                    selected_map_idx = (selected_map_idx + 1) % len(available_maps)
-                if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                    map_selecting = False
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                mx_click, my_click = event.pos
-                for i in range(len(available_maps)):
-                    iy = 150 + i * 60
-                    rect = pygame.Rect(WIDTH//2 - 250, iy, 500, 50)
-                    if rect.collidepoint(mx_click, my_click):
-                        if selected_map_idx == i:
-                            map_selecting = False  # Double-click confirms
-                        else:
-                            selected_map_idx = i
-
-        screen.fill(BG)
-        t = title_font.render("CHOOSE YOUR MAP", True, GOLD)
-        screen.blit(t, (WIDTH//2 - t.get_width()//2, 50))
-
-        hint = font.render("Arrow keys / click to select, Enter to confirm", True, GRAY)
-        screen.blit(hint, (WIDTH//2 - hint.get_width()//2, 100))
-
-        for i, m in enumerate(available_maps):
-            iy = 150 + i * 60
-            rect = pygame.Rect(WIDTH//2 - 250, iy, 500, 50)
-            if i == selected_map_idx:
-                pygame.draw.rect(screen, (40, 80, 40), rect, border_radius=6)
-                pygame.draw.rect(screen, GOLD, rect, 2, border_radius=6)
-            else:
-                hovered = rect.collidepoint(pygame.mouse.get_pos())
-                color = (40, 40, 60) if hovered else (30, 30, 40)
-                pygame.draw.rect(screen, color, rect, border_radius=6)
-                pygame.draw.rect(screen, GRAY, rect, 1, border_radius=6)
-
-            name_surf = big_font.render(m["name"], True, WHITE)
-            screen.blit(name_surf, (rect.x + 15, rect.y + 8))
-            desc_surf = font.render(m["desc"], True, GRAY)
-            screen.blit(desc_surf, (rect.x + 15, rect.y + 32))
-
-        pygame.display.flip()
-        clock.tick(30)
-
-    chosen = available_maps[selected_map_idx]
-    USE_MAP = chosen["path"]  # None for dungeon mode
-
-# === HERO SELECT SCREEN ===
-def wrap_text(text, fnt, max_width):
-    """Wrap text to fit within max_width pixels."""
-    words = text.split(' ')
-    lines = []
-    current = ""
-    for word in words:
-        test = current + (" " if current else "") + word
-        if fnt.size(test)[0] <= max_width:
-            current = test
-        else:
-            if current:
-                lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
-    return lines
-
-selected_hero_idx = 0
-selecting = True
-PANEL_W = 160
-PANEL_H = 300
-
+# === CHARACTER + MAP SELECT ===
 if auto_mode:
-    selected_hero_idx = auto_hero_idx
-    selecting = False
-
-while selecting:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-        if event.type == pygame.VIDEORESIZE:
-            WIDTH, HEIGHT = event.w, event.h
-            screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE: pygame.quit(); sys.exit()
-            if event.key in (pygame.K_LEFT, pygame.K_a):
-                for _ in range(len(ALL_HEROES)):
-                    selected_hero_idx = (selected_hero_idx - 1) % len(ALL_HEROES)
-                    if not ALL_HEROES[selected_hero_idx].get("wip"):
-                        break
-            if event.key in (pygame.K_RIGHT, pygame.K_d):
-                for _ in range(len(ALL_HEROES)):
-                    selected_hero_idx = (selected_hero_idx + 1) % len(ALL_HEROES)
-                    if not ALL_HEROES[selected_hero_idx].get("wip"):
-                        break
-            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                if not ALL_HEROES[selected_hero_idx].get("wip"):
-                    selecting = False
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mx_click, my_click = event.pos
-            for i in range(len(ALL_HEROES)):
-                px = 30 + i * (PANEL_W + 20)
-                py = 160
-                if px <= mx_click <= px + PANEL_W and py <= my_click <= py + PANEL_H:
-                    if ALL_HEROES[i].get("wip"):
-                        pass  # Can't select WIP heroes
-                    elif selected_hero_idx == i:
-                        # Double-click same hero = confirm
-                        selecting = False
-                    else:
-                        selected_hero_idx = i
-
-    screen.fill(BG)
-    t = title_font.render("CHOOSE YOUR HERO", True, GOLD)
-    screen.blit(t, (WIDTH//2 - t.get_width()//2, 50))
-
-    for i, h_info in enumerate(ALL_HEROES):
-        x = 30 + i * (PANEL_W + 20)
-        y = 160
-        is_wip = h_info.get("wip", False)
-        # Panel background
-        if is_wip:
-            pygame.draw.rect(screen, (25, 25, 30), (x, y, PANEL_W, PANEL_H), 0, 6)
-            pygame.draw.rect(screen, (60, 60, 60), (x, y, PANEL_W, PANEL_H), 1, 6)
-        elif i == selected_hero_idx:
-            pygame.draw.rect(screen, (60, 60, 100), (x, y, PANEL_W, PANEL_H), 0, 6)
-            pygame.draw.rect(screen, GOLD, (x, y, PANEL_W, PANEL_H), 2, 6)
-        else:
-            pygame.draw.rect(screen, (35, 35, 50), (x, y, PANEL_W, PANEL_H), 0, 6)
-
-        # Sprite centered
-        spr = HERO_SPRITES[h_info["sprite_key"]]
-        big_spr = pygame.transform.scale(spr, (64, 64))
-        if is_wip:
-            big_spr.set_alpha(80)
-        screen.blit(big_spr, (x + PANEL_W//2 - 32, y + 15))
-
-        # WIP banner
-        if is_wip:
-            wip_txt = big_font.render("WIP", True, (255, 100, 100))
-            screen.blit(wip_txt, (x + PANEL_W//2 - wip_txt.get_width()//2, y + 140))
-
-        # Name
-        name_color = (100, 100, 100) if is_wip else WHITE
-        nt = big_font.render(h_info["name"], True, name_color)
-        screen.blit(nt, (x + PANEL_W//2 - nt.get_width()//2, y + 85))
-
-        # Race/Class
-        rc = font.render(f"{h_info['race']} {h_info['class']}", True, (160, 160, 190))
-        screen.blit(rc, (x + PANEL_W//2 - rc.get_width()//2, y + 112))
-
-        # Description (wrapped)
-        desc_lines = wrap_text(h_info["desc"], font, PANEL_W - 16)
-        for li, line in enumerate(desc_lines):
-            lt = font.render(line, True, (140, 140, 160))
-            screen.blit(lt, (x + 8, y + 140 + li * 18))
-
-    # Instructions
-    inst = font.render("A/D or Arrows = select    ENTER = confirm", True, (100, 100, 100))
-    screen.blit(inst, (WIDTH//2 - inst.get_width()//2, HEIGHT - 50))
-
-    # Controls preview
-    ctrl = font.render("Controls: Right-click=Move  Left-click=Target  1/2/3=Abilities", True, (80,80,100))
-    screen.blit(ctrl, (WIDTH//2 - ctrl.get_width()//2, HEIGHT - 75))
-
-    pygame.display.flip()
-    clock.tick(30)
+    _auto_class = HERO_CLASSES[auto_hero_idx]["class"]
+    char_data = saves.blank_character(_auto_class.lower(), _auto_class)
+else:
+    _menu_result = run_menus(MenuContext(clock=clock, font=font, big_font=big_font,
+                                         title_font=title_font, hero_sprites=HERO_SPRITES),
+                             preset_map=USE_MAP)
+    if _menu_result is None:
+        pygame.quit()
+        sys.exit()
+    char_data, USE_MAP = _menu_result
+screen = pygame.display.get_surface()  # menus may have resized the window
+WIDTH, HEIGHT = screen.get_size()
 
 
 # === GAME SETUP ===
-if USE_MAP:
-    world_map = WorldMap.load(USE_MAP)
-    if world_map.hero_start is None:
-        print(f"ERROR: Map '{USE_MAP}' has no hero_start spawn point.")
-        print("Please open the map in the map editor and place a 'Hero Start' marker.")
-        pygame.quit()
-        sys.exit(1)
-    dungeon = world_map  # Duck-type compatible (is_wall, is_floor, get_start_pos)
-    hero_wx, hero_wy = world_map.get_start_pos()
-    if _audio_available:
-        pygame.mixer.music.stop()
-    start_map_music(world_map.music)
-else:
-    world_map = None
-    dungeon = UnifiedDungeon()
-    dungeon.generate(num_rooms=7, quest_room_name="Tunnel Exit")
-    hero_wx, hero_wy = dungeon.get_start_pos()
-    if _audio_available:
-        pygame.mixer.music.stop()  # No music for dungeon mode
-hero_info = ALL_HEROES[selected_hero_idx]
-hero = hero_info["create"](hero_wx, hero_wy)
-hero.sprite = HERO_SPRITES[hero_info["sprite_key"]]
+world_map = WorldMap.load(USE_MAP)
+if world_map.hero_start is None:
+    print(f"ERROR: Map '{USE_MAP}' has no hero_start spawn point.")
+    print("Please open the map in the map editor and place a 'Hero Start' marker.")
+    pygame.quit()
+    sys.exit(1)
+dungeon = world_map  # Navigation duck-type (is_wall, is_floor, get_start_pos) used by AI/pathfinding
+MAP_ID = os.path.splitext(os.path.basename(USE_MAP))[0]  # key for per-map quest progress
+hero_wx, hero_wy = world_map.get_start_pos()
+if _audio_available:
+    pygame.mixer.music.stop()
+start_map_music(world_map.music)
 
-# === SAVE/LOAD SYSTEM ===
-SAVE_DIR = os.path.join("data", "saves")
-os.makedirs(SAVE_DIR, exist_ok=True)
+hero_class = HERO_CLASS_BY_NAME[char_data["class_name"]]
+hero = hero_class["create"](char_data["name"].capitalize(), hero_wx, hero_wy)
+hero.sprite = HERO_SPRITES[hero_class["sprite_key"]]
+hero.xp = char_data["xp"]
+hero.gold = char_data["gold"]
+hero.kills = char_data["kills"]
+set_hero_level(hero, char_data["level"])  # re-applies per-level stat growth
 
-def get_save_path():
-    return os.path.join(SAVE_DIR, f"{hero.name.lower()}.json")
+# Quest definitions come from data/quests/<map>.json; progress is per character AND per map.
+quests = load_quest_log(MAP_ID)
+quests.load_state(char_data.get("quests", {}).get(MAP_ID))
+
 
 def save_game():
-    """Persist hero progress to JSON file."""
-    data = {
-        "name": hero.name,
-        "class_name": hero.class_name,
-        "level": hero.level,
-        "xp": hero.xp,
-        "gold": hero.gold,
-        "kills": hero.kills,
-        "completed_quests": completed_quests,
-        "active_quests": active_quests,
-    }
-    with open(get_save_path(), "w") as f:
-        json.dump(data, f, indent=2)
+    """Persist this character's progress (level/xp/gold/kills + this map's quest state)."""
+    if not SAVING:
+        return
+    char_data.update({"level": hero.level, "xp": hero.xp, "gold": hero.gold, "kills": hero.kills})
+    char_data.setdefault("quests", {})[MAP_ID] = quests.to_state()
+    saves.save_character(char_data)
 
-def load_game():
-    """Load hero progress from JSON file. Returns True if save existed."""
-    global active_quests
-    path = get_save_path()
-    if not os.path.exists(path):
-        return False
-    try:
-        with open(path, "r") as f:
-            data = json.load(f)
-        # Restore hero stats
-        hero.level = data.get("level", 1)
-        hero.xp = data.get("xp", 0)
-        hero.gold = data.get("gold", 0)
-        hero.kills = data.get("kills", 0)
-        # Apply level-up stat bonuses retroactively
-        growth = GROWTH_RATES.get(hero.class_name, {"hp": 25, "damage": 2.5})
-        for _ in range(hero.level - 1):
-            hero.max_hp += growth["hp"]
-            hero.base_damage += growth["damage"]
-        hero.hp = hero.max_hp
-        # Restore quest state
-        for qid in data.get("completed_quests", []):
-            if qid in quest_log:
-                quest_log[qid].accepted = True
-                quest_log[qid].completed = True
-                quest_log[qid].turned_in = True
-            completed_quests.append(qid)
-        # Load active quests (new format) or migrate from old format
-        if "active_quests" in data:
-            active_quests = data["active_quests"]
-        elif "current_quest_id" in data and data["current_quest_id"]:
-            # Backward compat: old save with single current_quest_id
-            active_quests = [data["current_quest_id"]]
-        else:
-            active_quests = []
-        # Mark all active quests as accepted
-        for qid in active_quests:
-            if qid in quest_log:
-                quest_log[qid].accepted = True
-        print(f"[SAVE] Loaded: Lv{hero.level} XP={hero.xp} Gold={hero.gold} Kills={hero.kills} ActiveQuests={active_quests}")
-        return True
-    except Exception as e:
-        print(f"[SAVE] Failed to load: {e}")
-        return False
 
-# (load_game is called after quest system is defined)
+print(f"[SAVE] {char_data['name']} Lv{hero.level} XP={hero.xp} Gold={hero.gold} Kills={hero.kills} "
+      f"on {MAP_ID}: active={quests.active} done={len(quests.completed)}")
 
 game_state = GameState()
 game_state.heroes.append(hero)
-if USE_MAP:
-    game_state.objective_text = "Explore Northshire and clear the area of monsters!"
-else:
-    game_state.objective_text = "Find the Tunnel Exit and defeat the Kobold Dragonlord!"
+game_state.objective_text = f"Explore {MAP_ID.replace('_', ' ').title()} and clear the area of monsters!"
 
 # Movement state
 move_path = []
@@ -622,49 +375,9 @@ hero_ai = create_hero_ai(hero)
 hero_ai.set_nav_dungeon(dungeon)
 ai_enabled = auto_mode  # Auto mode starts with AI on
 
-# AI Companions (summon with F1-F4)
+# AI Companions (summon with F1-F4): one per class other than the player's own.
 companions = []  # list of (hero_obj, ai_obj) tuples
-available_companions = [h for i, h in enumerate(ALL_HEROES) if i != selected_hero_idx]
-
-# Auto-mode companion spawning is deferred until after helper functions are defined
-
-# Monster pool
-MONSTER_POOL = [
-    {"name": "Kobold Dragonshield", "hp": 1, "ac": 16, "speed": 5, "atk": 7, "dmg": 1, "xp": 1},
-    {"name": "Snake", "hp": 1, "ac": 13, "speed": 6, "atk": 7, "dmg": 0, "xp": 1, "condition": (Condition.POISONED, 3.0)},
-    {"name": "Orc Smasher", "hp": 2, "ac": 15, "speed": 4, "atk": 9, "dmg": 1, "xp": 2},
-    {"name": "Orc Archer", "hp": 1, "ac": 13, "speed": 4, "atk": 6, "dmg": 1, "xp": 1, "ranged": True},
-]
-
-def spawn_monsters_for_room(room):
-    if room.monsters_spawned or room.room_type == RoomType.START:
-        return
-    room.monsters_spawned = True
-    if room.room_type == RoomType.QUEST:
-        wx, wy = dungeon.get_spawn_world_pos(room.center_x, room.center_y)
-        for offset in [(-60, 0), (0, 0), (60, 0)]:
-            boss = Monster("Meerak", "Reptile", wx + offset[0], wy + offset[1], hp=6, ac=17, speed=5,
-                           attack_bonus=8, attack_damage=1, experience=5, is_boss=True)
-            boss.sprite = BOSS_SPRITE
-            setup_monster_aggro(boss, nav_dungeon=dungeon)
-            generate_patrol_route(boss, patrol_radius=60)
-            game_state.monsters.append(boss)
-        return
-    for sx, sy in room.monster_spawns:
-        mt = random.choice(MONSTER_POOL)
-        wx, wy = dungeon.get_spawn_world_pos(sx, sy)
-        m = Monster(mt["name"], "Monster", wx, wy,
-                    hp=mt["hp"], ac=mt["ac"], speed=mt["speed"],
-                    attack_bonus=mt["atk"], attack_damage=mt["dmg"], experience=mt["xp"])
-        m.sprite = MONSTER_SPRITES.get(mt["name"])
-        if mt.get("condition"):
-            m.on_hit_condition = mt["condition"]
-        if mt.get("ranged"):
-            m.ranged_attack_range = 250
-            m.ranged_attack_damage = m.base_damage
-        setup_monster_aggro(m, nav_dungeon=dungeon)
-        generate_patrol_route(m, patrol_radius=80, collision_fn=is_wall)
-        game_state.monsters.append(m)
+available_companions = [c for c in HERO_CLASSES if c["class"] != hero.class_name]
 
 def is_wall(wx, wy):
     return dungeon.is_wall(wx, wy)
@@ -696,19 +409,26 @@ def find_walkable_nearby(x, y, radius=60, attempts=20):
     return x, y
 
 
-# Auto-mode: summon first available companion and set 4x speed
-if auto_mode and available_companions and "--no-companion" not in sys.argv:
-    # Pick Heskan if available, else first
-    comp_info = next((c for c in available_companions if c["name"] == "Heskan"), available_companions[0])
-    cx, cy = find_walkable_nearby(hero.x, hero.y, radius=40)
-    comp = comp_info["create"](cx, cy)
+def spawn_companion(comp_info):
+    """Summon an AI companion of the given class. Its level is fixed at the player's CURRENT level
+    when summoned (it does not level up afterwards). Returns the companion hero."""
+    cx, cy = find_walkable_nearby(hero.x, hero.y, radius=60)
+    comp = comp_info["create"](comp_info["companion_name"], cx, cy)
     comp.sprite = HERO_SPRITES[comp_info["sprite_key"]]
+    set_hero_level(comp, hero.level)
     comp_ai = create_hero_ai(comp)
     comp_ai.set_nav_dungeon(dungeon)
+    # Give AI access to all heroes for ally-targeting abilities
     if hasattr(comp_ai, 'allies'):
         comp_ai.allies = game_state.heroes
     companions.append((comp, comp_ai))
     game_state.heroes.append(comp)
+    return comp
+
+
+# Auto-mode: summon a companion (Wizard unless that's the hero's class) and set 4x speed
+if auto_mode and available_companions and "--no-companion" not in sys.argv:
+    spawn_companion(next((c for c in available_companions if c["class"] == "Wizard"), available_companions[0]))
 
 if auto_mode:
     game_speed = 4.0
@@ -837,9 +557,8 @@ def update_demogorgon_skills(dt):
 RESPAWN_TIME = 60.0  # seconds before a killed mob respawns
 respawn_queue = []    # list of (SpawnPoint, death_game_time)
 
-# Spawn monsters for world map mode at start
-if USE_MAP:
-    spawn_world_map_monsters()
+# Spawn the map's monsters at start
+spawn_world_map_monsters()
 
 
 # === QUEST POPUP PANEL ===
@@ -1003,189 +722,7 @@ class QuestPopupPanel:
 quest_popup_panel = None
 
 
-# === QUEST SYSTEM ===
-class Quest:
-    """A single quest with kill objectives, prerequisites, and NPC assignment."""
-    def __init__(self, quest_id, title, description, objectives, rewards_xp, rewards_gold,
-                 npc_id=None, level_req=1, prerequisites=None):
-        self.quest_id = quest_id
-        self.title = title
-        self.description = description
-        self.objectives = objectives  # list of {"target": "Monster Name", "count": N}
-        self.rewards_xp = rewards_xp
-        self.rewards_gold = rewards_gold
-        self.npc_id = npc_id  # which NPC offers/accepts this quest
-        self.level_req = level_req  # minimum hero level to accept
-        self.prerequisites = prerequisites or []  # list of quest_ids that must be turned in first
-        # Runtime state
-        self.progress = {}  # {"Monster Name": kills_so_far}
-        self.accepted = False
-        self.completed = False  # objectives met
-        self.turned_in = False  # rewards claimed
-
-    def is_complete(self):
-        if not self.objectives:
-            return True  # No-objective quests are always complete
-        for obj in self.objectives:
-            if self.progress.get(obj["target"], 0) < obj["count"]:
-                return False
-        return True
-
-    def record_kill(self, monster_name):
-        """Record a kill. Returns True if this kill progressed the quest."""
-        for obj in self.objectives:
-            if obj["target"] == monster_name:
-                current = self.progress.get(obj["target"], 0)
-                if current < obj["count"]:
-                    self.progress[obj["target"]] = current + 1
-                    return True
-        return False
-
-    def get_progress_text(self):
-        """Return objective progress string."""
-        parts = []
-        for obj in self.objectives:
-            cur = self.progress.get(obj["target"], 0)
-            parts.append(f"{obj['target']}: {cur}/{obj['count']}")
-        return "  ".join(parts)
-
-    def prerequisites_met(self):
-        """Check if all prerequisite quests have been turned in."""
-        for pre_id in self.prerequisites:
-            if pre_id not in completed_quests:
-                return False
-        return True
-
-
-# Northshire questlines — based on WoW Classic (from warcraft.wiki.gg)
-# NPCs: deputy_willem, marshal_mcbride, eagan_peltskinner, milly_osworth
-NORTHSHIRE_QUESTS = [
-    # === DEPUTY WILLEM CHAIN (intro + defias) ===
-    Quest("a_threat_within", "A Threat Within",
-          "The Stormwind guards are hard pressed to keep the peace here, with so many of us in distant lands and so many threats pressing close. And so we're enlisting the aid of anyone willing to defend their home. If you're here to answer the call, then speak with my superior, Marshal McBride. He's inside the abbey behind me.",
-          [],  # No kill objective — just talk to accept/turn-in
-          rewards_xp=50, rewards_gold=0,
-          npc_id="deputy_willem", level_req=1, prerequisites=[]),
-
-    # === MARSHAL MCBRIDE CHAIN (kobolds) ===
-    Quest("kobold_camp_cleanup", "Kobold Camp Cleanup",
-          "Your first task is one of cleansing. A clan of kobolds have infested the woods to the north. Go there and fight the kobold vermin you find. Reduce their numbers so that we may one day drive them from Northshire.",
-          [{"target": "Kobold Dragonshield", "count": 10}],
-          rewards_xp=250, rewards_gold=50,
-          npc_id="marshal_mcbride", level_req=1, prerequisites=["a_threat_within"]),
-
-    Quest("investigate_echo_ridge", "Investigate Echo Ridge",
-          "My scouts tell me that the kobold infestation is larger than we had thought. A group of kobold workers has camped near the Echo Ridge Mine to the north. Go to the mine and remove them. We know there are at least ten.",
-          [{"target": "Kobold Dragonshield", "count": 10}],
-          rewards_xp=350, rewards_gold=75,
-          npc_id="marshal_mcbride", level_req=3, prerequisites=["kobold_camp_cleanup"]),
-
-    Quest("skirmish_at_echo_ridge", "Skirmish at Echo Ridge",
-          "Your previous investigations are proof that the Echo Ridge Mine needs purging. Return to the mine and help clear it of kobolds. Waste no time. The longer the kobolds are left unmolested in the mine, the deeper a foothold they gain in Northshire.",
-          [{"target": "Kobold Dragonshield", "count": 12}],
-          rewards_xp=450, rewards_gold=100,
-          npc_id="marshal_mcbride", level_req=4, prerequisites=["investigate_echo_ridge"]),
-
-    # === EAGAN PELTSKINNER CHAIN (wolves) ===
-    Quest("wolves_across_the_border", "Wolves Across the Border",
-          "I hate those nasty timber wolves! But I sure like eating wolf steaks. Bring me tough wolf meat and I will exchange it for something you'll find useful. Tough wolf meat is gathered from hunting the timber wolves and young wolves wandering the Northshire countryside.",
-          [{"target": "Grey Wolf", "count": 8}],
-          rewards_xp=250, rewards_gold=50,
-          npc_id="eagan_peltskinner", level_req=2, prerequisites=["a_threat_within"]),
-
-    # === DEPUTY WILLEM CHAIN (defias) ===
-    Quest("brotherhood_of_thieves", "Brotherhood of Thieves",
-          "Recently, a new group of thieves has been hanging around Northshire. They call themselves the Defias Brotherhood, and have been seen across the river to the east. I don't know what they're up to, but I'm sure it's not good! Bring me the bandanas they wear, and I'll reward you with a weapon.",
-          [{"target": "Human Cultist", "count": 12}],
-          rewards_xp=375, rewards_gold=75,
-          npc_id="deputy_willem", level_req=2, prerequisites=["a_threat_within"]),
-
-    Quest("bounty_on_garrick_padfoot", "Bounty on Garrick Padfoot",
-          "The Defias have a leader in this area by the name of Garrick Padfoot. Kill him and bring me his head so we can send a message to those thieves that Northshire will not fall to their kind.",
-          [{"target": "Human Cultist", "count": 6}],
-          rewards_xp=450, rewards_gold=100,
-          npc_id="deputy_willem", level_req=4, prerequisites=["brotherhood_of_thieves"]),
-
-    # === MILLY OSWORTH CHAIN (vineyard) ===
-    Quest("millys_harvest", "Milly's Harvest",
-          "I was working in the vineyard behind the abbey when those wretched Defias thugs ran me off! I left behind a whole bushel of grapes. Could you go get them for me? You'll need to fight through those bandits to reach them.",
-          [{"target": "Human Cultist", "count": 8}],
-          rewards_xp=350, rewards_gold=75,
-          npc_id="milly_osworth", level_req=4,
-          prerequisites=["wolves_across_the_border", "brotherhood_of_thieves"]),
-]
-
-# Quest state manager
-quest_log = {}  # quest_id -> Quest
-for q in NORTHSHIRE_QUESTS:
-    quest_log[q.quest_id] = q
-
-# All defined questlines — each is a list of quest_ids in sequential order per NPC chain.
-QUESTLINES = [
-    # McBride kobold chain
-    ["kobold_camp_cleanup", "investigate_echo_ridge", "skirmish_at_echo_ridge"],
-    # Willem intro + defias chain
-    ["a_threat_within", "brotherhood_of_thieves", "bounty_on_garrick_padfoot"],
-    # Eagan wolves chain
-    ["wolves_across_the_border"],
-    # Milly vineyard chain
-    ["millys_harvest"],
-]
-
-active_quests = []  # List of quest_ids currently accepted and in-progress
-completed_quests = []  # List of turned-in quest IDs
-
-
-def get_available_quests_for_npc(npc_id):
-    """Return quest_ids that a specific NPC can offer right now."""
-    available = []
-    for chain in QUESTLINES:
-        for qid in chain:
-            q = quest_log[qid]
-            if q.npc_id != npc_id:
-                continue
-            if q.turned_in:
-                continue  # Done, check next in chain
-            if q.accepted:
-                break  # In progress — no more from this chain
-            # Check prerequisites and level requirement
-            if q.prerequisites_met() and hero.level >= q.level_req:
-                if qid not in active_quests:
-                    available.append(qid)
-            break  # Only one quest per chain per NPC at a time
-    return available
-
-
-def get_available_quests():
-    """Return all quest_ids that can be offered across all NPCs."""
-    available = []
-    for chain in QUESTLINES:
-        for qid in chain:
-            q = quest_log[qid]
-            if q.turned_in:
-                continue
-            if q.accepted:
-                break
-            if q.prerequisites_met() and hero.level >= q.level_req:
-                if qid not in active_quests:
-                    available.append(qid)
-            break
-    return available
-
-
-def get_turn_ins_for_npc(npc_id):
-    """Return quest_ids that can be turned in at a specific NPC."""
-    turn_ins = []
-    for qid in active_quests:
-        q = quest_log.get(qid)
-        if q and q.npc_id == npc_id and q.accepted and q.is_complete() and not q.turned_in:
-            turn_ins.append(qid)
-    return turn_ins
-
-
-def get_active_quest_objects():
-    """Return list of Quest objects currently active (accepted, not turned in)."""
-    return [quest_log[qid] for qid in active_quests if qid in quest_log]
+# === QUEST SYSTEM === (see game/quests.py; `quests` is this character's QuestLog for the current map)
 
 
 class NPC(Entity):
@@ -1201,11 +738,11 @@ class NPC(Entity):
 
     def has_available_quest(self):
         """Does this NPC have a quest to offer?"""
-        return len(get_available_quests_for_npc(self.npc_id)) > 0
+        return len(quests.available_for_npc(self.npc_id, hero.level)) > 0
 
     def has_turn_in(self):
         """Does this NPC have a quest ready to turn in?"""
-        return len(get_turn_ins_for_npc(self.npc_id)) > 0
+        return len(quests.turn_ins_for_npc(self.npc_id)) > 0
 
     def is_in_range(self, hx, hy):
         dx = self.x - hx
@@ -1215,22 +752,17 @@ class NPC(Entity):
 
 # Create NPCs from map data (each map defines its own NPCs in the JSON)
 npcs = []
-if USE_MAP:
-    npc_defs = world_map.data.get("npcs", [])
-    for npc_def in npc_defs:
-        tx, ty = npc_def["x"], npc_def["y"]
-        wx, wy = world_map.get_spawn_world_pos(tx, ty)
-        npc = NPC(npc_def["name"], wx, wy, npc_id=npc_def["npc_id"], gender=npc_def.get("gender", "male"))
-        npc.sprite = get_dungeon_tile(npc_def["sprite_col"], npc_def["sprite_row"])
-        npcs.append(npc)
+for npc_def in world_map.data.get("npcs", []):
+    tx, ty = npc_def["x"], npc_def["y"]
+    wx, wy = world_map.get_spawn_world_pos(tx, ty)
+    npc = NPC(npc_def["name"], wx, wy, npc_id=npc_def["npc_id"], gender=npc_def.get("gender", "male"))
+    npc.sprite = get_dungeon_tile(npc_def["sprite_col"], npc_def["sprite_row"])
+    npcs.append(npc)
 
 # Quest interaction state
 quest_popup_timer = 0.0  # How long to show quest accepted/completed popup
 quest_popup_text = ""
 quest_popup_color = GOLD
-
-# Load existing save (must be after quest_log and completed_quests are defined)
-load_game()
 
 def get_monster_at_screen(sx, sy):
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
@@ -1258,46 +790,34 @@ def interact_with_npc(npc):
     global quest_popup_panel
     interacted = False
 
+    voice = "Samantha" if npc.gender == "female" else "Daniel"
+
     # First: turn in any completed quests at this NPC
-    turn_ins = get_turn_ins_for_npc(npc.npc_id)
-    for qid in turn_ins:
-        q = quest_log[qid]
-        q.turned_in = True
+    for qid in quests.turn_ins_for_npc(npc.npc_id):
+        q = quests.turn_in(qid)
         hero.xp += q.rewards_xp
         hero.gold += q.rewards_gold
-        completed_quests.append(qid)
-        active_quests.remove(qid)
         floating_texts.append(FloatingText(hero.x, hero.y - 40,
             f"+{q.rewards_xp}xp +{q.rewards_gold}g", GOLD))
         # Show turn-in popup panel
         quest_popup_panel = QuestPopupPanel(q, mode="turnin", npc_name=npc.name)
-        voice = "Samantha" if npc.gender == "female" else "Daniel"
         speak_text(f"Well done! {q.title} complete. Here's your reward: {q.rewards_xp} experience and {q.rewards_gold} gold.", voice)
         save_game()
         interacted = True
 
-    # Second: offer and accept all available quests from this NPC
+    # Second: offer and accept an available quest from this NPC
     if not interacted:  # Don't pile accept on top of turn-in
-        available = get_available_quests_for_npc(npc.npc_id)
-        for qid in available:
-            q = quest_log[qid]
-            q.accepted = True
-            if not q.objectives:
-                # No-objective quest (intro) — auto-complete and turn in
-                q.completed = True
-                q.turned_in = True
+        for qid in quests.available_for_npc(npc.npc_id, hero.level):
+            q = quests.quests[qid]
+            if quests.accept(qid):
+                # No-objective quest (intro) — completed and turned in on the spot
                 hero.xp += q.rewards_xp
                 hero.gold += q.rewards_gold
-                completed_quests.append(qid)
                 quest_popup_panel = QuestPopupPanel(q, mode="turnin", npc_name=npc.name)
-                voice = "Samantha" if npc.gender == "female" else "Daniel"
-                speak_text(q.description, voice)
             else:
-                active_quests.append(qid)
-                # Show accept popup panel
                 quest_popup_panel = QuestPopupPanel(q, mode="accept", npc_name=npc.name)
-                voice = "Samantha" if npc.gender == "female" else "Daniel"
-                speak_text(q.description, voice)
+            speak_text(q.description, voice)
+            save_game()
             interacted = True
             break  # One quest popup at a time
 
@@ -1747,6 +1267,7 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
 
 # === MAIN GAME LOOP ===
 running = True
+return_to_menu = False
 while running:
     dt = clock.tick(60) / 1000.0 * game_speed
 
@@ -1769,6 +1290,7 @@ while running:
                     hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
                 else:
                     running = False
+                    return_to_menu = not auto_mode  # ESC -> back to character select
             if event.key == pygame.K_TAB:
                 ai_enabled = not ai_enabled
             # Game speed: +/- to cycle 1x/2x/4x
@@ -1798,24 +1320,15 @@ while running:
                 if event.key == sk and ki < len(available_companions):
                     comp_info = available_companions[ki]
                     # Check if already summoned — if so, dismiss
-                    existing = [(i, c) for i, (c, _) in enumerate(companions) if c.name == comp_info["name"]]
+                    existing = [(i, c) for i, (c, _) in enumerate(companions) if c.class_name == comp_info["class"]]
                     if existing:
                         idx, comp = existing[0]
                         companions.pop(idx)
                         game_state.heroes.remove(comp)
                         floating_texts.append(FloatingText(comp.x, comp.y - 30, f"{comp.name} dismissed", (200, 150, 150)))
                     else:
-                        cx, cy = find_walkable_nearby(hero.x, hero.y, radius=60)
-                        comp = comp_info["create"](cx, cy)
-                        comp.sprite = HERO_SPRITES[comp_info["sprite_key"]]
-                        comp_ai = create_hero_ai(comp)
-                        comp_ai.set_nav_dungeon(dungeon)
-                        # Give AI access to all heroes for ally-targeting abilities
-                        if hasattr(comp_ai, 'allies'):
-                            comp_ai.allies = game_state.heroes
-                        companions.append((comp, comp_ai))
-                        game_state.heroes.append(comp)
-                        floating_texts.append(FloatingText(cx, cy - 30, f"{comp.name} joined!", GOLD))
+                        comp = spawn_companion(comp_info)
+                        floating_texts.append(FloatingText(comp.x, comp.y - 30, f"{comp.name} joined! (Lv {comp.level})", GOLD))
                     break
 
         if event.type == pygame.MOUSEBUTTONDOWN and not game_state.adventure_failed:
@@ -1907,7 +1420,7 @@ while running:
         screen.blit(t, (WIDTH//2-t.get_width()//2, HEIGHT//2-20))
         stats = f"Time: {game_state.game_time:.1f}s  HP: {hero.hp:.0f}/{hero.max_hp}  Kills: {hero.kills}"
         screen.blit(big_font.render(stats, True, WHITE), (WIDTH//2-150, HEIGHT//2+20))
-        screen.blit(font.render("Press ESC to quit (auto-closing in 5s)", True, GRAY), (WIDTH//2-100, HEIGHT//2+55))
+        screen.blit(font.render("Press ESC to return to character select", True, GRAY), (WIDTH//2-100, HEIGHT//2+55))
         pygame.display.flip()
         if auto_mode:
             print(f"RESULT: DEFEATED time={game_state.game_time:.1f}s hp={hero.hp:.0f}/{hero.max_hp} kills={hero.kills}", flush=True)
@@ -2077,18 +1590,6 @@ while running:
                     if dist_to_target < 300:
                         hero._ai_unreachable.add(id(hero_ai.target))
                         hero_ai.target = None  # Force retarget next frame
-
-        else:
-            # No enemies and no action — explore! Move toward next unexplored room
-            if not USE_MAP:
-                for r in dungeon.rooms:
-                    if not r.explored:
-                        target_x = r.center_x * TILE_SIZE
-                        target_y = r.center_y * TILE_SIZE
-                        # Use pathfinding for exploration
-                        if not move_path:
-                            move_path = astar(dungeon, hero.x, hero.y, target_x, target_y)
-                        break
 
     # Ambush walk-to: walk toward target in stealth, execute Ambush when in range
     if ambush_target and not ai_enabled:
@@ -2346,12 +1847,6 @@ while running:
                         comp._follow_path = None
                     comp.facing_left = (tx - comp.x) < 0
 
-    # Room exploration — spawn monsters when hero enters new room (dungeon mode only)
-    if not USE_MAP:
-        new_room = dungeon.update_exploration(hero.x, hero.y)
-        if new_room:
-            spawn_monsters_for_room(new_room)
-
     # Monster AI — all alive monsters with aggro system
     all_heroes = [h for h in game_state.heroes if h.alive]
     for m in alive:
@@ -2380,17 +1875,13 @@ while running:
             hero.kills += 1
             floating_texts.append(FloatingText(m.x, m.y+10, f"+{m.experience}xp", GOLD))
             # Quest kill tracking
-            for aq in get_active_quest_objects():
-                if aq.accepted and not aq.turned_in:
-                    if aq.record_kill(m.name):
-                        # Show progress
-                        prog = aq.get_progress_text()
-                        floating_texts.append(FloatingText(hero.x, hero.y - 50, prog, (200, 200, 255)))
-                    if aq.is_complete() and not aq.completed:
-                        aq.completed = True
-                        quest_popup_text = f"Quest Complete: {aq.title} — Return to NPC"
-                        quest_popup_timer = 3.0
-                        quest_popup_color = (100, 255, 100)
+            for aq, just_completed in quests.record_kill(m.name):
+                floating_texts.append(FloatingText(hero.x, hero.y - 50, aq.get_progress_text(), (200, 200, 255)))
+                if just_completed:
+                    quest_popup_text = f"Quest Complete: {aq.title} — Return to NPC"
+                    quest_popup_timer = 3.0
+                    quest_popup_color = (100, 255, 100)
+                    save_game()
             m.experience = 0
             # Queue for respawn (non-bosses with a spawn point)
             if not m.is_boss and hasattr(m, 'spawn_point') and m.spawn_point:
@@ -2401,11 +1892,8 @@ while running:
         hero.xp -= xp_to_next_level(hero.level)
         hero.level += 1
         # Stat growth
-        growth = GROWTH_RATES.get(hero.class_name, {"hp": 25, "damage": 2.5})
-        hero.max_hp += growth["hp"]
-        hero.base_damage += growth["damage"]
-        # Full heal on level-up
-        hero.hp = hero.max_hp
+        growth = growth_for(hero.class_name)
+        apply_level_growth(hero)  # also full-heals on level-up
         # Visual celebration
         effects.append(LevelUpEffect(hero.x, hero.y))
         floating_texts.append(FloatingText(hero.x, hero.y - 30,
@@ -2413,7 +1901,7 @@ while running:
         save_game()
 
     # Respawn system — check if any mobs are ready to respawn
-    if USE_MAP and respawn_queue:
+    if respawn_queue:
         still_pending = []
         for sp, death_time in respawn_queue:
             if game_state.game_time - death_time >= RESPAWN_TIME:
@@ -2494,73 +1982,27 @@ while running:
     view_right = view_left + int(WIDTH / ztile) + 3
     view_bottom = view_top + int(HEIGHT / ztile) + 3
 
-    if USE_MAP:
-        # World map rendering — draw tiles from spritesheet data
-        for ty in range(max(0, view_top), min(world_map.height, view_bottom)):
-            for tx in range(max(0, view_left), min(world_map.width, view_right)):
-                sx = int((tx * TILE_SIZE - cx) * cam_zoom + WIDTH//2)
-                sy = int((ty * TILE_SIZE - cy) * cam_zoom + HEIGHT//2)
-                # Ground layer
-                ground_tile = world_map.ground[ty][tx] if world_map.ground else None
-                if ground_tile:
-                    key = (ground_tile.col, ground_tile.row, ztile)
-                    if key not in rpg_tile_cache:
-                        rpg_tile_cache[key] = pygame.transform.scale(
-                            get_rpg_tile_raw(ground_tile.col, ground_tile.row), (ztile, ztile))
-                    screen.blit(rpg_tile_cache[key], (sx, sy))
-                # Objects layer
-                obj_tile = world_map.objects[ty][tx] if world_map.objects else None
-                if obj_tile:
-                    key = (obj_tile.col, obj_tile.row, ztile)
-                    if key not in rpg_tile_cache:
-                        rpg_tile_cache[key] = pygame.transform.scale(
-                            get_rpg_tile_raw(obj_tile.col, obj_tile.row), (ztile, ztile))
-                    screen.blit(rpg_tile_cache[key], (sx, sy))
-    else:
-        # Dungeon rendering (original fog-of-war system)
-        for ty in range(max(0, view_top), min(dungeon.grid_h, view_bottom)):
-            for tx in range(max(0, view_left), min(dungeon.grid_w, view_right)):
-                tile = dungeon.tiles[ty][tx]
-                if tile == "wall":
-                    visible = False
-                    for ddy in range(-1, 2):
-                        for ddx in range(-1, 2):
-                            ntx, nty = tx+ddx, ty+ddy
-                            if 0 <= nty < dungeon.grid_h and 0 <= ntx < dungeon.grid_w:
-                                if dungeon.tiles[nty][ntx] == "floor":
-                                    for r in dungeon.rooms:
-                                        if r.explored and r.contains_tile(ntx, nty):
-                                            visible = True
-                                            break
-                                    if not visible:
-                                        for r in dungeon.rooms:
-                                            if r.explored:
-                                                if abs(ntx - r.center_x) < r.width and abs(nty - r.center_y) < r.height + 5:
-                                                    visible = True
-                                                    break
-                        if visible: break
-                    if not visible:
-                        continue
-                    sx = int((tx * TILE_SIZE - cx) * cam_zoom + WIDTH//2)
-                    sy = int((ty * TILE_SIZE - cy) * cam_zoom + HEIGHT//2)
-                    screen.blit(SPR_WALL, (sx, sy))
-                else:
-                    visible = False
-                    for r in dungeon.rooms:
-                        if r.explored and r.contains_tile(tx, ty):
-                            visible = True
-                            break
-                    if not visible:
-                        for r in dungeon.rooms:
-                            if r.explored:
-                                if abs(tx - r.center_x) < r.width + 8 and abs(ty - r.center_y) < r.height + 4:
-                                    visible = True
-                                    break
-                    if not visible:
-                        continue
-                    sx = int((tx * TILE_SIZE - cx) * cam_zoom + WIDTH//2)
-                    sy = int((ty * TILE_SIZE - cy) * cam_zoom + HEIGHT//2)
-                    screen.blit(SPR_FLOOR if (tx+ty) % 5 != 0 else SPR_FLOOR2, (sx, sy))
+    # World map rendering — draw tiles from spritesheet data
+    for ty in range(max(0, view_top), min(world_map.height, view_bottom)):
+        for tx in range(max(0, view_left), min(world_map.width, view_right)):
+            sx = int((tx * TILE_SIZE - cx) * cam_zoom + WIDTH//2)
+            sy = int((ty * TILE_SIZE - cy) * cam_zoom + HEIGHT//2)
+            # Ground layer
+            ground_tile = world_map.ground[ty][tx] if world_map.ground else None
+            if ground_tile:
+                key = (ground_tile.col, ground_tile.row, ztile)
+                if key not in rpg_tile_cache:
+                    rpg_tile_cache[key] = pygame.transform.scale(
+                        get_rpg_tile_raw(ground_tile.col, ground_tile.row), (ztile, ztile))
+                screen.blit(rpg_tile_cache[key], (sx, sy))
+            # Objects layer
+            obj_tile = world_map.objects[ty][tx] if world_map.objects else None
+            if obj_tile:
+                key = (obj_tile.col, obj_tile.row, ztile)
+                if key not in rpg_tile_cache:
+                    rpg_tile_cache[key] = pygame.transform.scale(
+                        get_rpg_tile_raw(obj_tile.col, obj_tile.row), (ztile, ztile))
+                screen.blit(rpg_tile_cache[key], (sx, sy))
 
     # Move path dots
     for wp in move_path[:8]:
@@ -2829,14 +2271,11 @@ while running:
     screen.blit(font.render(f"R: {right_ab.name}", True, WHITE), (WIDTH//2 + 25, bar_y + 8))
 
     screen.blit(font.render(f"Kills: {hero.kills}  Gold: {hero.gold}", True, GOLD), (WIDTH-160, 20))
-    if USE_MAP:
-        screen.blit(font.render("Northshire", True, BLUE), (WIDTH-160, 40))
-    else:
-        screen.blit(font.render(f"Room: {dungeon.current_room.name}", True, BLUE), (WIDTH-160, 40))
+    screen.blit(font.render(MAP_ID.replace("_", " ").title(), True, BLUE), (WIDTH-160, 40))
 
     # Quest HUD (top center)
     quest_hud_y = 10
-    active_quest_objs = get_active_quest_objects()
+    active_quest_objs = quests.active_objects()
     if active_quest_objs:
         for aq in active_quest_objs:
             if aq.accepted and not aq.turned_in:
@@ -2852,10 +2291,10 @@ while running:
                         screen.blit(font.render("Return to NPC", True, (100, 255, 100)), (WIDTH//2 - 120, quest_hud_y))
                         quest_hud_y += 16
                 quest_hud_y += 4  # spacing between quests
-    elif get_available_quests():
+    elif quests.available(hero.level):
         screen.blit(font.render("Visit an NPC for a new quest", True, (200, 200, 150)), (WIDTH//2 - 120, quest_hud_y))
-    elif not active_quests and not get_available_quests():
-        screen.blit(font.render("All quests completed! Northshire is safe.", True, (100, 255, 100)), (WIDTH//2 - 160, quest_hud_y))
+    elif quests.quests:
+        screen.blit(font.render(f"All quests completed! {MAP_ID.replace('_', ' ').title()} is safe.", True, (100, 255, 100)), (WIDTH//2 - 160, quest_hud_y))
     else:
         screen.blit(font.render(game_state.objective_text, True, (200,200,150)), (WIDTH//2-180, 10))
 
@@ -2875,18 +2314,6 @@ while running:
     fps_color = HP_GREEN if fps >= 50 else (GOLD if fps >= 30 else HP_RED)
     screen.blit(font.render(f"FPS: {fps}", True, fps_color), (10, 10))
 
-    # Minimap (dungeon mode only)
-    mm_x, mm_y = WIDTH-120, HEIGHT-100
-    if not USE_MAP:
-        pygame.draw.rect(screen, (30,30,40), (mm_x-5, mm_y-5, 110, 90))
-        for r in dungeon.rooms:
-            rx = mm_x + (r.gx - dungeon.rooms[0].gx) // 2 + 10
-            ry = mm_y + (r.gy - dungeon.rooms[0].gy) * 2 + 30
-            color = (50,50,60) if not r.explored else (100,100,140)
-            if r.room_type == RoomType.QUEST and r.explored: color = (200,50,50)
-            if r.id == dungeon.current_room_id: color = (100,200,255)
-            pygame.draw.rect(screen, color, (rx, ry, 10, 8))
-
     # Controls help
     ai_label = "AI: ON (TAB=off)" if ai_enabled else "TAB=AI"
     ai_color = (100, 255, 100) if ai_enabled else (80, 80, 80)
@@ -2897,3 +2324,27 @@ while running:
 
 save_game()
 pygame.quit()
+
+
+def _restart_to_menu():
+    """Relaunch into the character-select screen. The game runs as one big module-level script,
+    so a fresh process is the simplest way to reset all game state. --map is dropped so the
+    map-select screen shows again."""
+    args = []
+    skip = False
+    for a in sys.argv[1:]:
+        if skip:
+            skip = False
+        elif a == "--map":
+            skip = True
+        else:
+            args.append(a)
+    cmd = [sys.executable, "-m", "game.main"] + args
+    if os.name == "nt":
+        subprocess.Popen(cmd)
+        sys.exit(0)
+    os.execv(sys.executable, cmd)  # same PID, so run.sh's printed PID stays valid
+
+
+if return_to_menu:
+    _restart_to_menu()

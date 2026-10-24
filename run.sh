@@ -1,7 +1,7 @@
 #!/bin/bash
 # Launch DND ARPG
-# Usage: ./run.sh [--map path/to/map.json] [--auto] [--hero 0-4] [--debug]
-# Default: shows map select screen, then hero select
+# Usage: ./run.sh [--map path/to/map.json] [--auto] [--hero 0-4 (class)] [--debug]
+# Default: character select (create/delete here), then map select. ESC steps back.
 # Log saved to /tmp/dnd_v1.log
 
 cd "$(dirname "$0")"

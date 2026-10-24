@@ -1,19 +1,24 @@
 {
-  "name": "Tarak",
+  "name": "tarak",
   "class_name": "Rogue",
   "level": 10,
   "xp": 262,
   "gold": 19560,
   "kills": 134,
-  "completed_quests": [
-    "a_threat_within",
-    "kobold_camp_cleanup",
-    "wolves_across_the_border",
-    "investigate_echo_ridge",
-    "brotherhood_of_thieves",
-    "skirmish_at_echo_ridge",
-    "millys_harvest",
-    "bounty_on_garrick_padfoot"
-  ],
-  "active_quests": []
+  "quests": {
+    "northshire": {
+      "completed": [
+        "a_threat_within",
+        "kobold_camp_cleanup",
+        "wolves_across_the_border",
+        "investigate_echo_ridge",
+        "brotherhood_of_thieves",
+        "skirmish_at_echo_ridge",
+        "millys_harvest",
+        "bounty_on_garrick_padfoot"
+      ],
+      "active": [],
+      "progress": {}
+    }
+  }
 }

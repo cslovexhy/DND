@@ -783,3 +783,19 @@ Added a themed monster set. These are generic/original creatures given Stranger-
 ### Notes / Follow-ups
 - Verification was done via `py_compile`, static tracing, and an isolated unit test of `hive_mind` propagation (range gating + type filter confirmed). The live game window was not run during this session.
 - Demodog/Demobat/Vecna currently reuse pack sprites; could get original art later like the Demogorgon.
+
+---
+
+## Session 13 — Character system
+
+### Changes
+- **Characters**: no more fixed hero per name. Players create characters (name + class), pick one on a character-select screen, and can delete them (hard delete, confirmation required). Names: 1-12 lowercase letters a-z, unique, used as the save file name (`data/saves/<name>.json`). Race concept removed.
+- **Flow / ESC**: game -> character select; map select -> character select; character select -> quit. In-game ESC saves and relaunches the process into character select (`os.execv`; the game is one module-level script, so a fresh process is the simplest full state reset).
+- **Per-character, per-map quests**: save schema is now `{name, class_name, level, xp, gold, kills, quests: {<map_id>: {completed, active, progress}}}`. Kill counts for in-progress quests are now saved. Legacy saves are migrated automatically on first load (old quest state moved under `northshire`; progress preserved).
+- **Quest definitions** moved out of `main.py` into `data/quests/<map_id>.json`; logic in `game/quests.py`. Maps without a file have no quests.
+- **Companions** (F1-F4): one per class except the player's own, spawned at the player's *current* level (fixed at spawn; no leveling afterward).
+- **Dungeon mode removed** (`engine/dungeon.py` deleted).
+- **`--auto`** (AI playtest) uses a throwaway level-1 hero and never touches real saves. Defaults to the Northshire map.
+
+### New modules
+`game/menus.py`, `game/saves.py`, `game/quests.py`, `game/progression.py`; tests in `tests/` (`.venv/bin/python -m unittest discover -s tests -t .`).

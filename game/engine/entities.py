@@ -333,12 +333,11 @@ class Entity:
 class Hero(Entity):
     """Player-controlled hero with abilities, XP, gold, equipment."""
 
-    def __init__(self, name: str, race: str, class_name: str,
+    def __init__(self, name: str, class_name: str,
                  x: float, y: float,
                  hp: int, ac: int, speed: int, surge_value: int,
                  special_ability: str = ""):
         super().__init__(name, x, y, hp, ac, speed)
-        self.race = race
         self.class_name = class_name
         self.surge_value = surge_value * HP_SCALE
         self.special_ability = special_ability

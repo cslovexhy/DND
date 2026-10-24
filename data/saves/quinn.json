@@ -1,0 +1,15 @@
+{
+  "name": "quinn",
+  "class_name": "Cleric",
+  "level": 2,
+  "xp": 60,
+  "gold": 3060,
+  "kills": 8,
+  "quests": {
+    "northshire": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    }
+  }
+}

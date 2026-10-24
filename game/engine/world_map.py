@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Optional
 
-TILE_SIZE = 48  # pixels per tile (same as dungeon.py)
+TILE_SIZE = 48  # pixels per tile 
 
 
 @dataclass
@@ -107,13 +107,13 @@ class WorldMap:
         # Empty tile (no visual) = still walkable
         return True
 
-    # Compatibility with dungeon.py / pathfinding.py interface
+    # Compatibility with the pathfinding.py interface
     def is_floor(self, tx, ty) -> bool:
         """Same as is_tile_walkable — for pathfinding compatibility."""
         return self.is_tile_walkable(tx, ty)
 
     def is_wall(self, wx, wy) -> bool:
-        """Inverse of is_walkable — for dungeon.is_wall() compatibility."""
+        """Inverse of is_walkable — for is_wall() compatibility."""
         return not self.is_walkable(wx, wy)
 
     def get_start_pos(self) -> tuple:
