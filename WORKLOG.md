@@ -790,7 +790,7 @@ Added a themed monster set. These are generic/original creatures given Stranger-
 
 ### Changes
 - **Characters**: no more fixed hero per name. Players create characters (name + class), pick one on a character-select screen, and can delete them (hard delete, confirmation required). Names: 1-12 lowercase letters a-z, unique, used as the save file name (`data/saves/<name>.json`). Race concept removed.
-- **Flow / ESC**: game -> character select; map select -> character select; character select -> quit. In-game ESC saves and relaunches the process into character select (`os.execv`; the game is one module-level script, so a fresh process is the simplest full state reset).
+- **Flow / ESC**: game -> character select; map select -> character select; character select -> quit. `game/main.py` owns the window, sprites and menu loop; each play session is `game/session.py` executed fresh via `runpy.run_module` (so all game state resets without restarting the process; an earlier `os.execv` restart pushed the window behind others on macOS).
 - **Per-character, per-map quests**: save schema is now `{name, class_name, level, xp, gold, kills, quests: {<map_id>: {completed, active, progress}}}`. Kill counts for in-progress quests are now saved. Legacy saves are migrated automatically on first load (old quest state moved under `northshire`; progress preserved).
 - **Quest definitions** moved out of `main.py` into `data/quests/<map_id>.json`; logic in `game/quests.py`. Maps without a file have no quests.
 - **Companions** (F1-F4): one per class except the player's own, spawned at the player's *current* level (fixed at spawn; no leveling afterward).
@@ -798,4 +798,4 @@ Added a themed monster set. These are generic/original creatures given Stranger-
 - **`--auto`** (AI playtest) uses a throwaway level-1 hero and never touches real saves. Defaults to the Northshire map.
 
 ### New modules
-`game/menus.py`, `game/saves.py`, `game/quests.py`, `game/progression.py`; tests in `tests/` (`.venv/bin/python -m unittest discover -s tests -t .`).
+`game/session.py`, `game/menus.py`, `game/saves.py`, `game/quests.py`, `game/progression.py`; tests in `tests/` (`.venv/bin/python -m unittest discover -s tests -t .`).

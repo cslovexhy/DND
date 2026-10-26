@@ -1,0 +1,24 @@
+{
+  "name": "cs",
+  "class_name": "Paladin",
+  "level": 9,
+  "xp": 692,
+  "gold": 11080,
+  "kills": 87,
+  "quests": {
+    "northshire": {
+      "completed": [
+        "a_threat_within",
+        "kobold_camp_cleanup",
+        "investigate_echo_ridge",
+        "wolves_across_the_border",
+        "brotherhood_of_thieves",
+        "millys_harvest",
+        "bounty_on_garrick_padfoot",
+        "skirmish_at_echo_ridge"
+      ],
+      "active": [],
+      "progress": {}
+    }
+  }
+}

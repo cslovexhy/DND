@@ -108,8 +108,8 @@
       "description": "The Defias have a leader in this area by the name of Garrick Padfoot. Kill him and bring me his head so we can send a message to those thieves that Northshire will not fall to their kind.",
       "objectives": [
         {
-          "target": "Human Cultist",
-          "count": 6
+          "target": "Garrick Padfoot",
+          "count": 1
         }
       ],
       "rewards_xp": 450,

@@ -78,6 +78,16 @@ class QuestTest(unittest.TestCase):
         self.assertEqual(b.completed, [])
         self.assertEqual(load_quest_log("goldshire").quests, {})
 
+    def test_garrick_bounty_requires_killing_garrick(self):
+        log = load_quest_log("northshire")
+        log.load_state({"completed": ["a_threat_within", "brotherhood_of_thieves"]})
+        self.assertFalse(log.accept("bounty_on_garrick_padfoot"))
+        for _ in range(20):
+            log.record_kill("Human Cultist")
+        self.assertEqual(log.turn_ins_for_npc("deputy_willem"), [])
+        log.record_kill("Garrick Padfoot")
+        self.assertEqual(log.turn_ins_for_npc("deputy_willem"), ["bounty_on_garrick_padfoot"])
+
     def test_level_requirement(self):
         log = load_quest_log("northshire")
         log.load_state({"completed": ["a_threat_within", "kobold_camp_cleanup"]})
