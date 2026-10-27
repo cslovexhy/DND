@@ -86,20 +86,134 @@ class HeroAI:
             self._path_cache[mid] = (99999.0, now)
             return 99999.0
 
+    def _find_best_kite_position(self, monsters, require_improvement=False) -> tuple:
+        """Evaluate 8 directions to find the safest retreat position.
+        Returns (x, y) of best kite target, or None if no valid option.
+
+        Algorithm:
+        1. Generate 8 candidate positions (step_distance in each direction)
+        2. Filter: must be walkable and have LOS from current position
+        3. Score: sum of distances from candidate to all mobs within 500px
+        4. Return highest-scoring (safest) position
+        """
+        step = 120  # How far to step in each direction
+        hx, hy = self.hero.x, self.hero.y
+
+        # 8 directions: N, NE, E, SE, S, SW, W, NW
+        directions = [
+            (0, -1), (0.707, -0.707), (1, 0), (0.707, 0.707),
+            (0, 1), (-0.707, 0.707), (-1, 0), (-0.707, -0.707)
+        ]
+
+        # Mobs within threat radius
+        threats = [m for m in monsters if m.alive and self.path_distance(m) < 500]
+        if not threats:
+            return None
+
+        best_pos = None
+        best_score = -1
+        if require_improvement:
+            # Only move if a candidate is actually farther from the nearest mob than we are now
+            best_score = min(self.path_distance(m) for m in threats) + 10
+
+        for dx, dy in directions:
+            cx = hx + dx * step
+            cy = hy + dy * step
+
+            # Filter: must be walkable
+            if not self._nav_dungeon:
+                continue
+            if self._nav_dungeon.is_wall(cx, cy):
+                continue
+
+            # Filter: must have LOS from current position
+            if not has_line_of_sight(self._nav_dungeon, hx, hy, cx, cy):
+                continue
+
+            # Score: minimum distance to any threat (higher = safer)
+            # The closest mob is what kills you — maximize distance from nearest threat
+            score = min(self.path_distance_xy(cx, cy, m.x, m.y) for m in threats)
+
+            if score > best_score:
+                best_score = score
+                best_pos = (cx, cy)
+
+        return best_pos
+
+    def path_distance_xy(self, ax, ay, bx, by) -> float:
+        """Walking distance between two world points (cached ~0.5s).
+        Clear line of sight -> straight line is exact; otherwise A* path length
+        (99999 if unreachable). No dungeon -> straight line."""
+        if not self._nav_dungeon:
+            return math.hypot(bx - ax, by - ay)
+        key = (round(ax / 16), round(ay / 16), round(bx / 16), round(by / 16))
+        now = time.monotonic()
+        cache = self.__dict__.setdefault("_xy_cache", {})
+        hit = cache.get(key)
+        if hit and (now - hit[1]) < self._path_cache_ttl:
+            return hit[0]
+        if len(cache) > 400:
+            cache.clear()
+        if has_line_of_sight(self._nav_dungeon, ax, ay, bx, by):
+            dist = math.hypot(bx - ax, by - ay)
+        else:
+            path = astar(self._nav_dungeon, ax, ay, bx, by, max_steps=80)
+            if path:
+                dist, px, py = 0.0, ax, ay
+                for wx, wy in path:
+                    dist += math.hypot(wx - px, wy - py)
+                    px, py = wx, wy
+            else:
+                dist = 99999.0
+        cache[key] = (dist, now)
+        return dist
+
+    REST_HP_PCT = 0.80
+
+    def should_rest(self, monsters) -> bool:
+        """No aggro and HP below 80%: don't pick targets / start a pull until regenerated."""
+        return (self.aggroed_count(monsters) == 0
+                and self.hero.hp < self.hero.max_hp * self.REST_HP_PCT)
+
+    def aggroed_count(self, monsters) -> int:
+        """Number of alive, visible monsters currently aggroed."""
+        from game.engine.ai import AggroState
+        return sum(1 for m in monsters if m.alive and not getattr(m, 'stealthed', False)
+                   and getattr(m, 'aggro_state', None) == AggroState.AGGROED)
+
+    def melee_move_to(self, monsters, tx, ty):
+        """Melee movement: walk straight to (tx, ty), except when more than one mob is
+        aggroed — then use the wizard-style kite position (falls back to straight walk)."""
+        if self.aggroed_count(monsters) > 1:
+            kite_pos = self._find_best_kite_position(monsters)
+            if kite_pos:
+                return kite_pos
+        return (tx, ty)
+
+    def _sticky(self, best, candidates):
+        """Target hysteresis: keep the current target unless the new nearest one is clearly
+        closer (>=60px by path). Stops flip-flopping between two similar-distance mobs."""
+        cur = self.target
+        if cur is None or cur is best or cur not in candidates or not cur.alive:
+            return best
+        if self.path_distance(cur) - self.path_distance(best) < 60:
+            return cur
+        return best
+
     def pick_target(self, monsters: list[Monster]) -> Monster:
         """Pick best target by path distance, preferring engaged monsters."""
         candidates = self.get_engaged_monsters(monsters)
         if not candidates:
             return None
-        return min(candidates, key=lambda m: self.path_distance(m))
+        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
 
     def should_use_potion(self, potions: int) -> bool:
         """Use potion when below 40% HP."""
         return potions > 0 and self.hero.hp < self.hero.max_hp * 0.4
 
     def count_enemies_in_range(self, monsters, radius):
-        """Count enemies within euclidean radius (still useful for AoE decisions)."""
-        return sum(1 for m in monsters if m.alive and self.hero.distance_to(m) <= radius)
+        """Count enemies within walking-distance radius (for AoE decisions)."""
+        return sum(1 for m in monsters if m.alive and self.path_distance(m) <= radius)
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         """
@@ -138,7 +252,7 @@ class FighterAI(HeroAI):
             return min(in_melee, key=lambda m: m.hp)
 
         # Otherwise closest by path distance
-        return min(candidates, key=lambda m: self.path_distance(m))
+        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
@@ -148,13 +262,17 @@ class FighterAI(HeroAI):
         if not alive:
             return action
 
+        if self.should_rest(alive):
+            self.target = None  # resting: skip target picking until HP >= 80%
+            return action
+
         # GCD check
         if self.hero.gcd > 0:
             self.target = self.pick_target(alive)
             if self.target:
                 dist = self.hero.distance_to(self.target)
                 if dist > 60:
-                    action["move_to"] = (self.target.x, self.target.y)
+                    action["move_to"] = self.melee_move_to(alive, self.target.x, self.target.y)
                 else:
                     action["basic_attack"] = self.target
             return action
@@ -213,7 +331,7 @@ class FighterAI(HeroAI):
             return action
 
         # 6. Move toward target (to get in range or get LOS)
-        action["move_to"] = (self.target.x, self.target.y)
+        action["move_to"] = self.melee_move_to(alive, self.target.x, self.target.y)
 
         return action
 
@@ -246,7 +364,24 @@ class ClericAI(HeroAI):
         low_hp = [m for m in candidates if m.hp <= m.max_hp * 0.3]
         if low_hp:
             return min(low_hp, key=lambda m: self.path_distance(m))
-        return min(candidates, key=lambda m: self.path_distance(m))
+        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
+
+    def _near_unaggroed(self, monsters, margin=40, pos=None):
+        """True if a non-target, unaggroed mob is within its sense range (+margin) of pos (default: hero)."""
+        px, py = pos if pos else (self.hero.x, self.hero.y)
+        from game.engine.ai import AggroState
+        for m in monsters:
+            if not m.alive or m is self.target or getattr(m, 'stealthed', False):
+                continue
+            if getattr(m, 'aggro_state', None) == AggroState.AGGROED:
+                continue
+            # Mobs packed with the target get pulled anyway; backing off would just oscillate
+            if self.target and self.path_distance_xy(m.x, m.y, self.target.x, self.target.y) <= getattr(m, 'call_range', 120) + 30:
+                continue
+            d = self.path_distance(m) if pos is None else self.path_distance_xy(px, py, m.x, m.y)
+            if d <= getattr(m, 'sense_range', 180) + margin:
+                return True
+        return False
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
@@ -256,11 +391,20 @@ class ClericAI(HeroAI):
         if not alive:
             return action
 
+        if self.should_rest(alive):
+            self.target = None  # resting: skip target picking until HP >= 80%
+            return action
+
         # GCD check
         if self.hero.gcd > 0:
             self.target = self.pick_target(alive)
-            # Kite if enemy too close
-            if self.target:
+            # Back away from unaggroed mobs, then kite if target too close
+            if self.aggroed_count(alive) > 0 and self._near_unaggroed(alive):
+                kite_pos = self._find_best_kite_position(alive, require_improvement=True)
+                if kite_pos:
+                    action["move_to"] = kite_pos
+                    return action
+            if self.target and self.aggroed_count(alive) > 0:
                 dist = self.hero.distance_to(self.target)
                 if dist < 80:
                     # Move away from target
@@ -281,6 +425,13 @@ class ClericAI(HeroAI):
         # 1. Potion if critically low
         if hp_pct < 0.30:
             action["use_potion"] = True
+
+        # 1b. Back away from unaggroed mobs (other than the target) before we pull them
+        if self.aggroed_count(alive) > 0 and self._near_unaggroed(alive):
+            kite_pos = self._find_best_kite_position(alive, require_improvement=True)
+            if kite_pos:
+                action["move_to"] = kite_pos
+                return action
 
         # 2. Wall on lowest HP ally (or self) if no shield on them
         ab_r = self.hero.abilities.get("R")
@@ -308,8 +459,8 @@ class ClericAI(HeroAI):
             action["ability_target_monster"] = self.target
             return action
 
-        # 5. Kite if too close
-        if dist < 80:
+        # 5. Kite if too close (only once something is aggroed; otherwise body-pull)
+        if dist < 80 and self.aggroed_count(alive) > 0:
             dx = self.hero.x - self.target.x
             dy = self.hero.y - self.target.y
             d = math.sqrt(dx * dx + dy * dy)
@@ -317,7 +468,15 @@ class ClericAI(HeroAI):
                 action["move_to"] = (self.hero.x + (dx / d) * 100, self.hero.y + (dy / d) * 100)
             return action
 
-        # 6. Move toward target (to get in range or get LOS)
+        # 6. Move toward target (to get in range or get LOS).
+        #    With a mob already aggroed, hold instead of stepping into an idle bystander's
+        #    sense range (otherwise approach and back-off flip every tick = ping-pong).
+        if self.aggroed_count(alive) > 0:
+            d = max(dist, 1)
+            step_pos = (self.hero.x + (self.target.x - self.hero.x) / d * 60,
+                        self.hero.y + (self.target.y - self.hero.y) / d * 60)
+            if self._near_unaggroed(alive, pos=step_pos):
+                return action
         action["move_to"] = (self.target.x, self.target.y)
 
         return action
@@ -339,7 +498,7 @@ class PaladinAI(HeroAI):
         in_melee = [m for m in candidates if self.hero.distance_to(m) < 70 and self.has_los(m)]
         if in_melee:
             return min(in_melee, key=lambda m: m.hp)
-        return min(candidates, key=lambda m: self.path_distance(m))
+        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
@@ -349,11 +508,15 @@ class PaladinAI(HeroAI):
         if not alive:
             return action
 
+        if self.should_rest(alive):
+            self.target = None  # resting: skip target picking until HP >= 80%
+            return action
+
         # GCD check — don't try abilities if on GCD
         if self.hero.gcd > 0:
             self.target = self.pick_target(alive)
             if self.target and self.hero.distance_to(self.target) > 50:
-                action["move_to"] = (self.target.x, self.target.y)
+                action["move_to"] = self.melee_move_to(alive, self.target.x, self.target.y)
             return action
 
         self.target = self.pick_target(alive)
@@ -397,7 +560,7 @@ class PaladinAI(HeroAI):
             return action
 
         # 6. Move toward target (to get in range or get LOS)
-        action["move_to"] = (self.target.x, self.target.y)
+        action["move_to"] = self.melee_move_to(alive, self.target.x, self.target.y)
 
         return action
 
@@ -420,59 +583,7 @@ class WizardAI(HeroAI):
         low_hp = [m for m in candidates if m.hp <= m.max_hp * 0.3]
         if low_hp:
             return min(low_hp, key=lambda m: self.path_distance(m))
-        return min(candidates, key=lambda m: self.path_distance(m))
-
-    def _find_best_kite_position(self, monsters) -> tuple:
-        """Evaluate 8 directions to find the safest retreat position.
-        Returns (x, y) of best kite target, or None if no valid option.
-
-        Algorithm:
-        1. Generate 8 candidate positions (step_distance in each direction)
-        2. Filter: must be walkable and have LOS from current position
-        3. Score: sum of distances from candidate to all mobs within 500px
-        4. Return highest-scoring (safest) position
-        """
-        step = 120  # How far to step in each direction
-        hx, hy = self.hero.x, self.hero.y
-
-        # 8 directions: N, NE, E, SE, S, SW, W, NW
-        directions = [
-            (0, -1), (0.707, -0.707), (1, 0), (0.707, 0.707),
-            (0, 1), (-0.707, 0.707), (-1, 0), (-0.707, -0.707)
-        ]
-
-        # Mobs within threat radius
-        threats = [m for m in monsters if m.alive and self.hero.distance_to(m) < 500]
-        if not threats:
-            return None
-
-        best_pos = None
-        best_score = -1
-
-        for dx, dy in directions:
-            cx = hx + dx * step
-            cy = hy + dy * step
-
-            # Filter: must be walkable
-            if not self._nav_dungeon:
-                continue
-            if self._nav_dungeon.is_wall(cx, cy):
-                continue
-
-            # Filter: must have LOS from current position
-            if not has_line_of_sight(self._nav_dungeon, hx, hy, cx, cy):
-                continue
-
-            # Score: minimum distance to any threat (higher = safer)
-            # The closest mob is what kills you — maximize distance from nearest threat
-            score = min(math.sqrt((cx - m.x)**2 + (cy - m.y)**2) for m in threats)
-
-            if score > best_score:
-                best_score = score
-                best_pos = (cx, cy)
-
-        return best_pos
-
+        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
@@ -482,12 +593,20 @@ class WizardAI(HeroAI):
         if not alive:
             return action
 
+        if self.should_rest(alive):
+            self.target = None  # resting: skip target picking until HP >= 80%
+            return action
+
+        # Phase split: nothing aggroed -> body pull (walk straight to target, no kiting);
+        # something aggroed -> kite logic.
+        engaged = self.aggroed_count(alive) > 0
+
         if self.hero.gcd > 0:
             # During GCD, smart kite or close gap
             self.target = self.pick_target(alive)
             if self.target:
                 dist = self.hero.distance_to(self.target)
-                if dist < 220:
+                if dist < 220 and engaged:
                     kite_pos = self._find_best_kite_position(alive)
                     if kite_pos:
                         action["move_to"] = kite_pos
@@ -502,7 +621,7 @@ class WizardAI(HeroAI):
         # Kite-back: after Frost Nova, retreat for 0.5s
         if not hasattr(self, '_kite_timer'):
             self._kite_timer = 0.0
-        if self._kite_timer > 0:
+        if self._kite_timer > 0 and engaged:
             self._kite_timer -= dt
             kite_pos = self._find_best_kite_position(alive)
             if kite_pos:
@@ -551,7 +670,7 @@ class WizardAI(HeroAI):
         ab_q = self.hero.abilities.get("Q")
         if ab_q and ab_q.is_ready() and dist <= 260 and self.has_los(self.target):
             # If enemy very close, try to kite first (one cycle) then cast
-            if dist < 130:
+            if dist < 130 and engaged:
                 kite_pos = self._find_best_kite_position(alive)
                 if kite_pos:
                     action["move_to"] = kite_pos
@@ -562,7 +681,7 @@ class WizardAI(HeroAI):
             return action
 
         # 6. Kite if enemy too close AND abilities on CD (don't stand still waiting)
-        if dist < 220 and not (ab_q and ab_q.is_ready()):
+        if dist < 220 and engaged and not (ab_q and ab_q.is_ready()):
             kite_pos = self._find_best_kite_position(alive)
             if kite_pos:
                 action["move_to"] = kite_pos
@@ -596,7 +715,7 @@ class RogueAI(HeroAI):
         low_hp = [m for m in candidates if m.hp <= m.max_hp * 0.3]
         if low_hp:
             return min(low_hp, key=lambda m: self.path_distance(m))
-        return min(candidates, key=lambda m: self.path_distance(m))
+        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
 
     def is_in_combat(self, monsters):
         """Check if any monster is targeting the hero."""
@@ -614,10 +733,17 @@ class RogueAI(HeroAI):
             self._ambush_target = None
             return action
 
+        if self.should_rest(alive):
+            self.target = None  # resting: skip target picking until HP >= 80%
+            return action
+
         if self.hero.gcd > 0:
             self.target = self._ambush_target if self._ambush_target and self._ambush_target.alive else self.pick_target(alive)
             if self.target and self.hero.distance_to(self.target) > 50:
-                action["move_to"] = (self.target.x, self.target.y)
+                if self.hero.stealthed:
+                    action["move_to"] = (self.target.x, self.target.y)
+                else:
+                    action["move_to"] = self.melee_move_to(alive, self.target.x, self.target.y)
             return action
 
         # Clear locked ambush target if invalid
@@ -665,7 +791,7 @@ class RogueAI(HeroAI):
 
         # 4. Walk to target if out of range
         if dist > 50:
-            action["move_to"] = (self.target.x, self.target.y)
+            action["move_to"] = self.melee_move_to(alive, self.target.x, self.target.y)
             return action
 
         # 5. Stab in melee — but only if Stealth is on long cooldown
