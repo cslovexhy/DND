@@ -2,9 +2,9 @@
   "name": "tarak",
   "class_name": "Rogue",
   "level": 10,
-  "xp": 262,
-  "gold": 19560,
-  "kills": 134,
+  "xp": 787,
+  "gold": 30800,
+  "kills": 187,
   "quests": {
     "northshire": {
       "completed": [
@@ -17,6 +17,11 @@
         "millys_harvest",
         "bounty_on_garrick_padfoot"
       ],
+      "active": [],
+      "progress": {}
+    },
+    "haycock": {
+      "completed": [],
       "active": [],
       "progress": {}
     }

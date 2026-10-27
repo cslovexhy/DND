@@ -2,9 +2,9 @@
   "name": "heskan",
   "class_name": "Wizard",
   "level": 16,
-  "xp": 367,
-  "gold": 112440,
-  "kills": 757,
+  "xp": 1467,
+  "gold": 134345,
+  "kills": 867,
   "quests": {
     "northshire": {
       "completed": [
@@ -17,6 +17,11 @@
         "skirmish_at_echo_ridge",
         "bounty_on_garrick_padfoot"
       ],
+      "active": [],
+      "progress": {}
+    },
+    "haycock": {
+      "completed": [],
       "active": [],
       "progress": {}
     }

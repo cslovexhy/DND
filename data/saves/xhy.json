@@ -2,9 +2,9 @@
   "name": "xhy",
   "class_name": "Cleric",
   "level": 10,
-  "xp": 2,
-  "gold": 13945,
-  "kills": 110,
+  "xp": 22,
+  "gold": 14360,
+  "kills": 114,
   "quests": {
     "northshire": {
       "completed": [
@@ -21,6 +21,11 @@
       "progress": {}
     },
     "goldshire": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    },
+    "haycock": {
       "completed": [],
       "active": [],
       "progress": {}

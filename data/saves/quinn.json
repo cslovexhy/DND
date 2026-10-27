@@ -1,12 +1,17 @@
 {
   "name": "quinn",
   "class_name": "Cleric",
-  "level": 2,
-  "xp": 60,
-  "gold": 3060,
-  "kills": 8,
+  "level": 7,
+  "xp": 131,
+  "gold": 28325,
+  "kills": 142,
   "quests": {
     "northshire": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    },
+    "haycock": {
       "completed": [],
       "active": [],
       "progress": {}

@@ -1,10 +1,10 @@
 {
   "name": "cs",
   "class_name": "Paladin",
-  "level": 9,
-  "xp": 692,
-  "gold": 11080,
-  "kills": 87,
+  "level": 10,
+  "xp": 262,
+  "gold": 18965,
+  "kills": 126,
   "quests": {
     "northshire": {
       "completed": [
@@ -17,6 +17,11 @@
         "bounty_on_garrick_padfoot",
         "skirmish_at_echo_ridge"
       ],
+      "active": [],
+      "progress": {}
+    },
+    "haycock": {
+      "completed": [],
       "active": [],
       "progress": {}
     }

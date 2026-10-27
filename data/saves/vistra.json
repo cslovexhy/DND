@@ -1,12 +1,17 @@
 {
   "name": "vistra",
   "class_name": "Fighter",
-  "level": 1,
-  "xp": 0,
-  "gold": 0,
-  "kills": 0,
+  "level": 8,
+  "xp": 344,
+  "gold": 41510,
+  "kills": 225,
   "quests": {
     "northshire": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    },
+    "haycock": {
       "completed": [],
       "active": [],
       "progress": {}
