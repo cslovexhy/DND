@@ -23,6 +23,7 @@ from game.content.heroes import HERO_CLASSES
 from game.engine import commands, events as ev_mod
 from game.engine.bootstrap import create_world, join_player, sanitize_character
 from game.engine.snapshot import make_snapshot
+from game.engine.map_schema import content_hash
 from game.headless import FIXED_DT
 from game.net.protocol import PROTOCOL_VERSION, LineBuffer, encode
 
@@ -53,6 +54,8 @@ class HostServer:
         char = host_character or saves.blank_character(class_name.lower(), class_name)
         self.world, self.player = create_world(map_path, char, autopilot=autopilot, auto_companion=auto_companion)
         self._next_player_id = 1
+        # Joiners get the map itself (custom maps don't need to be copied around by hand)
+        self.map_hash = content_hash(self.world.world_map.data)
         self._cmd_count = {}
         self.tick_rate = tick_rate
         self.dt = FIXED_DT if tick_rate == 30 else 1.0 / tick_rate
@@ -166,8 +169,9 @@ class HostServer:
 
     def _admit(self, c, pid):
         c.player_id = pid
-        self._send(c, {"t": "welcome", "v": PROTOCOL_VERSION, "player_id": pid,
-                       "map": self.map_path, "tick_rate": self.tick_rate})
+        self._send(c, {"t": "welcome", "v": PROTOCOL_VERSION, "player_id": pid, "map": self.map_path,
+                       "map_data": self.world.world_map.data, "map_hash": self.map_hash,
+                       "tick_rate": self.tick_rate})
         self._send(c, {"t": "frame", "snap": make_snapshot(self.world, pid), "events": []})
 
     def _send(self, c, msg):

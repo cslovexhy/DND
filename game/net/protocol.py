@@ -7,7 +7,8 @@ client -> host
   {"t": "cmd", "cmd": <commands.to_dict>}
   {"t": "bye"}
 host -> client
-  {"t": "welcome", "v": PROTOCOL_VERSION, "player_id": 0, "map": "data/maps/x.json", "tick_rate": 30}
+  {"t": "welcome", "v": PROTOCOL_VERSION, "player_id": 0, "map": "data/maps/x.json",
+   "map_data": {...map JSON...}, "map_hash": "...", "tick_rate": 30}   (joiners validate map_data)
   {"t": "reject", "reason": "..."}
   {"t": "frame", "snap": <snapshot.make_snapshot>, "events": [<events.to_dict>, ...]}
 """

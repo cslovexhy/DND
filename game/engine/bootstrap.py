@@ -77,9 +77,7 @@ def create_world(map_path, char_data, debug=False, autopilot=False, auto_compani
     Raises ValueError if the map has no hero start.
     """
     hooks = hooks or {}
-    world_map = WorldMap.load(map_path)
-    if world_map.hero_start is None:
-        raise ValueError(f"Map '{map_path}' has no hero_start spawn point.")
+    world_map = WorldMap.load(map_path)   # validated: raises map_schema.MapError (a ValueError) if unusable
     map_id = map_id_for(map_path)
     hero_wx, hero_wy = world_map.get_start_pos()
 

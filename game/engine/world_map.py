@@ -6,6 +6,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Optional
 
+from game.engine.map_schema import check_map
+
 TILE_SIZE = 48  # pixels per tile 
 
 
@@ -39,10 +41,15 @@ class WorldMap:
 
     @classmethod
     def load(cls, path: str) -> 'WorldMap':
-        """Load a map from a JSON file."""
+        """Load a map from a JSON file (validated; raises map_schema.MapError if unusable)."""
         with open(path, "r") as f:
             data = json.load(f)
+        return cls.from_data(data)
 
+    @classmethod
+    def from_data(cls, data: dict) -> 'WorldMap':
+        """Build a map from already-parsed JSON (e.g. received from a co-op host). Validates first."""
+        check_map(data)
         m = cls()
         m.data = data  # keep raw JSON for extensible fields (npcs, etc.)
         m.width = data["width"]

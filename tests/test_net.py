@@ -131,6 +131,18 @@ class NetTest(unittest.TestCase):
         finally:
             a.close()
 
+    def test_joiner_receives_the_hosts_map(self):
+        from game.engine.map_schema import content_hash
+        from game.engine.world_map import WorldMap
+        a = RemoteHost("127.0.0.1", self.srv.port)
+        try:
+            data = a.welcome["map_data"]
+            self.assertEqual(content_hash(data), a.welcome["map_hash"])
+            wm = WorldMap.from_data(data)
+            self.assertEqual((wm.width, wm.height), (self.srv.world.world_map.width, self.srv.world.world_map.height))
+        finally:
+            a.close()
+
     def test_bad_protocol_version_rejected(self):
         s = socket.create_connection(("127.0.0.1", self.srv.port), timeout=3)
         s.sendall(encode({"t": "hello", "v": 999}))

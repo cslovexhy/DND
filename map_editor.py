@@ -22,6 +22,11 @@ import os
 import sys
 from copy import deepcopy
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from game.engine.map_schema import SCHEMA_VERSION, validate_map   # noqa: E402  (pure, no pygame)
+from game.content.monsters import SPAWN_STATS                      # noqa: E402
+KNOWN_SPAWN_TYPES = set(SPAWN_STATS)
+
 pygame.init()
 
 # === CONSTANTS ===
@@ -114,6 +119,8 @@ class MapData:
             MapLayer("objects", width, height),
         ]
         self.spawns = []  # [{"type": "kobold_dragonshield", "x": 12, "y": 8}, ...]
+        # Fields the editor doesn't edit (npcs, music, zone info, ...) are kept and written back unchanged
+        self.extra = {}
 
     def add_spawn(self, spawn_type, x, y):
         # Remove existing spawn at same position
@@ -131,6 +138,8 @@ class MapData:
 
     def to_dict(self):
         return {
+            **self.extra,
+            "schema_version": SCHEMA_VERSION,
             "width": self.width,
             "height": self.height,
             "tileset": "kenney_rpg",
@@ -156,6 +165,8 @@ class MapData:
                 layer.tiles = layer_data["tiles"]
                 m.layers.append(layer)
         m.spawns = data.get("spawns", [])
+        m.extra = {k: v for k, v in data.items()
+                   if k not in ("width", "height", "tileset", "layers", "spawns", "schema_version")}
         return m
 
 
@@ -737,9 +748,17 @@ def save_map():
         filename += ".json"
     last_filename = filename.replace(".json", "")
     path = os.path.join(save_dir, filename)
-    with open(path, "w") as f:
-        json.dump(map_data.to_dict(), f, indent=2)
+    data = map_data.to_dict()
+    errors, warnings = validate_map(data, KNOWN_SPAWN_TYPES)
+    with open(path, "w") as f:   # always save, so work in progress is never lost
+        json.dump(data, f, indent=2)
     print(f"Saved: {path}")
+    for w in warnings[:10]:
+        print(f"  warning: {w}")
+    if errors:
+        print("  NOT PLAYABLE YET — fix these before playing or hosting this map:")
+        for e in errors[:10]:
+            print(f"   - {e}")
 
 
 def load_map():

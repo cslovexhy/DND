@@ -30,6 +30,7 @@ from game.engine.bootstrap import create_world, map_id_for
 from game.client.local_host import LocalHost
 from game.client.view import ClientView
 from game.client import SessionAbort
+from game.engine.map_schema import MapError
 from game.net.client import RemoteHost
 from types import SimpleNamespace
 from game.engine.player import PlayerState
@@ -150,14 +151,23 @@ if NET_MODE:
     USE_MAP = host.welcome["map"]
     world = game_state = None
     companions = []
-    world_map = WorldMap.load(USE_MAP)
+    try:
+        world_map = WorldMap.from_data(host.welcome["map_data"])   # the host's map, validated (untrusted)
+    except (MapError, KeyError, TypeError) as e:
+        print(f"[NET] The host's map is not usable: {e}", flush=True)
+        host.close()
+        if _host_server:
+            _host_server.stop()
+        if auto_mode:
+            raise SystemExit(1)
+        raise SessionAbort(str(e))
 else:
     try:
         world, player = create_world(USE_MAP, char_data, debug=DEBUG, autopilot=auto_mode,
                                      auto_companion=auto_mode and "--no-companion" not in sys.argv)
-    except ValueError as e:
-        print(f"ERROR: {e}")
-        print("Please open the map in the map editor and place a 'Hero Start' marker.")
+    except ValueError as e:   # includes map_schema.MapError
+        print(f"ERROR: Map '{USE_MAP}' can't be played: {e}")
+        print("Please open the map in the map editor and fix it (e.g. place a 'Hero Start' marker).")
         pygame.quit()
         sys.exit(1)
     # Client <-> host. Single player: the host is in-process (LocalHost). The client reads only `view`.

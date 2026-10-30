@@ -88,3 +88,19 @@ bot soak tests (hero_ai as clients), network chaos tests, one command (`./test.s
   over a 150 ms ±60 ms latency proxy, and a real host process + headless pygame client process.
   Security: the host binds 127.0.0.1 only. Cross-machine play (phase 5) needs a decision on LAN exposure and
   how players are admitted before any non-loopback bind is added.
+- Phase 5 (this computer only) — done: several players per World (party XP/kill/quest credit, per-player quest log,
+  companions follow their owner, game over when all players are down), host admits up to 4 players with their own
+  validated saved characters, personal events routed per player, co-op clients save their own progress from the
+  host's snapshots. Map select: H = host, J = join. Not done: playing across machines (see "Open decision").
+- Phase 6 — done: `engine/map_schema.py` (schema_version + upgrade, validation with bounds checks, unknown monsters
+  are warnings, music restricted to assets/music/, content hash). Every map load is validated; the host sends the map
+  to joiners in the welcome message and joiners validate it as untrusted data. The map editor now writes
+  schema_version, reports problems on save, and keeps fields it doesn't edit (it used to drop NPCs and music).
+
+## Open decision: playing across machines
+
+Everything above works between game windows on one computer (127.0.0.1). Kids on other laptops need the host to
+accept connections from the home network, which means anyone on that Wi-Fi could reach the host's game port.
+Options: (a) keep loopback and use an SSH tunnel per joiner (private, but fiddly); (b) an opt-in "host on home
+network" switch that binds the LAN address only while hosting, with the host approving each join request on screen.
+Needs an explicit go-ahead before implementing.
