@@ -8,14 +8,14 @@ import heapq
 import itertools
 import random
 
-from game.engine.ai import generate_patrol_route, setup_monster_aggro
+from game.engine.ai import generate_patrol_route, setup_monster_aggro, aggro_monster, call_for_help
 from game.engine.entities import Condition, Monster
-from game.engine.events import FloatText
+from game.engine.events import FloatText, LevelUp, QuestReady, GOLD, HP_RED
 from game.engine.hero_ai import create_hero_ai
 from game.engine.pathfinding import has_line_of_sight
 from game.engine.world_map import TILE_SIZE
 from game.content.monsters import SPAWN_STATS, respawn_delay
-from game.progression import set_hero_level
+from game.progression import (MAX_LEVEL, xp_to_next_level, apply_level_growth, set_hero_level, growth_for)
 
 # --- Demogorgon special skills ---
 DEMOGORGON_STEALTH_DELAY = 6.0   # seconds since last attack before auto-stealth
@@ -24,7 +24,9 @@ DEMOGORGON_AURA_SLOW = 0.8       # enemies move at 80% speed (20% slow) in aura
 
 
 class World:
-    def __init__(self, world_map, game_state, hero):
+    def __init__(self, world_map, game_state, hero, quests=None):
+        self.quests = quests       # this character's QuestLog for the current map
+        self.projectiles = []      # active projectiles (Wanding, Frostbolt, monster arrows)
         self.world_map = world_map
         self.dungeon = world_map   # navigation duck-type (is_wall, is_floor, get_start_pos) used by AI/pathfinding
         self.game_state = game_state
@@ -191,3 +193,65 @@ class World:
                     # so it fades shortly after leaving the aura.
                     if t is hero:
                         t.chill_visual = 0.3
+
+    # --- kills, XP, quests, level-ups ---
+    def process_kills(self):
+        """Award XP/gold/quest progress for freshly killed monsters and queue their respawn."""
+        hero = self.hero
+        for m in self.game_state.monsters:
+            if not m.alive and m.experience > 0:
+                hero.xp += m.experience
+                hero.gold += random.randint(10, 30) * m.experience
+                hero.kills += 1
+                self.float_text(m.x, m.y + 10, f"+{m.experience}xp", GOLD)
+                # Quest kill tracking
+                for aq, just_completed in self.quests.record_kill(m.name):
+                    self.float_text(hero.x, hero.y - 50, aq.get_progress_text(), (200, 200, 255))
+                    if just_completed:
+                        self.events.append(QuestReady(aq.title))
+                m.experience = 0
+                # Queue for respawn (every monster that came from a spawn point; bosses just take much longer)
+                self.queue_respawn(m)
+
+    def process_level_ups(self):
+        hero = self.hero
+        while hero.level < MAX_LEVEL and hero.xp >= xp_to_next_level(hero.level):
+            hero.xp -= xp_to_next_level(hero.level)
+            hero.level += 1
+            growth = growth_for(hero.class_name)
+            apply_level_growth(hero)  # also full-heals on level-up
+            self.events.append(LevelUp(hero.x, hero.y))
+            self.float_text(hero.x, hero.y - 30,
+                            f"Lv {hero.level}! +{growth['hp']:.0f}HP +{growth['damage']:.0f}dmg", GOLD)
+
+    # --- projectiles ---
+    def update_projectiles(self, dt):
+        hero = self.hero
+        gs = self.game_state
+        for proj in self.projectiles:
+            result = proj.update(dt)
+            if result is not None:
+                dmg, hit_target = result
+                # Determine if source is a hero (player or companion)
+                source_is_hero = (proj.source == hero) or any(proj.source == c for c, _ in self.companions)
+                if source_is_hero:
+                    self.float_text(hit_target.x, hit_target.y - 20, f"{dmg:.0f}", proj.color)
+                    # Aggro on hit: directly aggro the hit monster + call for help
+                    if hasattr(hit_target, 'aggro_state'):
+                        if hit_target.aggro_state != "aggroed":
+                            aggro_monster(hit_target, proj.source, gs.monsters)
+                        call_for_help(hit_target, gs.monsters, proj.source)
+                    # Frostbolt slow
+                    if getattr(proj, 'apply_slow', False) and hit_target.alive:
+                        hit_target.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.25)
+                        self.float_text(hit_target.x, hit_target.y - 35, "SLOWED", (150, 200, 255))
+                else:
+                    # Monster projectile hitting hero
+                    self.float_text(hit_target.x + random.randint(-10, 10), hit_target.y - 30, f"{dmg:.0f}", HP_RED)
+                    # Apply on-hit condition if any
+                    on_hit = getattr(proj, 'on_hit_condition', None)
+                    if on_hit and hit_target.alive:
+                        cond, dur = on_hit
+                        hit_target.apply_condition(cond, dur,
+                                                   tick_damage=10.0 if cond == Condition.POISONED else 0)
+        self.projectiles[:] = [p for p in self.projectiles if p.alive]

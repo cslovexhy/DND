@@ -17,7 +17,8 @@ PURE = (
 
 
 def imported_modules(path):
-    tree = ast.parse(open(path, encoding="utf-8").read())
+    with open(path, encoding="utf-8") as f:
+        tree = ast.parse(f.read())
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for a in node.names:
@@ -38,7 +39,8 @@ class PureLayerTest(unittest.TestCase):
         # Simulation code must take time from the game clock, never time.time()/monotonic() calls
         # (hero_ai keeps time.monotonic only as an injectable default).
         for path in PURE:
-            src = open(path, encoding="utf-8").read()
+            with open(path, encoding="utf-8") as f:
+                src = f.read()
             for bad in ("time.time()", "time.monotonic()", "perf_counter()", "get_ticks()"):
                 self.assertNotIn(bad, src, f"{os.path.relpath(path, ROOT)} calls {bad}")
 

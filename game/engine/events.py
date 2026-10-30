@@ -29,3 +29,13 @@ class Ring:
 class LevelUp:
     x: float
     y: float
+
+
+@dataclass
+class QuestReady:
+    """A quest objective was just completed (client shows a popup; host persists progress)."""
+    title: str
+
+
+GOLD = (255, 215, 0)
+HP_RED = (200, 50, 50)

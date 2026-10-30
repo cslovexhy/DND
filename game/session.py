@@ -25,12 +25,11 @@ from game.quests import load_quest_log
 from game import saves
 from game.headless import format_result
 from game.engine.world import World
-from game.engine.events import FloatText, Ring, LevelUp
+from game.engine.events import FloatText, Ring, LevelUp, QuestReady
 
 # === EFFECTS ===
 floating_texts = []
 effects = []
-projectiles = []  # Active projectiles (Wanding etc.)
 
 # Leveling rules live in game/progression.py
 
@@ -88,6 +87,25 @@ class AoeRing:
             pygame.draw.circle(surf, (*self.color,a//4), (r,r), r)
             s.blit(surf, (sx-r, sy-r))
 
+def drain_world_events():
+    """Turn the simulation's view events into on-screen effects / popups / saves."""
+    global quest_popup_text, quest_popup_timer, quest_popup_color
+    for ev in world.events:
+        if isinstance(ev, FloatText):
+            floating_texts.append(FloatingText(ev.x, ev.y, ev.text, ev.color))
+        elif isinstance(ev, Ring):
+            effects.append(AoeRing(ev.x, ev.y, ev.radius, ev.color))
+        elif isinstance(ev, LevelUp):
+            effects.append(LevelUpEffect(ev.x, ev.y))
+            save_game()
+        elif isinstance(ev, QuestReady):
+            quest_popup_text = f"Quest Complete: {ev.title} — Return to NPC"
+            quest_popup_timer = 3.0
+            quest_popup_color = (100, 255, 100)
+            save_game()
+    world.events.clear()
+
+
 # === GAME SETUP ===
 world_map = WorldMap.load(USE_MAP)
 if world_map.hero_start is None:
@@ -132,7 +150,8 @@ game_state.heroes.append(hero)
 game_state.objective_text = f"Explore {MAP_ID.replace('_', ' ').title()} and clear the area of monsters!"
 
 # The simulation (spawning, respawns, ...). Art is attached through hooks so the sim stays pygame-free.
-world = World(world_map, game_state, hero)
+world = World(world_map, game_state, hero, quests=quests)
+projectiles = world.projectiles  # active projectiles (owned by the World; mutate in place)
 world.on_monster_spawned = lambda m: setattr(
     m, "sprite", BOSS_SPRITES.get(m.name) or (BOSS_SPRITE if m.is_boss else MONSTER_SPRITES.get(m.name)))
 world.on_companion_spawned = lambda comp, info: setattr(comp, "sprite", HERO_SPRITES[info["sprite_key"]])
@@ -1521,37 +1540,10 @@ while running:
             proj.on_hit_condition = m.on_hit_condition
             projectiles.append(proj)
 
-    # Kills
-    for m in game_state.monsters:
-        if not m.alive and m.experience > 0:
-            hero.xp += m.experience
-            hero.gold += random.randint(10,30) * m.experience
-            hero.kills += 1
-            floating_texts.append(FloatingText(m.x, m.y+10, f"+{m.experience}xp", GOLD))
-            # Quest kill tracking
-            for aq, just_completed in quests.record_kill(m.name):
-                floating_texts.append(FloatingText(hero.x, hero.y - 50, aq.get_progress_text(), (200, 200, 255)))
-                if just_completed:
-                    quest_popup_text = f"Quest Complete: {aq.title} — Return to NPC"
-                    quest_popup_timer = 3.0
-                    quest_popup_color = (100, 255, 100)
-                    save_game()
-            m.experience = 0
-            # Queue for respawn (every monster that came from a spawn point; bosses just take much longer)
-            world.queue_respawn(m)
-
-    # Level-up check
-    while hero.level < MAX_LEVEL and hero.xp >= xp_to_next_level(hero.level):
-        hero.xp -= xp_to_next_level(hero.level)
-        hero.level += 1
-        # Stat growth
-        growth = growth_for(hero.class_name)
-        apply_level_growth(hero)  # also full-heals on level-up
-        # Visual celebration
-        effects.append(LevelUpEffect(hero.x, hero.y))
-        floating_texts.append(FloatingText(hero.x, hero.y - 30,
-            f"Lv {hero.level}! +{growth['hp']:.0f}HP +{growth['damage']:.0f}dmg", GOLD))
-        save_game()
+    # Kills, XP, quest progress, level-ups (World emits events for the popups / save)
+    world.process_kills()
+    world.process_level_ups()
+    drain_world_events()
 
     # Respawn system — check if any mobs are ready to respawn
     world.process_respawns()
@@ -1566,51 +1558,14 @@ while running:
     if not hero.alive:
         game_state.check_hero_death(hero)
 
-    # Turn the simulation's view events into on-screen effects
-    for ev in world.events:
-        if isinstance(ev, FloatText):
-            floating_texts.append(FloatingText(ev.x, ev.y, ev.text, ev.color))
-        elif isinstance(ev, Ring):
-            effects.append(AoeRing(ev.x, ev.y, ev.radius, ev.color))
-        elif isinstance(ev, LevelUp):
-            effects.append(LevelUpEffect(ev.x, ev.y))
-    world.events.clear()
-
     floating_texts = [t for t in floating_texts if t.timer > 0]
     for t in floating_texts: t.update(dt)
     effects = [e for e in effects if e.timer > 0]
     for e in effects: e.update(dt)
 
     # Update projectiles
-    for proj in projectiles:
-        result = proj.update(dt)
-        if result is not None:
-            dmg, hit_target = result
-            # Determine color based on who fired
-            # Determine if source is a hero (player or companion)
-            source_is_hero = (proj.source == hero) or any(proj.source == c for c, _ in companions)
-            if source_is_hero:
-                floating_texts.append(FloatingText(hit_target.x, hit_target.y - 20, f"{dmg:.0f}", proj.color))
-                # Aggro on hit: directly aggro the hit monster + call for help
-                if hasattr(hit_target, 'aggro_state'):
-                    from game.engine.ai import aggro_monster, call_for_help as cfh
-                    if hit_target.aggro_state != "aggroed":
-                        aggro_monster(hit_target, proj.source, game_state.monsters)
-                    cfh(hit_target, game_state.monsters, proj.source)
-                # Frostbolt slow
-                if getattr(proj, 'apply_slow', False) and hit_target.alive:
-                    hit_target.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.25)
-                    floating_texts.append(FloatingText(hit_target.x, hit_target.y - 35, "SLOWED", (150, 200, 255)))
-            else:
-                # Monster projectile hitting hero
-                floating_texts.append(FloatingText(hit_target.x + random.randint(-10, 10), hit_target.y - 30, f"{dmg:.0f}", HP_RED))
-                # Apply on-hit condition if any
-                on_hit = getattr(proj, 'on_hit_condition', None)
-                if on_hit and hit_target.alive:
-                    cond, dur = on_hit
-                    hit_target.apply_condition(cond, dur,
-                                              tick_damage=10.0 if cond == Condition.POISONED else 0)
-    projectiles = [p for p in projectiles if p.alive]
+    world.update_projectiles(dt)
+    drain_world_events()
 
     # Expire Wall shield when buff expires
     if "Wall" not in hero.buffs and hero.absorb_shield > 0:
