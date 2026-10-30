@@ -125,3 +125,13 @@ tools/tune_difficulty.py
 ```
 If you change gameplay on purpose, regenerate goldens (`UPDATE_GOLDEN=1 ...`) and re-record tests/replays/ with the
 commands in tests/test_replay.py's docstring.
+
+### Co-op / network (design/06 phases 4-7)
+
+- Standalone host: `.venv/bin/python3 -m game.net.server --map data/maps/northshire.json --hero 4` (add `--auto` for an AI-driven host hero).
+- Join it: `.venv/bin/python3 -m game.main --connect 5577`, or press J on the map-select screen (H hosts the selected map).
+- Headless host for tests: `.venv/bin/python3 -m game.main --headless --host-game --map data/maps/northshire.json --max-time 8`.
+
+Everything listens on 127.0.0.1 only. tests/test_net.py covers TCP streaming, rejection of bad/garbage input,
+exact convergence of client views (also through a 150 ms ±60 ms latency proxy, tests/latency_proxy.py),
+two-player sessions, real host + client processes, and reconnect after a host restart.
