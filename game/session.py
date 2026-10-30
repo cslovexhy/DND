@@ -27,6 +27,8 @@ from game.headless import format_result
 from game.input_script import InputScript
 from game.engine.world import World
 from game.engine.player import PlayerState
+from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
+                                  ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition)
 from game.engine import abilities
 from game.engine.events import FloatText, Ring, LevelUp, QuestReady, BindRightSkill, NpcDialogue
 
@@ -171,6 +173,7 @@ find_walkable_nearby = world.find_walkable_nearby
 
 # Player control state (movement, targeting, dash/channel, autopilot) lives in the sim layer
 player = PlayerState(world, hero, ai_enabled=auto_mode)
+world.add_player(0, player)   # local player (id 0); commands from this client go to it
 
 # Game speed (for AI observation)
 game_speed = 1.0  # 1x, 2x, 4x
@@ -414,6 +417,8 @@ def get_npc_at_screen(sx, sy):
 _input_script = InputScript(HEADLESS.input_script) if HEADLESS.enabled and HEADLESS.input_script else None
 key_mods = _input_script.key_mods if _input_script else pygame.key.get_mods
 _tick = 0
+_sent_hold = False                      # last HoldPosition / BindLeftSkill values sent to the sim
+_sent_left = ability_keys[0]
 running = True
 return_to_menu = False
 while running:
@@ -440,17 +445,12 @@ while running:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 if player.frostbolt_channeling:
-                    # Cancel channel and stop auto-attack
-                    player.frostbolt_channeling = False
-                    player.frostbolt_channel_timer = 0
-                    player.frostbolt_target = None
-                    player.selected_target = None
-                    hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
+                    world.submit(CancelChannel())  # cancel channel and stop auto-attack
                 else:
                     running = False
                     return_to_menu = not auto_mode  # ESC -> back to character select
             if event.key == pygame.K_TAB:
-                player.ai_enabled = not player.ai_enabled
+                world.submit(ToggleAutopilot())
             # Game speed: +/- to cycle 1x/2x/4x
             if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
                 game_speed = min(game_speed * 2, 4.0)
@@ -468,25 +468,13 @@ while running:
                 if event.key == pygame.K_2: left_skill_idx = 1
                 if event.key == pygame.K_3: left_skill_idx = 2 if len(ability_keys) > 2 else left_skill_idx
             # Potion
-            if event.key == pygame.K_f and player.potions > 0 and hero.hp < hero.max_hp:
-                player.potions -= 1
-                heal = hero.heal(150)
-                floating_texts.append(FloatingText(hero.x, hero.y-30, f"+{heal:.0f}", (100,255,100)))
+            if event.key == pygame.K_f:
+                world.submit(UsePotion())
             # Summon AI companions (F1-F4) — press again to dismiss
             summon_keys = [pygame.K_F1, pygame.K_F2, pygame.K_F3, pygame.K_F4]
             for ki, sk in enumerate(summon_keys):
-                if event.key == sk and ki < len(available_companions):
-                    comp_info = available_companions[ki]
-                    # Check if already summoned — if so, dismiss
-                    existing = [(i, c) for i, (c, _) in enumerate(companions) if c.class_name == comp_info["class"]]
-                    if existing:
-                        idx, comp = existing[0]
-                        companions.pop(idx)
-                        game_state.heroes.remove(comp)
-                        floating_texts.append(FloatingText(comp.x, comp.y - 30, f"{comp.name} dismissed", (200, 150, 150)))
-                    else:
-                        comp = spawn_companion(comp_info)
-                        floating_texts.append(FloatingText(comp.x, comp.y - 30, f"{comp.name} joined! (Lv {comp.level})", GOLD))
+                if event.key == sk and ki < len(world.available_companions):
+                    world.submit(ToggleCompanion(world.available_companions[ki]["class"]))
                     break
 
         if event.type == pygame.MOUSEBUTTONDOWN and not game_state.adventure_failed:
@@ -500,13 +488,12 @@ while running:
             clicked_monster = get_monster_at_screen(mx_s, my_s)
             shift_held = key_mods() & pygame.KMOD_SHIFT
 
+            clicked_id = clicked_monster.eid if clicked_monster else None
+
             if event.button == 1:  # Left-click
                 if shift_held:
                     # Shift+Left = cast LEFT skill
-                    ab_key = ability_keys[left_skill_idx]
-                    ab = hero.abilities[ab_key]
-                    if ab.is_ready():
-                        player.cast_ability(ab_key, ab, wx, wy, clicked_monster)
+                    world.submit(Cast(ability_keys[left_skill_idx], wx, wy, clicked_id))
                 elif my_s >= HEIGHT - 55:
                     # Clicked on skill bar area — switch skills
                     if mx_s < WIDTH//2:
@@ -516,63 +503,24 @@ while running:
                         # Clicked right skill box — cycle right skill
                         right_skill_idx = (right_skill_idx + 1) % len(ability_keys)
                 elif clicked_monster:
-                    # Click enemy = select + walk to attack range
-                    # LOS check — can't target what you can't see
-                    if not check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-                        floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
-                    else:
-                        # Cancel any active channel
-                        if player.frostbolt_channeling:
-                            player.frostbolt_channeling = False
-                            player.frostbolt_target = None
-                            hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
-                            hero.swing_timer = 0.5  # Brief delay after cancel
-                        player.selected_target = clicked_monster
-                        player.ambush_target = None
-                        player.pending_cast = None
-                        player.move_path = []
+                    world.submit(SelectTarget(clicked_id))   # select + walk to attack range
                 else:
-                    # Click ground = move (cancel channel)
-                    if player.frostbolt_channeling:
-                        player.frostbolt_channeling = False
-                        player.frostbolt_target = None
-                        hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
-                    player.move_path = astar(dungeon, hero.x, hero.y, wx, wy)
-                    player.selected_target = None
-                    player.ambush_target = None
-                    player.pending_cast = None
+                    world.submit(MoveTo(wx, wy))             # click ground = move
 
             elif event.button == 3:  # Right-click = cast RIGHT skill or interact with NPC
                 # Check if clicking on an NPC first
                 clicked_npc = get_npc_at_screen(mx_s, my_s)
-                if clicked_npc and clicked_npc.is_in_range(hero.x, hero.y):
-                    world.interact_with_npc(clicked_npc)
-                    drain_world_events()
-                elif clicked_npc and not clicked_npc.is_in_range(hero.x, hero.y):
-                    # Walk to NPC
-                    player.move_path = astar(dungeon, hero.x, hero.y, clicked_npc.x, clicked_npc.y)
-                    player.selected_target = None
+                if clicked_npc:
+                    world.submit(InteractNpc(clicked_npc.eid))   # talk if in range, else walk to the NPC
                 # Stealth + right-click enemy + Ambush on right slot = queue ambush walk-to
                 elif hero.stealthed and clicked_monster and ability_keys[right_skill_idx] == "E":
-                    ab_ambush = hero.abilities.get("E")
-                    if ab_ambush and ab_ambush.is_ready():
-                        player.ambush_target = clicked_monster
-                        player.selected_target = None
-                        player.move_path = []
-                    else:
-                        floating_texts.append(FloatingText(hero.x, hero.y - 30, "Ambush on CD!", (255, 150, 100)))
+                    world.submit(AmbushTarget(clicked_id))
                 else:
-                    ab_key = ability_keys[right_skill_idx]
-                    ab = hero.abilities[ab_key]
-                    if ab.is_ready():
-                        player.cast_ability(ab_key, ab, wx, wy, clicked_monster)
-                    else:
-                        # Skill on cooldown — just move instead
-                        player.move_path = astar(dungeon, hero.x, hero.y, wx, wy)
-                        player.selected_target = None
+                    world.submit(Cast(ability_keys[right_skill_idx], wx, wy, clicked_id, fallback_move=True))
 
     # --- End screen ---
     if game_state.adventure_failed:
+        world.command_queue.clear()
         screen.fill(BG)
         msg = "DEFEATED..."
         t = title_font.render(msg, True, HP_RED)
@@ -589,31 +537,15 @@ while running:
         continue
 
     # --- UPDATE ---
-    alive = world.begin_frame(dt)
+    # Tell the sim about client choices that affect auto-attack (only when they change)
+    _shift = bool(key_mods() & pygame.KMOD_SHIFT)
+    if _shift != _sent_hold:
+        world.submit(HoldPosition(_shift)); _sent_hold = _shift
+    if ability_keys[left_skill_idx] != _sent_left:
+        _sent_left = ability_keys[left_skill_idx]; world.submit(BindLeftSkill(_sent_left))
 
-    player.update(dt)
-
-    # === HERO AI (when enabled) ===
-    player.run_ai(dt)
-
-    player.update_ambush()
-
-    player.auto_attack(ability_keys[left_skill_idx], hold_position=bool(key_mods() & pygame.KMOD_SHIFT))
-
-    # === COMPANION AI ===
-    world.update_companions(dt)
+    world.step(dt)
     drain_world_events()
-
-    # Monster AI — all alive monsters with aggro system
-    world.update_monsters(dt, alive)
-
-    # Kills, XP, quest progress, level-ups (World emits events for the popups / save)
-    world.process_kills()
-    world.process_level_ups()
-    drain_world_events()
-
-    # Respawn system — check if any mobs are ready to respawn
-    world.process_respawns()
 
     # Quest popup timer
     if quest_popup_timer > 0:
@@ -622,21 +554,10 @@ while running:
     if quest_popup_panel and quest_popup_panel.active:
         quest_popup_panel.update(dt)
 
-    if not hero.alive:
-        game_state.check_hero_death(hero)
-
     floating_texts = [t for t in floating_texts if t.timer > 0]
     for t in floating_texts: t.update(dt)
     effects = [e for e in effects if e.timer > 0]
     for e in effects: e.update(dt)
-
-    # Update projectiles
-    world.update_projectiles(dt)
-    drain_world_events()
-
-    # Expire Wall shield when buff expires
-    if "Wall" not in hero.buffs and hero.absorb_shield > 0:
-        hero.absorb_shield = 0
 
     # --- FRAME LOG ---
     if DEBUG:

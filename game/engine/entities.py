@@ -101,6 +101,7 @@ class Entity:
                  attack_bonus: int = 0, attack_damage: int = 0,
                  attack_range: float = 50.0, attack_cooldown: float = 1.0):
         self.name = name
+        self.eid = None   # stable id assigned by World.register() (used by commands / network)
         self.x = x
         self.y = y
 

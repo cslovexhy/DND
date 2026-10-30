@@ -12,6 +12,8 @@ import random
 from game.engine import abilities
 from game.engine.ai import aggro_monster, call_for_help, AggroState
 from game.engine.entities import Condition, Projectile
+from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
+                                  ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition)
 from game.engine.events import Ring, BindRightSkill, GOLD
 from game.engine.pathfinding import astar
 
@@ -26,6 +28,9 @@ class PlayerState:
         self.move_path = []
         self.selected_target = None
         self.potions = potions
+        # Client choices that affect auto-attack (sent as BindLeftSkill / HoldPosition commands)
+        self.left_ab_key = next(iter(hero.abilities), None)
+        self.hold_position = False
         # Queued ability cast (walk to range then fire): (ab_key, ab, target_monster) or None
         self.pending_cast = None
         # Dash animation state (Charge)
@@ -42,6 +47,113 @@ class PlayerState:
         self.frostbolt_target = None  # Monster being targeted
         # Ambush walk-to state (Tarak): monster to ambush (walk toward, execute when in range)
         self.ambush_target = None
+
+    # --- commands (the client's only way to act; see engine/commands.py) ---
+    def _live_monster(self, eid):
+        m = self.world.entity(eid) if eid is not None else None
+        return m if (m is not None and m.alive and m in self.world.game_state.monsters) else None
+
+    def _stop_channel(self):
+        """Interrupt a Frostbolt channel (releases the self-immobilize)."""
+        self.frostbolt_channeling = False
+        self.frostbolt_target = None
+        self.hero.conditions = [c for c in self.hero.conditions if c.condition != Condition.IMMOBILIZED]
+
+    def handle(self, cmd):
+        """Apply one validated player command."""
+        world = self.world
+        hero = self.hero
+        gs = world.game_state
+        if isinstance(cmd, MoveTo):
+            # Click ground = move (cancel channel)
+            if self.frostbolt_channeling:
+                self._stop_channel()
+            self.move_path = astar(world.dungeon, hero.x, hero.y, cmd.x, cmd.y)
+            self.selected_target = None
+            self.ambush_target = None
+            self.pending_cast = None
+        elif isinstance(cmd, SelectTarget):
+            m = self._live_monster(cmd.target_id)
+            if m is None:
+                return
+            # Click enemy = select + walk to attack range. LOS check — can't target what you can't see
+            if not world.check_los(hero.x, hero.y, m.x, m.y):
+                world.float_text(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100))
+            else:
+                # Cancel any active channel
+                if self.frostbolt_channeling:
+                    self._stop_channel()
+                    hero.swing_timer = 0.5  # Brief delay after cancel
+                self.selected_target = m
+                self.ambush_target = None
+                self.pending_cast = None
+                self.move_path = []
+        elif isinstance(cmd, Cast):
+            ab = hero.abilities.get(cmd.ab_key)
+            if ab is None:
+                return
+            if ab.is_ready():
+                self.cast_ability(cmd.ab_key, ab, cmd.x, cmd.y, self._live_monster(cmd.target_id))
+            elif cmd.fallback_move:
+                # Skill on cooldown — just move instead
+                self.move_path = astar(world.dungeon, hero.x, hero.y, cmd.x, cmd.y)
+                self.selected_target = None
+        elif isinstance(cmd, InteractNpc):
+            npc = world.entity(cmd.npc_id)
+            if npc is None or npc not in world.npcs:
+                return
+            if npc.is_in_range(hero.x, hero.y):
+                world.interact_with_npc(npc)
+            else:
+                # Walk to NPC
+                self.move_path = astar(world.dungeon, hero.x, hero.y, npc.x, npc.y)
+                self.selected_target = None
+        elif isinstance(cmd, AmbushTarget):
+            m = self._live_monster(cmd.target_id)
+            ab_ambush = hero.abilities.get("E")
+            if m is None or not hero.stealthed:
+                return
+            if ab_ambush and ab_ambush.is_ready():
+                self.ambush_target = m
+                self.selected_target = None
+                self.move_path = []
+            else:
+                world.float_text(hero.x, hero.y - 30, "Ambush on CD!", (255, 150, 100))
+        elif isinstance(cmd, UsePotion):
+            if self.potions > 0 and hero.hp < hero.max_hp:
+                self.potions -= 1
+                heal = hero.heal(150)
+                world.float_text(hero.x, hero.y - 30, f"+{heal:.0f}", (100, 255, 100))
+        elif isinstance(cmd, ToggleAutopilot):
+            self.ai_enabled = not self.ai_enabled
+        elif isinstance(cmd, ToggleCompanion):
+            comp_info = next((c for c in world.available_companions if c["class"] == cmd.class_name), None)
+            if comp_info is None:
+                return
+            # Already summoned — dismiss; otherwise summon
+            existing = [(i, c) for i, (c, _) in enumerate(world.companions) if c.class_name == comp_info["class"]]
+            if existing:
+                idx, comp = existing[0]
+                world.companions.pop(idx)
+                gs.heroes.remove(comp)
+                world.unregister(comp)
+                world.float_text(comp.x, comp.y - 30, f"{comp.name} dismissed", (200, 150, 150))
+            else:
+                comp = world.spawn_companion(comp_info)
+                world.float_text(comp.x, comp.y - 30, f"{comp.name} joined! (Lv {comp.level})", GOLD)
+        elif isinstance(cmd, BindLeftSkill):
+            if cmd.ab_key in hero.abilities:
+                self.left_ab_key = cmd.ab_key
+        elif isinstance(cmd, HoldPosition):
+            self.hold_position = bool(cmd.on)
+        elif isinstance(cmd, CancelChannel):
+            if self.frostbolt_channeling:
+                # Cancel channel and stop auto-attack
+                self.frostbolt_channel_timer = 0
+                self.selected_target = None
+                self._stop_channel()
+        else:
+            raise ValueError(f"unknown command: {cmd!r}")
 
     # --- casting ---
     def cast_ability(self, ab_key, ab, wx, wy, clicked_monster):
@@ -555,8 +667,11 @@ class PlayerState:
                     if not self.move_path:
                         self.move_path = astar(self.world.dungeon, hero.x, hero.y, self.ambush_target.x, self.ambush_target.y)
 
-    def auto_attack(self, left_ab_key, hold_position):
-        """Auto-attack the selected target (walk to range, attack when close). `left_ab_key` is the left-click skill, `hold_position` is True while Shift is held (don't walk)."""
+    def auto_attack(self):
+        """Auto-attack the selected target (walk to range, attack when close) with the left-click skill.
+        While `hold_position` (Shift) is set it does not walk toward an out-of-range target."""
+        left_ab_key = self.left_ab_key
+        hold_position = self.hold_position
         hero = self.hero
         gs = self.world.game_state
         # Auto-attack selected target (walk to range, attack when close)

@@ -10,6 +10,7 @@ import math
 import random
 
 from game.engine import abilities
+from game.content.heroes import HERO_CLASSES
 from game.engine.ai import (generate_patrol_route, setup_monster_aggro, aggro_monster, call_for_help,
                             run_monster_ai, AggroState)
 from game.engine.entities import Condition, Monster, Projectile
@@ -46,6 +47,44 @@ class World:
         self.on_companion_spawned = None
         self.on_npc_spawned = None
         self.npcs = []
+        # Entity registry (stable ids for commands/network) and command queue
+        self._next_eid = itertools.count(1)
+        self.entities = {}
+        self.players = {}          # player_id -> PlayerState
+        self.command_queue = []    # (player_id, command), applied at the start of the next frame
+        self.command_log = []      # (game_time, player_id, command) when recording
+        self.record_commands = False
+        self.register(hero)
+        # One AI companion per class other than the player's own (summoned with ToggleCompanion)
+        self.available_companions = [c for c in HERO_CLASSES if c["class"] != hero.class_name]
+
+    # --- entity registry and commands ---
+    def register(self, entity):
+        entity.eid = next(self._next_eid)
+        self.entities[entity.eid] = entity
+        return entity
+
+    def unregister(self, entity):
+        self.entities.pop(entity.eid, None)
+
+    def entity(self, eid):
+        return self.entities.get(eid)
+
+    def add_player(self, player_id, player_state):
+        self.players[player_id] = player_state
+
+    def submit(self, command, player_id=0):
+        """Queue a player command; it is applied at the start of the next frame (begin_frame)."""
+        self.command_queue.append((player_id, command))
+
+    def _apply_commands(self):
+        queue, self.command_queue = self.command_queue, []
+        for player_id, cmd in queue:
+            if self.record_commands:
+                self.command_log.append((self.game_state.game_time, player_id, cmd))
+            player = self.players.get(player_id)
+            if player is not None:
+                player.handle(cmd)
 
     # --- helpers ---
     def is_wall(self, wx, wy):
@@ -96,6 +135,7 @@ class World:
             comp_ai.allies = self.game_state.heroes
         self.companions.append((comp, comp_ai))
         self.game_state.heroes.append(comp)
+        self.register(comp)
         return comp
 
     def spawn_single_world_monster(self, sp):
@@ -126,6 +166,7 @@ class World:
         m.spawn_point = sp
         setup_monster_aggro(m, nav_dungeon=self.dungeon)
         generate_patrol_route(m, patrol_radius=100, collision_fn=self.is_wall)
+        self.register(m)
         return m
 
     def spawn_world_map_monsters(self):
@@ -145,6 +186,7 @@ class World:
             if self.on_npc_spawned:
                 self.on_npc_spawned(npc, npc_def)
             self.npcs.append(npc)
+            self.register(npc)
 
     def interact_with_npc(self, npc):
         """Handle quest turn-in and acceptance for a specific NPC. Returns True if interaction happened."""
@@ -310,12 +352,37 @@ class World:
                                                    tick_damage=10.0 if cond == Condition.POISONED else 0)
         self.projectiles[:] = [p for p in self.projectiles if p.alive]
 
+    # --- one simulation step ---
+    def step(self, dt):
+        """Advance the simulation by dt seconds: apply queued commands, then run every system in order."""
+        hero = self.hero
+        gs = self.game_state
+        alive = self.begin_frame(dt)
+        for pid in sorted(self.players):
+            player = self.players[pid]
+            player.update(dt)
+            player.run_ai(dt)          # autopilot, when enabled
+            player.update_ambush()
+            player.auto_attack()
+        self.update_companions(dt)
+        self.update_monsters(dt, alive)
+        self.process_kills()
+        self.process_level_ups()
+        self.process_respawns()
+        if not hero.alive:
+            gs.check_hero_death(hero)
+        self.update_projectiles(dt)
+        # Expire Wall shield when buff expires
+        if "Wall" not in hero.buffs and hero.absorb_shield > 0:
+            hero.absorb_shield = 0
+
     # --- per-frame start ---
     def begin_frame(self, dt):
         """Start-of-frame bookkeeping: Holy Light completion, combat flags, Demogorgon skills, entity timers.
         Returns the list of alive monsters (snapshot used by the monster AI later this frame)."""
         hero = self.hero
         gs = self.game_state
+        self._apply_commands()
         # Check Holy Light cast completion BEFORE update (buff gets removed during update)
         if "Holy Light Casting" in hero.buffs and hero.buffs["Holy Light Casting"]["remaining"] <= dt:
             heal_amount = hero.buffs["Holy Light Casting"]["heal"]
