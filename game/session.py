@@ -25,6 +25,7 @@ from game.quests import load_quest_log
 from game import saves
 from game.headless import format_result
 from game.engine.world import World
+from game.engine.player import PlayerState
 from game.engine import abilities
 from game.engine.events import FloatText, Ring, LevelUp, QuestReady, BindRightSkill
 
@@ -163,12 +164,8 @@ is_wall = world.is_wall
 check_los = world.check_los
 find_walkable_nearby = world.find_walkable_nearby
 
-# Movement state
-move_path = []
-selected_target = None
-potions = 3
-# Queued ability cast (walk to range then fire)
-pending_cast = None  # (ab_key, ab, target_monster) or None
+# Player control state (movement, targeting, dash/channel, autopilot) lives in the sim layer
+player = PlayerState(world, hero, ai_enabled=auto_mode)
 
 # Game speed (for AI observation)
 game_speed = 1.0  # 1x, 2x, 4x
@@ -184,29 +181,11 @@ ability_keys = list(hero.abilities.keys())  # ["Q", "R", "E"]
 left_skill_idx = 0    # Index into ability_keys for left-click skill
 right_skill_idx = 1   # Index into ability_keys for right-click skill
 
-# Dash animation state
-dash_target_x = 0.0
-dash_target_y = 0.0
-dash_active = False
-dash_speed = 800.0  # pixels per second (very fast)
-dash_stun_target = None
-dash_stun_duration = 0.0
-dash_damage = 0.0  # damage dealt on arrival
-
-# Frostbolt channel state (Heskan)
-frostbolt_channeling = False
-frostbolt_channel_timer = 0.0
-frostbolt_target = None  # Monster being targeted
-
-# Ambush walk-to state (Tarak)
-ambush_target = None  # Monster to ambush (walk toward, execute when in range)
-
 # Hero AI (toggle with TAB)
 from game.engine.hero_ai import create_hero_ai
-hero_ai = create_hero_ai(hero)
-hero_ai.set_nav_dungeon(dungeon)
-hero_ai.clock = lambda: game_state.game_time
-ai_enabled = auto_mode  # Auto mode starts with AI on
+player.hero_ai = create_hero_ai(hero)
+player.hero_ai.set_nav_dungeon(dungeon)
+player.hero_ai.clock = lambda: game_state.game_time
 
 # AI Companions (summon with F1-F4): one per class other than the player's own.
 companions = world.companions  # list of (hero_obj, ai_obj) tuples (owned by the World)
@@ -494,349 +473,6 @@ def interact_with_npc(npc):
     return interacted
 
 
-def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
-    """Cast an ability — handles AoE, single target, dash, stun, call-for-help, and Quinn's Seal system."""
-    global move_path, selected_target, dash_active, dash_target_x, dash_target_y, dash_stun_target, dash_stun_duration, dash_damage, frostbolt_channeling, frostbolt_channel_timer, frostbolt_target, ambush_target, right_skill_idx
-
-    # Global Cooldown check
-    if hero.gcd > 0:
-        return  # Can't cast anything during GCD
-
-    # === Tarak special: Stab (fast melee, breaks stealth) ===
-    if ab.name == "Stab":
-        if not clicked_monster:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
-            return
-        dist_to_target = hero.distance_to(clicked_monster)
-        if dist_to_target > ab.range:
-            selected_target = clicked_monster
-            move_path = []
-            return
-        if hero.swing_timer > 0:
-            return  # Gated by weapon speed
-        ab.use()
-        hero.swing_timer = hero.weapon_speed
-        # Break stealth on attack
-        if hero.stealthed:
-            hero.stealthed = False
-            floating_texts.append(FloatingText(hero.x, hero.y - 40, "Stealth broken!", (200, 200, 200)))
-            # Auto-bind right-click back to Stealth
-            if "R" in ability_keys:
-                right_skill_idx = ability_keys.index("R")
-        dmg_amount = ab.calc_damage(hero.base_damage)
-        # Crit roll
-        hero.last_crit = random.random() < hero.crit_chance
-        if hero.last_crit:
-            dmg_amount *= hero.crit_multiplier
-        dmg = clicked_monster.take_damage(dmg_amount)
-        color = (255, 255, 50) if hero.last_crit else (180, 255, 180)
-        text = f"{dmg:.0f}!" if hero.last_crit else f"{dmg:.0f}"
-        floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 20, text, color))
-        call_for_help(clicked_monster, game_state.monsters, hero)
-        if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
-            from game.engine.ai import aggro_monster as _aggro
-            _aggro(clicked_monster, hero, game_state.monsters)
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        selected_target = clicked_monster  # Keep target for auto-attack
-        return
-
-    # === Tarak special: Stealth (go invisible) ===
-    if ab.name == "Stealth":
-        ab.use()
-        hero.stealthed = True
-        selected_target = None  # Stop auto-attack
-        # Auto-bind right-click to Ambush
-        if "E" in ability_keys:
-            right_skill_idx = ability_keys.index("E")
-        # Drop aggro from all monsters targeting hero (except bosses)
-        for m in game_state.alive_monsters:
-            if hasattr(m, 'aggro_target') and m.aggro_target == hero and not m.is_boss:
-                from game.engine.ai import AggroState
-                m.aggro_state = AggroState.RESETTING
-                m.aggro_target = None
-        floating_texts.append(FloatingText(hero.x, hero.y - 30, "Stealth!", (100, 200, 100)))
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        return
-
-    # === Tarak special: Ambush (stealth-only burst) ===
-    if ab.name == "Ambush":
-        if not hero.stealthed:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "Must be stealthed!", (255, 150, 100)))
-            return
-        if not clicked_monster:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
-            return
-        dist_to_target = hero.distance_to(clicked_monster)
-        if dist_to_target > ab.range:
-            # Queue walk-to via ambush_target (works while stealthed)
-            ambush_target = clicked_monster
-            selected_target = None
-            move_path = []
-            return
-        ab.use()
-        hero.swing_timer = hero.weapon_speed
-        # Break stealth
-        hero.stealthed = False
-        # Auto-bind right-click back to Stealth
-        if "R" in ability_keys:
-            right_skill_idx = ability_keys.index("R")
-        # Damage: 3x weapon + 20% target max HP
-        dmg_amount = ab.calc_damage(hero.base_damage) + clicked_monster.max_hp * 0.2
-        dmg = clicked_monster.take_damage(dmg_amount)
-        floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", (255, 50, 50)))
-        floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 40, "AMBUSH!", (255, 50, 50)))
-        effects.append(AoeRing(clicked_monster.x, clicked_monster.y, 40, (255, 50, 50)))
-        call_for_help(clicked_monster, game_state.monsters, hero)
-        if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
-            from game.engine.ai import aggro_monster as _aggro
-            _aggro(clicked_monster, hero, game_state.monsters)
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        selected_target = clicked_monster
-        return
-
-    # === Heskan special: Fire Blast (instant ranged single target) ===
-    if ab.name == "Fire Blast":
-        if not clicked_monster:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
-            return
-        if hero.distance_to(clicked_monster) > ab.range:
-            # Queue walk-to-range
-            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
-            move_path = []
-            return
-        if not check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
-            return
-        abilities.fire_blast(world, hero, clicked_monster, ab)
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        return
-
-    # === Heskan special: Frost Nova (AoE freeze around self) ===
-    if ab.name == "Frost Nova":
-        ab.use()
-        dmg_amount = ab.calc_damage(hero.base_damage)  # 25% weapon
-        hit_count = 0
-        for m in game_state.alive_monsters:
-            if hero.distance_to(m) <= ab.radius:
-                dmg = m.take_damage(dmg_amount)
-                m.apply_condition(Condition.FROZEN, 4.0)
-                floating_texts.append(FloatingText(m.x, m.y - 20, f"{dmg:.0f}", (180, 220, 255)))
-                floating_texts.append(FloatingText(m.x, m.y - 35, "FROZEN", (150, 220, 255)))
-                hit_count += 1
-        effects.append(AoeRing(hero.x, hero.y, ab.radius, (150, 200, 255)))
-        if hit_count == 0:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No enemies in range!", (200, 200, 200)))
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        return
-
-    # === Heskan special: Frostbolt (start channel — fires on completion) ===
-    if ab.name == "Frostbolt":
-        if frostbolt_channeling:
-            return  # Already channeling, wait for completion
-        if not clicked_monster:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
-            return
-        dist_to_target = hero.distance_to(clicked_monster)
-        if dist_to_target > ab.range:
-            # Walk into range, then start channeling
-            selected_target = clicked_monster
-            move_path = []
-            return
-        # Line of sight check
-        if not check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
-            return
-        # Start channeling (immobilize self for weapon_speed duration)
-        frostbolt_channeling = True
-        frostbolt_channel_timer = hero.weapon_speed
-        frostbolt_target = clicked_monster
-        selected_target = clicked_monster
-        hero.apply_condition(Condition.IMMOBILIZED, hero.weapon_speed)
-        ab.use()  # Put on cooldown at start of channel (expires when channel ends)
-        move_path = []
-        return
-
-    # === Quinn special: Wanding (ranged projectile auto-attack) ===
-    if ab.name == "Wanding":
-        if not clicked_monster:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
-            return
-        dist_to_target = hero.distance_to(clicked_monster)
-        if dist_to_target > ab.range:
-            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
-            return
-        if not check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
-            return
-        if hero.swing_timer > 0:
-            return  # Gated by weapon speed
-        abilities.ranged_projectile(world, hero, clicked_monster, ab, color=(255, 220, 100))
-        hero.gcd = hero.GCD_DURATION
-        # Don't clear selected_target — keep auto-attacking
-        move_path = []
-        return
-
-    # === Quinn special: Wall (absorb shield on self) ===
-    if ab.name == "Wall":
-        ab.use()
-        shield_amount = hero.surge_value  # Same as potion amount (200)
-        hero.absorb_shield = shield_amount
-        hero.buffs["Wall"] = {"remaining": 15.0}
-        floating_texts.append(FloatingText(hero.x, hero.y - 30, f"Wall +{shield_amount:.0f}!", (100, 200, 255)))
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        return
-
-    # === Quinn special: Renew (HoT on self) ===
-    if ab.name == "Renew":
-        ab.use()
-        hot_total = hero.surge_value * 0.5  # 50% of potion amount (100)
-        hot_duration = 8.0
-        hero.buffs["Renew"] = {"remaining": hot_duration, "hot_per_sec": hot_total / hot_duration}
-        floating_texts.append(FloatingText(hero.x, hero.y - 30, "Renew!", (100, 255, 150)))
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        return
-
-    # === Quinn special: Righteous Seal (self-buff, no target needed) ===
-    if ab.name == "Righteous Seal":
-        ab.use()
-        hero.buffs["Righteous Seal"] = {"remaining": 10.0, "bonus": 0.25}
-        floating_texts.append(FloatingText(hero.x, hero.y - 30, "Seal Active!", (255, 220, 80)))
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        return
-
-    # === Quinn special: Holy Light (self-heal + immobilize self) ===
-    if ab.name == "Holy Light":
-        ab.use()
-        # Start casting — immobilize for 2s, heal lands after cast finishes
-        hero.apply_condition(Condition.IMMOBILIZED, 2.0)
-        hero.buffs["Holy Light Casting"] = {"remaining": 2.0, "heal": 150}
-        floating_texts.append(FloatingText(hero.x, hero.y - 30, "Casting...", (255, 255, 150)))
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        return
-
-    # === Quinn special: Judgement (ranged, consumes Seal for bonus damage) ===
-    if ab.name == "Judgement":
-        if not clicked_monster:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
-            return
-        dist_to_target = hero.distance_to(clicked_monster)
-        if dist_to_target > ab.range:
-            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
-            return
-        if not check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
-            return
-        abilities.judgement(world, hero, clicked_monster, ab)
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        selected_target = None
-        return
-
-    # === Quinn special: Smite (boosted by Seal) ===
-    if ab.name == "Smite":
-        if not clicked_monster:
-            floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
-            return
-        dist_to_target = hero.distance_to(clicked_monster)
-        if dist_to_target > ab.range:
-            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
-            return
-        if hero.swing_timer > 0:
-            return  # Gated by weapon speed
-        ab.use()
-        hero.swing_timer = hero.weapon_speed
-        bonus = 1.0 + (hero.buffs.get("Righteous Seal", {}).get("bonus", 0))
-        skill_dmg = ab.calc_damage(hero.base_damage) * bonus
-        dmg = clicked_monster.take_damage(skill_dmg)
-        color = (255, 230, 100) if bonus > 1.0 else WHITE
-        floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", color))
-        call_for_help(clicked_monster, game_state.monsters, hero)
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        selected_target = None
-        return
-
-    # === Vistra special: Demoralizing Shout (AoE debuff) ===
-    if ab.name == "Demoralizing Shout":
-        ab.use()
-        hit_count = 0
-        for m in game_state.alive_monsters:
-            if hero.distance_to(m) <= ab.radius:
-                # 50% damage reduction for 10s
-                m.buffs["Demoralized"] = {"remaining": 10.0, "damage_mult": 0.5}
-                # Slow for 3s
-                m.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.5)
-                floating_texts.append(FloatingText(m.x, m.y - 20, "Demoralized!", (200, 150, 50)))
-                hit_count += 1
-        if hit_count > 0:
-            effects.append(AoeRing(hero.x, hero.y, ab.radius, ab.color))
-        hero.gcd = hero.GCD_DURATION
-        move_path = []
-        return
-
-    # === Standard ability handling ===
-    if ab.radius > 0:
-        # AoE — check if click location is within ability range
-        dist_to_click = math.sqrt((wx - hero.x)**2 + (wy - hero.y)**2)
-        if dist_to_click > ab.range and ab.range > 0:
-            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
-            return
-        hits = hero.use_ability(ab_key, game_state.alive_monsters, target_pos=(wx, wy))
-        if hits:
-            effects.append(AoeRing(wx, wy, ab.radius, ab.color))
-            for name, dmg in hits:
-                floating_texts.append(FloatingText(wx, wy-20, f"{dmg:.0f}", GOLD))
-    elif clicked_monster:
-        # Single target — check range
-        dist_to_target = hero.distance_to(clicked_monster)
-        if dist_to_target > ab.range:
-            pending_cast = (ab_key, ab, clicked_monster); selected_target = clicked_monster
-            return
-        # Dash abilities: delay damage until arrival
-        if ab.is_dash:
-            # Line of sight check — can't charge through walls
-            if not check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-                floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
-                return
-            ab.use()  # Put on cooldown
-            dx = clicked_monster.x - hero.x
-            dy = clicked_monster.y - hero.y
-            d = math.sqrt(dx*dx + dy*dy)
-            if d > 0:
-                dash_target_x = clicked_monster.x - (dx/d) * 50
-                dash_target_y = clicked_monster.y - (dy/d) * 50
-                dash_active = True
-                dash_stun_target = clicked_monster
-                dash_stun_duration = ab.stun_duration
-                # Store damage to apply on arrival
-                dash_damage = ab.calc_damage(hero.base_damage)
-            call_for_help(clicked_monster, game_state.monsters, hero)
-        else:
-            # Non-dash single target: deal damage immediately
-            hits = hero.use_ability(ab_key, [clicked_monster])
-            for name, dmg in hits:
-                floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y-20, f"{dmg:.0f}", WHITE))
-            if ab.stun_duration > 0 and clicked_monster.alive:
-                clicked_monster.apply_condition(Condition.STUNNED, ab.stun_duration)
-                floating_texts.append(FloatingText(clicked_monster.x, clicked_monster.y-35, "STUNNED", (255,255,100)))
-            call_for_help(clicked_monster, game_state.monsters, hero)
-    else:
-        # No target clicked for single-target skill
-        floating_texts.append(FloatingText(hero.x, hero.y - 30, "No target!", (255, 150, 100)))
-        return
-    hero.gcd = hero.GCD_DURATION
-    move_path = []
-    selected_target = None
-
 # === MAIN GAME LOOP ===
 running = True
 return_to_menu = False
@@ -859,18 +495,18 @@ while running:
             cam_zoom = max(CAM_ZOOM_MIN, min(CAM_ZOOM_MAX, cam_zoom + event.y * CAM_ZOOM_STEP))
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                if frostbolt_channeling:
+                if player.frostbolt_channeling:
                     # Cancel channel and stop auto-attack
-                    frostbolt_channeling = False
-                    frostbolt_channel_timer = 0
-                    frostbolt_target = None
-                    selected_target = None
+                    player.frostbolt_channeling = False
+                    player.frostbolt_channel_timer = 0
+                    player.frostbolt_target = None
+                    player.selected_target = None
                     hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
                 else:
                     running = False
                     return_to_menu = not auto_mode  # ESC -> back to character select
             if event.key == pygame.K_TAB:
-                ai_enabled = not ai_enabled
+                player.ai_enabled = not player.ai_enabled
             # Game speed: +/- to cycle 1x/2x/4x
             if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
                 game_speed = min(game_speed * 2, 4.0)
@@ -888,8 +524,8 @@ while running:
                 if event.key == pygame.K_2: left_skill_idx = 1
                 if event.key == pygame.K_3: left_skill_idx = 2 if len(ability_keys) > 2 else left_skill_idx
             # Potion
-            if event.key == pygame.K_f and potions > 0 and hero.hp < hero.max_hp:
-                potions -= 1
+            if event.key == pygame.K_f and player.potions > 0 and hero.hp < hero.max_hp:
+                player.potions -= 1
                 heal = hero.heal(150)
                 floating_texts.append(FloatingText(hero.x, hero.y-30, f"+{heal:.0f}", (100,255,100)))
             # Summon AI companions (F1-F4) — press again to dismiss
@@ -926,7 +562,7 @@ while running:
                     ab_key = ability_keys[left_skill_idx]
                     ab = hero.abilities[ab_key]
                     if ab.is_ready():
-                        _cast_ability(ab_key, ab, wx, wy, clicked_monster)
+                        player.cast_ability(ab_key, ab, wx, wy, clicked_monster)
                 elif my_s >= HEIGHT - 55:
                     # Clicked on skill bar area — switch skills
                     if mx_s < WIDTH//2:
@@ -942,25 +578,25 @@ while running:
                         floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
                     else:
                         # Cancel any active channel
-                        if frostbolt_channeling:
-                            frostbolt_channeling = False
-                            frostbolt_target = None
+                        if player.frostbolt_channeling:
+                            player.frostbolt_channeling = False
+                            player.frostbolt_target = None
                             hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
                             hero.swing_timer = 0.5  # Brief delay after cancel
-                        selected_target = clicked_monster
-                        ambush_target = None
-                        pending_cast = None
-                        move_path = []
+                        player.selected_target = clicked_monster
+                        player.ambush_target = None
+                        player.pending_cast = None
+                        player.move_path = []
                 else:
                     # Click ground = move (cancel channel)
-                    if frostbolt_channeling:
-                        frostbolt_channeling = False
-                        frostbolt_target = None
+                    if player.frostbolt_channeling:
+                        player.frostbolt_channeling = False
+                        player.frostbolt_target = None
                         hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
-                    move_path = astar(dungeon, hero.x, hero.y, wx, wy)
-                    selected_target = None
-                    ambush_target = None
-                    pending_cast = None
+                    player.move_path = astar(dungeon, hero.x, hero.y, wx, wy)
+                    player.selected_target = None
+                    player.ambush_target = None
+                    player.pending_cast = None
 
             elif event.button == 3:  # Right-click = cast RIGHT skill or interact with NPC
                 # Check if clicking on an NPC first
@@ -969,26 +605,26 @@ while running:
                     interact_with_npc(clicked_npc)
                 elif clicked_npc and not clicked_npc.is_in_range(hero.x, hero.y):
                     # Walk to NPC
-                    move_path = astar(dungeon, hero.x, hero.y, clicked_npc.x, clicked_npc.y)
-                    selected_target = None
+                    player.move_path = astar(dungeon, hero.x, hero.y, clicked_npc.x, clicked_npc.y)
+                    player.selected_target = None
                 # Stealth + right-click enemy + Ambush on right slot = queue ambush walk-to
                 elif hero.stealthed and clicked_monster and ability_keys[right_skill_idx] == "E":
                     ab_ambush = hero.abilities.get("E")
                     if ab_ambush and ab_ambush.is_ready():
-                        ambush_target = clicked_monster
-                        selected_target = None
-                        move_path = []
+                        player.ambush_target = clicked_monster
+                        player.selected_target = None
+                        player.move_path = []
                     else:
                         floating_texts.append(FloatingText(hero.x, hero.y - 30, "Ambush on CD!", (255, 150, 100)))
                 else:
                     ab_key = ability_keys[right_skill_idx]
                     ab = hero.abilities[ab_key]
                     if ab.is_ready():
-                        _cast_ability(ab_key, ab, wx, wy, clicked_monster)
+                        player.cast_ability(ab_key, ab, wx, wy, clicked_monster)
                     else:
                         # Skill on cooldown — just move instead
-                        move_path = astar(dungeon, hero.x, hero.y, wx, wy)
-                        selected_target = None
+                        player.move_path = astar(dungeon, hero.x, hero.y, wx, wy)
+                        player.selected_target = None
 
     # --- End screen ---
     if game_state.adventure_failed:
@@ -1008,216 +644,16 @@ while running:
         continue
 
     # --- UPDATE ---
-    # Check Holy Light cast completion BEFORE update (buff gets removed during update)
-    if "Holy Light Casting" in hero.buffs and hero.buffs["Holy Light Casting"]["remaining"] <= dt:
-        heal_amount = hero.buffs["Holy Light Casting"]["heal"]
-        heal = hero.heal(heal_amount)
-        floating_texts.append(FloatingText(hero.x, hero.y - 30, f"+{heal:.0f} HP", (100, 255, 100)))
-        del hero.buffs["Holy Light Casting"]
+    alive = world.begin_frame(dt)
 
-    # Update combat state for health regeneration
-    hero.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == hero
-                         for m in game_state.monsters)
-    for comp, _ in companions:
-        if comp.alive:
-            comp.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == comp
-                                 for m in game_state.monsters)
-    for m in game_state.monsters:
-        if m.alive:
-            m.in_combat = getattr(m, 'aggro_state', '') == 'aggroed'
-
-    # --- Demogorgon special skills (auto-stealth + slow/freeze aura) ---
-    world.update_demogorgon_skills(dt)
-
-    game_state.update(dt)
-    alive = game_state.alive_monsters
-
-    # Frostbolt channel completion
-    if frostbolt_channeling:
-        frostbolt_channel_timer -= dt
-        if frostbolt_channel_timer <= 0:
-            frostbolt_channeling = False
-            # Fire projectile if target still alive (range doesn't matter — bolt chases)
-            if frostbolt_target and frostbolt_target.alive:
-                proj_damage = hero.base_damage  # 100% weapon
-                proj = Projectile(x=hero.x, y=hero.y, target=frostbolt_target,
-                                  speed=500.0, damage=proj_damage,
-                                  color=(150, 200, 255), source=hero)
-                proj.apply_slow = True  # Flag for slow on hit
-                projectiles.append(proj)
-            else:
-                # Target dead — stop
-                frostbolt_target = None
-                selected_target = None
-        # If target died mid-channel, cancel
-        elif frostbolt_target and not frostbolt_target.alive:
-            frostbolt_channeling = False
-            frostbolt_target = None
-            selected_target = None
-            # Remove immobilize early
-            hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
-
-    # Smooth movement along path
-    if move_path and not dash_active and not hero.has_condition(Condition.IMMOBILIZED):
-        tx, ty = move_path[0]
-        dx, dy = tx - hero.x, ty - hero.y
-        dist = math.sqrt(dx*dx + dy*dy)
-        if dist < 8:
-            move_path.pop(0)
-        else:
-            spd = hero.base_speed * dt
-            if hero.stealthed:
-                spd *= 0.6  # 60% move speed while stealthed
-            hero.x += (dx/dist) * min(spd, dist)
-            hero.y += (dy/dist) * min(spd, dist)
-            hero.facing_left = dx < 0
-
-    # Dash animation (Charge skill)
-    if dash_active:
-        dx = dash_target_x - hero.x
-        dy = dash_target_y - hero.y
-        dist = math.sqrt(dx*dx + dy*dy)
-        if dist < 10:
-            # Arrived — deal damage + apply stun
-            dash_active = False
-            hero.x = dash_target_x
-            hero.y = dash_target_y
-            if dash_stun_target and dash_stun_target.alive:
-                dmg = dash_stun_target.take_damage(dash_damage)
-                floating_texts.append(FloatingText(dash_stun_target.x, dash_stun_target.y-20, f"{dmg:.0f}", (255, 200, 50)))
-                if dash_stun_duration > 0 and dash_stun_target.alive:
-                    dash_stun_target.apply_condition(Condition.STUNNED, dash_stun_duration)
-                    floating_texts.append(FloatingText(dash_stun_target.x, dash_stun_target.y-35, "STUNNED", (255,255,100)))
-            dash_stun_target = None
-            dash_damage = 0
-        else:
-            spd = dash_speed * dt
-            hero.x += (dx/dist) * min(spd, dist)
-            hero.y += (dy/dist) * min(spd, dist)
-            hero.facing_left = dx < 0
+    player.update(dt)
 
     # === HERO AI (when enabled) ===
-    if ai_enabled and not dash_active:
-        ai_action = hero_ai.update(game_state.alive_monsters, dt, is_wall)
-        
-        # Debug log
-        if DEBUG and int(game_state.game_time * 2) != int((game_state.game_time - dt) * 2):  # Log every 0.5s
-            alive_count = len(game_state.alive_monsters)
-            target_dist = f" target_dist={hero.distance_to(hero_ai.target):.0f}" if hero_ai.target and hero_ai.target.alive else ""
-            target_hp = f" boss_hp={hero_ai.target.hp:.0f}/{hero_ai.target.max_hp}" if hero_ai.target and hero_ai.target.alive else ""
-            action_name = ai_action['use_ability'] or ('DASH' if ai_action.get('dash') else ('MOVE' if ai_action.get('move_to') else ('BASIC_ATK' if ai_action.get('basic_attack') else ('EXPLORE' if not alive_count else 'IDLE'))))
-            target_pos = f" target_pos=({hero_ai.target.x:.0f},{hero_ai.target.y:.0f})" if hero_ai.target and hero_ai.target.alive else ""
-            path_len = f" path_len={len(move_path)}" if move_path else " path_len=0"
-            print(f"[AI t={game_state.game_time:.1f}s] monsters={alive_count} hp={hero.hp:.0f}/{hero.max_hp} pos=({hero.x:.0f},{hero.y:.0f}) action={action_name}{target_dist}{target_pos}{target_hp}{path_len}", flush=True)
-            # Log all alive units
-            for m in game_state.alive_monsters:
-                dist_to_hero = hero.distance_to(m)
-                print(f"  [MOB] {m.name} pos=({m.x:.0f},{m.y:.0f}) hp={m.hp:.0f}/{m.max_hp} dist={dist_to_hero:.0f} aggro={getattr(m, 'aggro_state', '?')}", flush=True)
-            for comp, _ in companions:
-                if comp.alive:
-                    print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist_to_hero={hero.distance_to(comp):.0f}", flush=True)
+    player.run_ai(dt)
 
-        if ai_action["use_potion"] and potions > 0 and hero.hp < hero.max_hp:
-            potions -= 1
-            heal = hero.heal(150)
-            floating_texts.append(FloatingText(hero.x, hero.y-30, f"+{heal:.0f}", (100,255,100)))
+    player.update_ambush()
 
-        if ai_action["dash"]:
-            # Charge ability
-            tx, ty, target_m, dmg, stun = ai_action["dash"]
-            ab = hero.abilities.get("R")
-            if ab and ab.is_ready():
-                if not check_los(hero.x, hero.y, target_m.x, target_m.y):
-                    # No LOS — pathfind toward target
-                    move_path = astar(dungeon, hero.x, hero.y, target_m.x, target_m.y)
-                else:
-                    ab.use()
-                    dash_target_x, dash_target_y = tx, ty
-                    dash_active = True
-                    dash_stun_target = target_m
-                    dash_stun_duration = stun
-                    dash_damage = dmg
-                call_for_help(target_m, game_state.monsters, hero)
-
-        elif ai_action["use_ability"]:
-            ab_key = ai_action["use_ability"]
-            ab = hero.abilities.get(ab_key)
-            if ab and ab.is_ready():
-                target_m = ai_action.get("ability_target_monster")
-                # Check LOS before casting — if blocked, pathfind toward target to get LOS
-                if target_m and not check_los(hero.x, hero.y, target_m.x, target_m.y):
-                    move_path = astar(dungeon, hero.x, hero.y, target_m.x, target_m.y)
-                else:
-                    # Route through _cast_ability for consistent handling
-                    wx = target_m.x if target_m else hero.x
-                    wy = target_m.y if target_m else hero.y
-                    _cast_ability(ab_key, ab, wx, wy, target_m)
-
-        elif ai_action["move_to"]:
-            tx, ty = ai_action["move_to"]
-            # Repath every 0.5s or if path empty
-            if not hasattr(hero, '_ai_repath_timer'):
-                hero._ai_repath_timer = 0
-                hero._ai_unreachable = set()  # Track unreachable monster IDs
-            hero._ai_repath_timer -= dt
-            if hero._ai_repath_timer <= 0 or not move_path:
-                move_path = astar(dungeon, hero.x, hero.y, tx, ty)
-                hero._ai_repath_timer = 0.5
-                # If path is empty and target is nearby, it's unreachable
-                if not move_path and hero_ai.target and hero_ai.target.alive:
-                    dist_to_target = hero.distance_to(hero_ai.target)
-                    if dist_to_target < 300:
-                        hero._ai_unreachable.add(id(hero_ai.target))
-                        hero_ai.target = None  # Force retarget next frame
-
-    # Ambush walk-to: walk toward target in stealth, execute Ambush when in range
-    if ambush_target and not ai_enabled:
-        if not ambush_target.alive or not hero.stealthed:
-            ambush_target = None
-            move_path = []
-        elif not check_los(hero.x, hero.y, ambush_target.x, ambush_target.y):
-            # Lost LOS — cancel
-            ambush_target = None
-            move_path = []
-        else:
-            dist = hero.distance_to(ambush_target)
-            ab_ambush = hero.abilities.get("E")
-            if dist <= ab_ambush.range and ab_ambush and ab_ambush.is_ready():
-                # In range — execute Ambush
-                _cast_ability("E", ab_ambush, ambush_target.x, ambush_target.y, ambush_target)
-                ambush_target = None
-            else:
-                # Walk toward target using pathfinding
-                if not move_path:
-                    move_path = astar(dungeon, hero.x, hero.y, ambush_target.x, ambush_target.y)
-
-    # Auto-attack selected target (walk to range, attack when close)
-    if selected_target and not ai_enabled and not frostbolt_channeling and not hero.stealthed and not hero.has_condition(Condition.IMMOBILIZED):
-        if not selected_target.alive:
-            selected_target = None
-            pending_cast = None
-        elif not check_los(hero.x, hero.y, selected_target.x, selected_target.y):
-            # Lost line of sight — drop target
-            selected_target = None
-            pending_cast = None
-        else:
-            dist = hero.distance_to(selected_target)
-            # Check if we have a queued ability to fire
-            if pending_cast and dist <= pending_cast[1].range:
-                ab_key, ab, target_m = pending_cast
-                pending_cast = None
-                if ab.is_ready() and hero.gcd <= 0:
-                    _cast_ability(ab_key, ab, target_m.x, target_m.y, target_m)
-            elif dist <= hero.attack_range:
-                # In range — use left-click skill
-                ab_key = ability_keys[left_skill_idx]
-                ab = hero.abilities[ab_key]
-                if ab.is_ready() and hero.gcd <= 0 and hero.swing_timer <= 0:
-                    _cast_ability(ab_key, ab, selected_target.x, selected_target.y, selected_target)
-            elif not (pygame.key.get_mods() & pygame.KMOD_SHIFT):
-                # Out of range and shift NOT held — pathfind toward target
-                if not move_path:
-                    move_path = astar(dungeon, hero.x, hero.y, selected_target.x, selected_target.y)
+    player.auto_attack(ability_keys[left_skill_idx], hold_position=bool(pygame.key.get_mods() & pygame.KMOD_SHIFT))
 
     # === COMPANION AI ===
     world.update_companions(dt)
@@ -1302,7 +738,7 @@ while running:
                 screen.blit(rpg_tile_cache[key], (sx, sy))
 
     # Move path dots
-    for wp in move_path[:8]:
+    for wp in player.move_path[:8]:
         sx = int((wp[0] - cx) * cam_zoom + WIDTH//2)
         sy = int((wp[1] - cy) * cam_zoom + HEIGHT//2)
         pygame.draw.circle(screen, (60, 120, 60), (sx, sy), max(2, int(3 * cam_zoom)))
@@ -1341,7 +777,7 @@ while running:
         if m.is_boss or getattr(m, 'unique', False):
             t = font.render(m.name, True, (255,100,100))
             screen.blit(t, (sx+sw//2-t.get_width()//2, sy-20))
-        if m == selected_target:
+        if m == player.selected_target:
             pygame.draw.circle(screen, GOLD, (sx+sw//2, sy+sh//2), sw//2+4, 2)
 
     # Companions
@@ -1462,12 +898,12 @@ while running:
         screen.blit(renew_surf, (renew_cx - renew_r - 2, renew_cy - renew_r - 2))
 
     # Frostbolt channeling bar
-    if frostbolt_channeling:
+    if player.frostbolt_channeling:
         bar_w = 40
         bar_h = 5
         bar_x = sx + sw // 2 - bar_w // 2
         bar_y = sy - 14
-        progress = 1.0 - (frostbolt_channel_timer / hero.weapon_speed)
+        progress = 1.0 - (player.frostbolt_channel_timer / hero.weapon_speed)
         pygame.draw.rect(screen, (30, 30, 60), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
         pygame.draw.rect(screen, (60, 60, 80), (bar_x, bar_y, bar_w, bar_h))
         pygame.draw.rect(screen, (150, 200, 255), (bar_x, bar_y, int(bar_w * progress), bar_h))
@@ -1516,9 +952,9 @@ while running:
     xp_text = f"Lv {hero.level}  XP {hero.xp}/{xp_needed}" if hero.level < MAX_LEVEL else f"Lv {hero.level} MAX"
     screen.blit(font.render(xp_text, True, (200, 180, 255)), (25, 43))
 
-    screen.blit(font.render(f"[F] Potions: {potions}", True, (200,150,150)), (20,58))
+    screen.blit(font.render(f"[F] Potions: {player.potions}", True, (200,150,150)), (20,58))
 
-    # Companion health bars (top HUD, below potions)
+    # Companion health bars (top HUD, below player.potions)
     comp_hud_y = 74
     for comp, _ in companions:
         comp_hp_pct = comp.hp / comp.max_hp if comp.max_hp > 0 else 0
@@ -1612,8 +1048,8 @@ while running:
     screen.blit(font.render(f"FPS: {fps}", True, fps_color), (10, 10))
 
     # Controls help
-    ai_label = "AI: ON (TAB=off)" if ai_enabled else "TAB=AI"
-    ai_color = (100, 255, 100) if ai_enabled else (80, 80, 80)
+    ai_label = "AI: ON (TAB=off)" if player.ai_enabled else "TAB=AI"
+    ai_color = (100, 255, 100) if player.ai_enabled else (80, 80, 80)
     speed_label = f" {game_speed:.0f}x (+/-)" if game_speed > 1 else ""
     screen.blit(font.render(ai_label + speed_label, True, ai_color), (WIDTH - 160, HEIGHT - 18))
     screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill  1/2/3=Switch  F=Pot  F1-F4=Summon", True, (70,70,70)), (10, HEIGHT-18))

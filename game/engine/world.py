@@ -260,6 +260,37 @@ class World:
                                                    tick_damage=10.0 if cond == Condition.POISONED else 0)
         self.projectiles[:] = [p for p in self.projectiles if p.alive]
 
+    # --- per-frame start ---
+    def begin_frame(self, dt):
+        """Start-of-frame bookkeeping: Holy Light completion, combat flags, Demogorgon skills, entity timers.
+        Returns the list of alive monsters (snapshot used by the monster AI later this frame)."""
+        hero = self.hero
+        gs = self.game_state
+        # Check Holy Light cast completion BEFORE update (buff gets removed during update)
+        if "Holy Light Casting" in hero.buffs and hero.buffs["Holy Light Casting"]["remaining"] <= dt:
+            heal_amount = hero.buffs["Holy Light Casting"]["heal"]
+            heal = hero.heal(heal_amount)
+            self.float_text(hero.x, hero.y - 30, f"+{heal:.0f} HP", (100, 255, 100))
+            del hero.buffs["Holy Light Casting"]
+
+        # Update combat state for health regeneration
+        hero.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == hero
+                             for m in gs.monsters)
+        for comp, _ in self.companions:
+            if comp.alive:
+                comp.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == comp
+                                     for m in gs.monsters)
+        for m in gs.monsters:
+            if m.alive:
+                m.in_combat = getattr(m, 'aggro_state', '') == 'aggroed'
+
+        # --- Demogorgon special skills (auto-stealth + slow/freeze aura) ---
+        self.update_demogorgon_skills(dt)
+
+        gs.update(dt)
+        alive = gs.alive_monsters
+        return alive
+
     # --- companion AI ---
     def update_companions(self, dt):
         """Run each summoned companion's AI for this frame (combat abilities, then follow the hero)."""
