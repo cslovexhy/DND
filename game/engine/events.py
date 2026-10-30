@@ -46,7 +46,7 @@ class BindRightSkill:
 @dataclass
 class NpcDialogue:
     """An NPC conversation: the client shows a quest panel, speaks the text and saves progress."""
-    quest: object
+    quest: dict        # snapshot.quest_info(): title, description, objectives, rewards
     mode: str          # "accept" or "turnin"
     npc_name: str
     speech: str

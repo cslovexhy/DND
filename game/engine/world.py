@@ -17,6 +17,7 @@ from game.engine.entities import Condition, Monster, Projectile
 from game.engine.events import FloatText, Ring, LevelUp, QuestReady, NpcDialogue, GOLD, HP_RED
 from game.engine.hero_ai import create_hero_ai
 from game.engine.npc import NPC
+from game.engine.snapshot import quest_info
 from game.engine.pathfinding import astar, has_line_of_sight
 from game.engine.world_map import TILE_SIZE
 from game.content.monsters import SPAWN_STATS, respawn_delay
@@ -184,6 +185,7 @@ class World:
             wx, wy = self.world_map.get_spawn_world_pos(tx, ty)
             npc = NPC(self, npc_def["name"], wx, wy, npc_id=npc_def["npc_id"],
                       gender=npc_def.get("gender", "male"))
+            npc.sprite_tile = (npc_def["sprite_col"], npc_def["sprite_row"])  # art reference for clients
             if self.on_npc_spawned:
                 self.on_npc_spawned(npc, npc_def)
             self.npcs.append(npc)
@@ -203,7 +205,7 @@ class World:
             hero.gold += q.rewards_gold
             self.float_text(hero.x, hero.y - 40, f"+{q.rewards_xp}xp +{q.rewards_gold}g", GOLD)
             self.events.append(NpcDialogue(
-                q, "turnin", npc.name,
+                quest_info(q), "turnin", npc.name,
                 f"Well done! {q.title} complete. Here's your reward: {q.rewards_xp} experience and {q.rewards_gold} gold.",
                 voice))
             interacted = True
@@ -219,7 +221,7 @@ class World:
                     mode = "turnin"
                 else:
                     mode = "accept"
-                self.events.append(NpcDialogue(q, mode, npc.name, q.description, voice))
+                self.events.append(NpcDialogue(quest_info(q), mode, npc.name, q.description, voice))
                 interacted = True
                 break  # One quest popup at a time
 

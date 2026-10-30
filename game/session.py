@@ -27,6 +27,9 @@ from game.headless import format_result
 from game.input_script import InputScript
 from game.engine.world import World
 from game.engine.bootstrap import create_world, map_id_for
+from game.client.local_host import LocalHost
+from game.client.view import ClientView
+from types import SimpleNamespace
 from game.engine.player import PlayerState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition)
@@ -93,10 +96,10 @@ class AoeRing:
             pygame.draw.circle(surf, (*self.color,a//4), (r,r), r)
             s.blit(surf, (sx-r, sy-r))
 
-def drain_world_events():
+def drain_events(events):
     """Turn the simulation's view events into on-screen effects / popups / saves."""
     global quest_popup_text, quest_popup_timer, quest_popup_color, right_skill_idx, quest_popup_panel
-    for ev in world.events:
+    for ev in events:
         if isinstance(ev, FloatText):
             floating_texts.append(FloatingText(ev.x, ev.y, ev.text, ev.color))
         elif isinstance(ev, Ring):
@@ -108,7 +111,7 @@ def drain_world_events():
             if ev.ability_key in ability_keys:
                 right_skill_idx = ability_keys.index(ev.ability_key)
         elif isinstance(ev, NpcDialogue):
-            quest_popup_panel = QuestPopupPanel(ev.quest, mode=ev.mode, npc_name=ev.npc_name)
+            quest_popup_panel = QuestPopupPanel(SimpleNamespace(**ev.quest), mode=ev.mode, npc_name=ev.npc_name)
             speak_text(ev.speech, ev.voice)
             save_game()
         elif isinstance(ev, QuestReady):
@@ -116,54 +119,58 @@ def drain_world_events():
             quest_popup_timer = 3.0
             quest_popup_color = (100, 255, 100)
             save_game()
-    world.events.clear()
 
 
 # === GAME SETUP ===
 # The simulation is built by engine/bootstrap.py (shared with pygame-free tools). Art is attached through hooks.
 MAP_ID = map_id_for(USE_MAP)  # key for per-map quest progress
-hooks = {
-    "hero": lambda hero, info: setattr(hero, "sprite", HERO_SPRITES[info["sprite_key"]]),
-    "monster": lambda m: setattr(
-        m, "sprite", BOSS_SPRITES.get(m.name) or (BOSS_SPRITE if m.is_boss else MONSTER_SPRITES.get(m.name))),
-    "companion": lambda comp, info: setattr(comp, "sprite", HERO_SPRITES[info["sprite_key"]]),
-    "npc": lambda npc, d: setattr(npc, "sprite", get_dungeon_tile(d["sprite_col"], d["sprite_row"])),
-}
 try:
     world, player = create_world(USE_MAP, char_data, debug=DEBUG, autopilot=auto_mode,
-                                 auto_companion=auto_mode and "--no-companion" not in sys.argv, hooks=hooks)
+                                 auto_companion=auto_mode and "--no-companion" not in sys.argv)
 except ValueError as e:
     print(f"ERROR: {e}")
     print("Please open the map in the map editor and place a 'Hero Start' marker.")
     pygame.quit()
     sys.exit(1)
-world_map = world.world_map
-dungeon = world.dungeon  # Navigation duck-type (is_wall, is_floor, get_start_pos) used by AI/pathfinding
-hero = world.hero
-quests = world.quests
-game_state = world.game_state
-projectiles = world.projectiles  # active projectiles (owned by the World; mutate in place)
-companions = world.companions    # list of (hero_obj, ai_obj) tuples (owned by the World)
-npcs = world.npcs
-is_wall = world.is_wall
-check_los = world.check_los
-find_walkable_nearby = world.find_walkable_nearby
+world_map = world.world_map  # static map data (tiles); the client draws it directly
+game_state = world.game_state  # host-side state: only used for the headless RESULT line and debug logs
+companions = world.companions  # host-side: debug logs only
+
+
+def _attach_sprite(v):
+    """Art for an entity the client just learned about (the simulation never deals with sprites)."""
+    if v.kind in ("hero", "companion"):
+        v.sprite = HERO_SPRITES[HERO_CLASS_BY_NAME[v.class_name]["sprite_key"]]
+    elif v.kind == "monster":
+        v.sprite = BOSS_SPRITES.get(v.name) or (BOSS_SPRITE if v.is_boss else MONSTER_SPRITES.get(v.name))
+    elif v.kind == "npc" and v.sprite_tile:
+        v.sprite = get_dungeon_tile(*v.sprite_tile)
+
+
+# Client <-> host. Single player: the host is in-process (LocalHost). The client reads only `view`.
+host = LocalHost(world)
+view = ClientView(on_new_entity=_attach_sprite)
+view.apply(host.snapshot())
+hero = view.hero          # the local player's hero, as seen by the client
+# F1-F4 summon one AI companion per class other than the player's own
+available_companions = [c for c in HERO_CLASSES if c["class"] != hero.class_name]
 if _audio_available:
     pygame.mixer.music.stop()
 start_map_music(world_map.music)
 
 
 def save_game():
-    """Persist this character's progress (level/xp/gold/kills + this map's quest state)."""
+    """Persist this character's progress (level/xp/gold/kills + this map's quest state). Host-side."""
     if not SAVING:
         return
-    char_data.update({"level": hero.level, "xp": hero.xp, "gold": hero.gold, "kills": hero.kills})
-    char_data.setdefault("quests", {})[MAP_ID] = quests.to_state()
+    h = world.hero
+    char_data.update({"level": h.level, "xp": h.xp, "gold": h.gold, "kills": h.kills})
+    char_data.setdefault("quests", {})[MAP_ID] = world.quests.to_state()
     saves.save_character(char_data)
 
 
 print(f"[SAVE] {char_data['name']} Lv{hero.level} XP={hero.xp} Gold={hero.gold} Kills={hero.kills} "
-      f"on {MAP_ID}: active={quests.active} done={len(quests.completed)}")
+      f"on {MAP_ID}: active={world.quests.active} done={len(world.quests.completed)}")
 
 # Game speed (for AI observation)
 game_speed = 4.0 if auto_mode else 1.0  # 1x, 2x, 4x
@@ -175,7 +182,7 @@ CAM_ZOOM_MAX = 2.0   # Zoomed in (characters look bigger)
 CAM_ZOOM_STEP = 0.1
 
 # Skill slots (Diablo 2 style)
-ability_keys = list(hero.abilities.keys())  # ["Q", "R", "E"]
+ability_keys = view.you.ability_keys  # ["Q", "R", "E"]
 left_skill_idx = 0    # Index into ability_keys for left-click skill
 right_skill_idx = 1   # Index into ability_keys for right-click skill
 
@@ -354,7 +361,7 @@ quest_popup_color = GOLD
 def get_monster_at_screen(sx, sy):
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
     wy = (sy - HEIGHT//2) / cam_zoom + hero.y
-    for m in game_state.alive_monsters:
+    for m in view.alive_monsters:
         if getattr(m, 'stealthed', False):
             continue  # stealthed monsters can't be clicked/targeted
         if abs(m.x - wx) < TILE_SIZE and abs(m.y - wy) < TILE_SIZE:
@@ -366,7 +373,7 @@ def get_npc_at_screen(sx, sy):
     """Check if a screen click hit an NPC sprite."""
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
     wy = (sy - HEIGHT//2) / cam_zoom + hero.y
-    for npc in npcs:
+    for npc in view.npcs:
         if abs(npc.x - wx) < TILE_SIZE and abs(npc.y - wy) < TILE_SIZE:
             return npc
     return None
@@ -386,13 +393,13 @@ while running:
     if HEADLESS.enabled:
         dt = HEADLESS.fixed_dt   # simulated time: no sleeping, one fixed step per iteration
         if game_state.game_time >= HEADLESS.max_time:
-            print(format_result("TIMEOUT", game_state, hero), flush=True)
+            print(format_result("TIMEOUT", game_state, world.hero), flush=True)
             break
     else:
         dt = clock.tick(60) / 1000.0 * game_speed
 
     if _input_script:
-        _input_script.post_due(_tick, hero, game_state, npcs, WIDTH, HEIGHT, cam_zoom)
+        _input_script.post_due(_tick, hero, view, view.npcs, WIDTH, HEIGHT, cam_zoom)
     _tick += 1
 
     for event in pygame.event.get():
@@ -405,13 +412,13 @@ while running:
             cam_zoom = max(CAM_ZOOM_MIN, min(CAM_ZOOM_MAX, cam_zoom + event.y * CAM_ZOOM_STEP))
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                if player.frostbolt_channeling:
-                    world.submit(CancelChannel())  # cancel channel and stop auto-attack
+                if view.you.frostbolt_channeling:
+                    host.send(CancelChannel())  # cancel channel and stop auto-attack
                 else:
                     running = False
                     return_to_menu = not auto_mode  # ESC -> back to character select
             if event.key == pygame.K_TAB:
-                world.submit(ToggleAutopilot())
+                host.send(ToggleAutopilot())
             # Game speed: +/- to cycle 1x/2x/4x
             if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
                 game_speed = min(game_speed * 2, 4.0)
@@ -430,15 +437,15 @@ while running:
                 if event.key == pygame.K_3: left_skill_idx = 2 if len(ability_keys) > 2 else left_skill_idx
             # Potion
             if event.key == pygame.K_f:
-                world.submit(UsePotion())
+                host.send(UsePotion())
             # Summon AI companions (F1-F4) — press again to dismiss
             summon_keys = [pygame.K_F1, pygame.K_F2, pygame.K_F3, pygame.K_F4]
             for ki, sk in enumerate(summon_keys):
-                if event.key == sk and ki < len(world.available_companions):
-                    world.submit(ToggleCompanion(world.available_companions[ki]["class"]))
+                if event.key == sk and ki < len(available_companions):
+                    host.send(ToggleCompanion(available_companions[ki]["class"]))
                     break
 
-        if event.type == pygame.MOUSEBUTTONDOWN and not game_state.adventure_failed:
+        if event.type == pygame.MOUSEBUTTONDOWN and not view.adventure_failed:
             mx_s, my_s = event.pos
             # If quest popup panel is open, intercept clicks
             if quest_popup_panel and quest_popup_panel.active:
@@ -454,7 +461,7 @@ while running:
             if event.button == 1:  # Left-click
                 if shift_held:
                     # Shift+Left = cast LEFT skill
-                    world.submit(Cast(ability_keys[left_skill_idx], wx, wy, clicked_id))
+                    host.send(Cast(ability_keys[left_skill_idx], wx, wy, clicked_id))
                 elif my_s >= HEIGHT - 55:
                     # Clicked on skill bar area — switch skills
                     if mx_s < WIDTH//2:
@@ -464,34 +471,34 @@ while running:
                         # Clicked right skill box — cycle right skill
                         right_skill_idx = (right_skill_idx + 1) % len(ability_keys)
                 elif clicked_monster:
-                    world.submit(SelectTarget(clicked_id))   # select + walk to attack range
+                    host.send(SelectTarget(clicked_id))   # select + walk to attack range
                 else:
-                    world.submit(MoveTo(wx, wy))             # click ground = move
+                    host.send(MoveTo(wx, wy))             # click ground = move
 
             elif event.button == 3:  # Right-click = cast RIGHT skill or interact with NPC
                 # Check if clicking on an NPC first
                 clicked_npc = get_npc_at_screen(mx_s, my_s)
                 if clicked_npc:
-                    world.submit(InteractNpc(clicked_npc.eid))   # talk if in range, else walk to the NPC
+                    host.send(InteractNpc(clicked_npc.eid))   # talk if in range, else walk to the NPC
                 # Stealth + right-click enemy + Ambush on right slot = queue ambush walk-to
                 elif hero.stealthed and clicked_monster and ability_keys[right_skill_idx] == "E":
-                    world.submit(AmbushTarget(clicked_id))
+                    host.send(AmbushTarget(clicked_id))
                 else:
-                    world.submit(Cast(ability_keys[right_skill_idx], wx, wy, clicked_id, fallback_move=True))
+                    host.send(Cast(ability_keys[right_skill_idx], wx, wy, clicked_id, fallback_move=True))
 
     # --- End screen ---
-    if game_state.adventure_failed:
-        world.command_queue.clear()
+    if view.adventure_failed:
+        world.command_queue.clear()  # dead: input is ignored
         screen.fill(BG)
         msg = "DEFEATED..."
         t = title_font.render(msg, True, HP_RED)
         screen.blit(t, (WIDTH//2-t.get_width()//2, HEIGHT//2-20))
-        stats = f"Time: {game_state.game_time:.1f}s  HP: {hero.hp:.0f}/{hero.max_hp}  Kills: {hero.kills}"
+        stats = f"Time: {view.game_time:.1f}s  HP: {hero.hp:.0f}/{hero.max_hp}  Kills: {hero.kills}"
         screen.blit(big_font.render(stats, True, WHITE), (WIDTH//2-150, HEIGHT//2+20))
         screen.blit(font.render("Press ESC to return to character select", True, GRAY), (WIDTH//2-100, HEIGHT//2+55))
         pygame.display.flip()
         if auto_mode:
-            print(format_result("DEFEATED", game_state, hero), flush=True)
+            print(format_result("DEFEATED", game_state, world.hero), flush=True)
             if not HEADLESS.enabled:
                 pygame.time.wait(5000)
             running = False
@@ -501,12 +508,13 @@ while running:
     # Tell the sim about client choices that affect auto-attack (only when they change)
     _shift = bool(key_mods() & pygame.KMOD_SHIFT)
     if _shift != _sent_hold:
-        world.submit(HoldPosition(_shift)); _sent_hold = _shift
+        host.send(HoldPosition(_shift)); _sent_hold = _shift
     if ability_keys[left_skill_idx] != _sent_left:
-        _sent_left = ability_keys[left_skill_idx]; world.submit(BindLeftSkill(_sent_left))
+        _sent_left = ability_keys[left_skill_idx]; host.send(BindLeftSkill(_sent_left))
 
-    world.step(dt)
-    drain_world_events()
+    snap, events = host.step(dt)   # the client only sees snapshots + events from the host
+    view.apply(snap)
+    drain_events(events)
 
     # Quest popup timer
     if quest_popup_timer > 0:
@@ -528,8 +536,6 @@ while running:
         for comp, _ in companions:
             if comp.alive:
                 print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist={hero.distance_to(comp):.0f}", flush=True)
-
-    drain_world_events()  # anything emitted since the last drain (e.g. by input handling)
 
     # --- RENDER ---
     screen.fill(BG)
@@ -565,7 +571,7 @@ while running:
                 screen.blit(rpg_tile_cache[key], (sx, sy))
 
     # Move path dots
-    for wp in player.move_path[:8]:
+    for wp in view.you.move_path[:8]:
         sx = int((wp[0] - cx) * cam_zoom + WIDTH//2)
         sy = int((wp[1] - cy) * cam_zoom + HEIGHT//2)
         pygame.draw.circle(screen, (60, 120, 60), (sx, sy), max(2, int(3 * cam_zoom)))
@@ -574,7 +580,7 @@ while running:
     for e in effects: e.draw(screen, cx, cy)
 
     # Monsters
-    for m in game_state.monsters:
+    for m in view.monsters:
         if not m.alive: continue
         if getattr(m, 'stealthed', False): continue  # fully invisible when stealthed
         spr = m.sprite
@@ -604,11 +610,11 @@ while running:
         if m.is_boss or getattr(m, 'unique', False):
             t = font.render(m.name, True, (255,100,100))
             screen.blit(t, (sx+sw//2-t.get_width()//2, sy-20))
-        if m == player.selected_target:
+        if m is view.you.selected_target:
             pygame.draw.circle(screen, GOLD, (sx+sw//2, sy+sh//2), sw//2+4, 2)
 
     # Companions
-    for comp, _ in companions:
+    for comp in view.companions:
         if not comp.alive:
             continue
         cspr = comp.sprite
@@ -639,7 +645,7 @@ while running:
         screen.blit(nt, (csx + csw//2 - nt.get_width()//2, csy - 20))
 
     # Projectiles
-    for proj in projectiles:
+    for proj in view.projectiles:
         psx = int((proj.x - cx) * cam_zoom + WIDTH//2)
         psy = int((proj.y - cy) * cam_zoom + HEIGHT//2)
         # Monster arrows: draw as a rotated arrow shape
@@ -690,14 +696,14 @@ while running:
 
     # Demogorgon chill aura visual (blue ring) — visual only, player is slowed not frozen
     if getattr(hero, 'chill_visual', 0.0) > 0:
-        pulse_c = int(70 + 30 * math.sin(game_state.game_time * 6))
+        pulse_c = int(70 + 30 * math.sin(view.game_time * 6))
         chill_surf = pygame.Surface((sw + 8, sh + 8), pygame.SRCALPHA)
         pygame.draw.circle(chill_surf, (150, 200, 255, pulse_c), (sw//2 + 4, sh//2 + 4), sw//2 + 4, 2)
         screen.blit(chill_surf, (sx - 4, sy - 4))
 
     # Poison drip visual
     if hero.has_condition(Condition.POISONED):
-        pulse_p = int(60 + 30 * math.sin(game_state.game_time * 5))
+        pulse_p = int(60 + 30 * math.sin(view.game_time * 5))
         poison_surf = pygame.Surface((sw + 6, sh + 6), pygame.SRCALPHA)
         pygame.draw.circle(poison_surf, (50, 200, 50, pulse_p), (sw//2 + 3, sh//2 + 3), sw//2 + 3, 2)
         screen.blit(poison_surf, (sx - 3, sy - 3))
@@ -708,7 +714,7 @@ while running:
         bubble_cx = sx + sw // 2
         bubble_cy = sy + sh // 2
         # Pulsing alpha
-        pulse = int(80 + 40 * math.sin(game_state.game_time * 4))
+        pulse = int(80 + 40 * math.sin(view.game_time * 4))
         bubble_surf = pygame.Surface((bubble_r * 2 + 4, bubble_r * 2 + 4), pygame.SRCALPHA)
         pygame.draw.circle(bubble_surf, (100, 180, 255, pulse), (bubble_r + 2, bubble_r + 2), bubble_r, 3)
         pygame.draw.circle(bubble_surf, (100, 180, 255, pulse // 3), (bubble_r + 2, bubble_r + 2), bubble_r)
@@ -719,24 +725,24 @@ while running:
         renew_r = sw // 2 + 4
         renew_cx = sx + sw // 2
         renew_cy = sy + sh // 2
-        pulse_g = int(60 + 30 * math.sin(game_state.game_time * 6))
+        pulse_g = int(60 + 30 * math.sin(view.game_time * 6))
         renew_surf = pygame.Surface((renew_r * 2 + 4, renew_r * 2 + 4), pygame.SRCALPHA)
         pygame.draw.circle(renew_surf, (80, 255, 120, pulse_g), (renew_r + 2, renew_r + 2), renew_r, 2)
         screen.blit(renew_surf, (renew_cx - renew_r - 2, renew_cy - renew_r - 2))
 
     # Frostbolt channeling bar
-    if player.frostbolt_channeling:
+    if view.you.frostbolt_channeling:
         bar_w = 40
         bar_h = 5
         bar_x = sx + sw // 2 - bar_w // 2
         bar_y = sy - 14
-        progress = 1.0 - (player.frostbolt_channel_timer / hero.weapon_speed)
+        progress = 1.0 - (view.you.frostbolt_channel_timer / hero.weapon_speed)
         pygame.draw.rect(screen, (30, 30, 60), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
         pygame.draw.rect(screen, (60, 60, 80), (bar_x, bar_y, bar_w, bar_h))
         pygame.draw.rect(screen, (150, 200, 255), (bar_x, bar_y, int(bar_w * progress), bar_h))
 
     # NPC rendering
-    for npc in npcs:
+    for npc in view.npcs:
         npc_sx = int((npc.x - cx) * cam_zoom + WIDTH // 2)
         npc_sy = int((npc.y - cy) * cam_zoom + HEIGHT // 2)
         # Draw NPC sprite
@@ -779,11 +785,11 @@ while running:
     xp_text = f"Lv {hero.level}  XP {hero.xp}/{xp_needed}" if hero.level < MAX_LEVEL else f"Lv {hero.level} MAX"
     screen.blit(font.render(xp_text, True, (200, 180, 255)), (25, 43))
 
-    screen.blit(font.render(f"[F] Potions: {player.potions}", True, (200,150,150)), (20,58))
+    screen.blit(font.render(f"[F] Potions: {view.you.potions}", True, (200,150,150)), (20,58))
 
-    # Companion health bars (top HUD, below player.potions)
+    # Companion health bars (top HUD, below the potion count)
     comp_hud_y = 74
-    for comp, _ in companions:
+    for comp in view.companions:
         comp_hp_pct = comp.hp / comp.max_hp if comp.max_hp > 0 else 0
         bar_color = (100, 150, 255) if comp.alive else (80, 80, 80)
         pygame.draw.rect(screen, HP_BG, (18, comp_hud_y, 156, 14))
@@ -796,7 +802,7 @@ while running:
     # Skill list (left side)
     ab_y = max(78, comp_hud_y + 4)
     for i, key in enumerate(ability_keys):
-        ab = hero.abilities[key]
+        ab = view.you.abilities[key]
         ready = ab.is_ready()
         is_left = (i == left_skill_idx)
         is_right = (i == right_skill_idx)
@@ -818,13 +824,13 @@ while running:
     bar_y = HEIGHT - 50
     pygame.draw.rect(screen, (25, 25, 35), (0, bar_y - 5, WIDTH, 55))
     # Left skill
-    left_ab = hero.abilities[ability_keys[left_skill_idx]]
+    left_ab = view.you.abilities[ability_keys[left_skill_idx]]
     left_color = (180, 130, 50) if left_ab.is_ready() else (80, 60, 30)
     pygame.draw.rect(screen, left_color, (WIDTH//2 - 180, bar_y, 160, 30), 0, 4)
     pygame.draw.rect(screen, (220, 170, 60), (WIDTH//2 - 180, bar_y, 160, 30), 2, 4)
     screen.blit(font.render(f"L: {left_ab.name}", True, WHITE), (WIDTH//2 - 175, bar_y + 8))
     # Right skill
-    right_ab = hero.abilities[ability_keys[right_skill_idx]]
+    right_ab = view.you.abilities[ability_keys[right_skill_idx]]
     right_color = (50, 50, 140) if right_ab.is_ready() else (30, 30, 70)
     pygame.draw.rect(screen, right_color, (WIDTH//2 + 20, bar_y, 160, 30), 0, 4)
     pygame.draw.rect(screen, (80, 80, 200), (WIDTH//2 + 20, bar_y, 160, 30), 2, 4)
@@ -835,28 +841,28 @@ while running:
 
     # Quest HUD (top center)
     quest_hud_y = 10
-    active_quest_objs = quests.active_objects()
-    if active_quest_objs:
-        for aq in active_quest_objs:
+    vq = view.you.quests
+    if vq.active:
+        for aq in vq.active:
             if aq.accepted and not aq.turned_in:
                 quest_title = f"[Quest] {aq.title}"
                 screen.blit(font.render(quest_title, True, GOLD), (WIDTH//2 - 120, quest_hud_y))
                 quest_hud_y += 16
-                if aq.objectives:
-                    prog_text = aq.get_progress_text()
-                    prog_color = (100, 255, 100) if aq.is_complete() else (200, 200, 200)
+                if aq.has_objectives:
+                    prog_text = aq.progress_text
+                    prog_color = (100, 255, 100) if aq.complete else (200, 200, 200)
                     screen.blit(font.render(prog_text, True, prog_color), (WIDTH//2 - 120, quest_hud_y))
                     quest_hud_y += 16
-                    if aq.is_complete():
+                    if aq.complete:
                         screen.blit(font.render("Return to NPC", True, (100, 255, 100)), (WIDTH//2 - 120, quest_hud_y))
                         quest_hud_y += 16
                 quest_hud_y += 4  # spacing between quests
-    elif quests.available(hero.level):
+    elif vq.any_available:
         screen.blit(font.render("Visit an NPC for a new quest", True, (200, 200, 150)), (WIDTH//2 - 120, quest_hud_y))
-    elif quests.quests:
+    elif vq.has_quests:
         screen.blit(font.render(f"All quests completed! {MAP_ID.replace('_', ' ').title()} is safe.", True, (100, 255, 100)), (WIDTH//2 - 160, quest_hud_y))
     else:
-        screen.blit(font.render(game_state.objective_text, True, (200,200,150)), (WIDTH//2-180, 10))
+        screen.blit(font.render(view.objective_text, True, (200,200,150)), (WIDTH//2-180, 10))
 
     # Quest popup (center screen notification — for kill-tracking "Quest Complete" etc.)
     if quest_popup_timer > 0 and quest_popup_text:
@@ -875,8 +881,8 @@ while running:
     screen.blit(font.render(f"FPS: {fps}", True, fps_color), (10, 10))
 
     # Controls help
-    ai_label = "AI: ON (TAB=off)" if player.ai_enabled else "TAB=AI"
-    ai_color = (100, 255, 100) if player.ai_enabled else (80, 80, 80)
+    ai_label = "AI: ON (TAB=off)" if view.you.ai_enabled else "TAB=AI"
+    ai_color = (100, 255, 100) if view.you.ai_enabled else (80, 80, 80)
     speed_label = f" {game_speed:.0f}x (+/-)" if game_speed > 1 else ""
     screen.blit(font.render(ai_label + speed_label, True, ai_color), (WIDTH - 160, HEIGHT - 18))
     screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill  1/2/3=Switch  F=Pot  F1-F4=Summon", True, (70,70,70)), (10, HEIGHT-18))

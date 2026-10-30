@@ -92,3 +92,29 @@ class WorldTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SnapshotTest(unittest.TestCase):
+    def test_snapshot_is_json_and_mirrors_world(self):
+        import json
+        from game import saves
+        from game.client.view import ClientView
+        from game.engine.bootstrap import create_world
+        from game.engine.snapshot import make_snapshot
+        random.seed(3)
+        world, player = create_world(MAP, saves.blank_character("t", "Wizard"), autopilot=True, auto_companion=True)
+        for _ in range(90):
+            world.step(1 / 30)
+        snap = json.loads(json.dumps(make_snapshot(world)))   # must survive a JSON round trip
+        view = ClientView()
+        view.apply(snap)
+        self.assertEqual((view.hero.x, view.hero.y, view.hero.hp), (world.hero.x, world.hero.y, world.hero.hp))
+        self.assertEqual(len(view.monsters), len(world.game_state.monsters))
+        self.assertEqual(len(view.companions), len(world.companions))
+        self.assertEqual(len(view.npcs), len(world.npcs))
+        self.assertEqual(set(view.you.abilities), set(world.hero.abilities))
+        # entity views persist across snapshots (so attached sprites survive)
+        hero_view = view.hero
+        world.step(1 / 30)
+        view.apply(make_snapshot(world))
+        self.assertIs(view.hero, hero_view)

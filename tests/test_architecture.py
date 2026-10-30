@@ -13,6 +13,7 @@ PURE = (
     glob.glob(os.path.join(ROOT, "game", "engine", "*.py"))
     + [os.path.join(ROOT, "game", n) for n in ("headless.py", "progression.py", "saves.py", "quests.py")]
     + glob.glob(os.path.join(ROOT, "game", "content", "*.py"))
+    + [os.path.join(ROOT, "game", "client", n) for n in ("view.py", "local_host.py")]
 )
 
 
@@ -43,6 +44,17 @@ class PureLayerTest(unittest.TestCase):
                 src = f.read()
             for bad in ("time.time()", "time.monotonic()", "perf_counter()", "get_ticks()"):
                 self.assertNotIn(bad, src, f"{os.path.relpath(path, ROOT)} calls {bad}")
+
+
+class ClientReadsOnlySnapshotsTest(unittest.TestCase):
+    def test_render_code_does_not_touch_the_simulation(self):
+        """Everything after '# --- RENDER ---' in session.py draws from `view` (snapshots), never the sim."""
+        with open(os.path.join(ROOT, "game", "session.py"), encoding="utf-8") as f:
+            src = f.read()
+        render = src[src.index("    # --- RENDER ---"):].split("\nif world.record_commands")[0]
+        code = "\n".join(line.split("#")[0] for line in render.splitlines())   # ignore comments
+        for bad in ("world.", "game_state.", "player.", "quests.", "projectiles", "companions:"):
+            self.assertNotIn(bad, code, f"render code uses {bad}")
 
 
 if __name__ == "__main__":
