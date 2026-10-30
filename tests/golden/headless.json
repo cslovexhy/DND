@@ -1,0 +1,37 @@
+{
+  "hero0_seed1": {
+    "digest": "31f54792fce7",
+    "hp": "430/430",
+    "kills": "10",
+    "outcome": "TIMEOUT",
+    "time": "30.0s"
+  },
+  "hero1_seed1": {
+    "digest": "cb65fe19c72f",
+    "hp": "400/400",
+    "kills": "7",
+    "outcome": "TIMEOUT",
+    "time": "30.0s"
+  },
+  "hero2_seed1": {
+    "digest": "7309866f7e5e",
+    "hp": "300/400",
+    "kills": "9",
+    "outcome": "TIMEOUT",
+    "time": "30.0s"
+  },
+  "hero3_seed1": {
+    "digest": "9fa470b706b0",
+    "hp": "400/400",
+    "kills": "6",
+    "outcome": "TIMEOUT",
+    "time": "30.0s"
+  },
+  "hero4_seed1": {
+    "digest": "ff148020453f",
+    "hp": "300/300",
+    "kills": "7",
+    "outcome": "TIMEOUT",
+    "time": "30.0s"
+  }
+}

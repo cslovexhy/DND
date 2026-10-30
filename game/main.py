@@ -27,6 +27,7 @@ from game.quests import load_quest_log
 from game import saves
 from game.menus import MenuContext, run_menus
 import game.engine.entities as _entities
+from game import headless as _headless
 
 os.chdir(os.path.dirname(os.path.dirname(__file__)))
 
@@ -36,6 +37,12 @@ DEBUG = "--debug" in sys.argv  # Pass --debug to enable frame/AI logging
 for i, arg in enumerate(sys.argv):
     if arg == "--map" and i + 1 < len(sys.argv):
         USE_MAP = sys.argv[i + 1]
+
+# Headless mode (automated testing): no window/audio, simulated fixed-step time, seeded RNG.
+HEADLESS = _headless.parse_args(sys.argv)
+if HEADLESS.enabled:
+    _headless.apply_sdl_env()   # must happen before pygame.init()
+    random.seed(HEADLESS.seed)
 
 # === INIT ===
 pygame.init()
@@ -53,6 +60,8 @@ _music_index = 0
 def start_map_music(music_list):
     """Start playing a map's music playlist. Loops through tracks in order."""
     global _music_playlist, _music_index
+    if HEADLESS.enabled:
+        return
     _music_playlist = [t for t in music_list if os.path.exists(t)]
     _music_index = 0
     if not _music_playlist:
@@ -106,7 +115,7 @@ def bring_window_to_front():
             pass
 
 
-if "--auto" not in sys.argv:
+if "--auto" not in sys.argv and not HEADLESS.enabled:
     bring_window_to_front()
 clock = pygame.time.Clock()
 font = pygame.font.Font(None, 20)
@@ -222,7 +231,7 @@ BOSS_SPRITES = {
 # === AUTO MODE (AI playtesting) ===
 # --auto [--hero CLASS_IDX] [--map PATH] runs a throwaway level-1 hero with the AI on.
 # It NEVER reads or writes real character saves.
-auto_mode = "--auto" in sys.argv
+auto_mode = "--auto" in sys.argv or HEADLESS.enabled  # headless implies auto
 auto_hero_idx = 0  # index into HERO_CLASSES (0=Fighter, 1=Cleric, 2=Paladin, 3=Rogue, 4=Wizard)
 if auto_mode:
     for i, arg in enumerate(sys.argv):

@@ -5,7 +5,7 @@ This file is executed by game/main.py via runpy.run_module(), once per session, 
 module-level variable below is fresh each time (that is how ESC can go back to character select
 without restarting the process). It expects these names from main.py (passed as init_globals):
 screen, clock, fonts, colors, sprite helpers/dicts, music helpers, TILE_SIZE/CHAR_SIZE...,
-plus the session inputs  char_data, USE_MAP, auto_mode, SAVING, auto_hero_idx, DEBUG.
+plus the session inputs  char_data, USE_MAP, auto_mode, SAVING, auto_hero_idx, DEBUG, HEADLESS.
 When the player presses ESC (non-auto mode) `return_to_menu` ends up True.
 """
 import pygame
@@ -23,6 +23,7 @@ from game.content.heroes import HERO_CLASSES, HERO_CLASS_BY_NAME
 from game.progression import (MAX_LEVEL, xp_to_next_level, apply_level_growth, set_hero_level, growth_for)
 from game.quests import load_quest_log
 from game import saves
+from game.headless import format_result
 
 # === EFFECTS ===
 floating_texts = []
@@ -170,6 +171,7 @@ ambush_target = None  # Monster to ambush (walk toward, execute when in range)
 from game.engine.hero_ai import create_hero_ai
 hero_ai = create_hero_ai(hero)
 hero_ai.set_nav_dungeon(dungeon)
+hero_ai.clock = lambda: game_state.game_time
 ai_enabled = auto_mode  # Auto mode starts with AI on
 
 # AI Companions (summon with F1-F4): one per class other than the player's own.
@@ -215,6 +217,7 @@ def spawn_companion(comp_info):
     set_hero_level(comp, hero.level)
     comp_ai = create_hero_ai(comp)
     comp_ai.set_nav_dungeon(dungeon)
+    comp_ai.clock = lambda: game_state.game_time
     # Give AI access to all heroes for ally-targeting abilities
     if hasattr(comp_ai, 'allies'):
         comp_ai.allies = game_state.heroes
@@ -379,6 +382,8 @@ _tts_process = None
 
 def speak_text(text, voice="Daniel"):
     """Speak text aloud using macOS 'say' command (async, non-blocking)."""
+    if HEADLESS.enabled:
+        return
     global _tts_process
     # Kill any ongoing speech
     if _tts_process and _tts_process.poll() is None:
@@ -1078,7 +1083,13 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
 running = True
 return_to_menu = False
 while running:
-    dt = clock.tick(60) / 1000.0 * game_speed
+    if HEADLESS.enabled:
+        dt = HEADLESS.fixed_dt   # simulated time: no sleeping, one fixed step per iteration
+        if game_state.game_time >= HEADLESS.max_time:
+            print(format_result("TIMEOUT", game_state, hero), flush=True)
+            break
+    else:
+        dt = clock.tick(60) / 1000.0 * game_speed
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
@@ -1232,8 +1243,9 @@ while running:
         screen.blit(font.render("Press ESC to return to character select", True, GRAY), (WIDTH//2-100, HEIGHT//2+55))
         pygame.display.flip()
         if auto_mode:
-            print(f"RESULT: DEFEATED time={game_state.game_time:.1f}s hp={hero.hp:.0f}/{hero.max_hp} kills={hero.kills}", flush=True)
-            pygame.time.wait(5000)
+            print(format_result("DEFEATED", game_state, hero), flush=True)
+            if not HEADLESS.enabled:
+                pygame.time.wait(5000)
             running = False
         continue
 

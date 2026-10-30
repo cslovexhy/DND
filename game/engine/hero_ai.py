@@ -28,6 +28,9 @@ class HeroAI:
         self._nav_dungeon = None  # Set externally after creation
         self._path_cache = {}     # monster_id -> (path_len, timestamp)
         self._path_cache_ttl = 0.5  # Recalculate path distances every 0.5s
+        # Time source for cache expiry. Defaults to wall-clock; the session injects game time so
+        # runs are deterministic (and headless/fast-forward runs behave like real-time ones).
+        self.clock = time.monotonic
 
     def set_nav_dungeon(self, dungeon):
         """Set the navigation dungeon reference for pathfinding and LOS."""
@@ -59,7 +62,7 @@ class HeroAI:
             return self.hero.distance_to(target)
 
         mid = id(target)
-        now = time.monotonic()
+        now = self.clock()
         cached = self._path_cache.get(mid)
         if cached and (now - cached[1]) < self._path_cache_ttl:
             return cached[0]
@@ -147,7 +150,7 @@ class HeroAI:
         if not self._nav_dungeon:
             return math.hypot(bx - ax, by - ay)
         key = (round(ax / 16), round(ay / 16), round(bx / 16), round(by / 16))
-        now = time.monotonic()
+        now = self.clock()
         cache = self.__dict__.setdefault("_xy_cache", {})
         hit = cache.get(key)
         if hit and (now - hit[1]) < self._path_cache_ttl:

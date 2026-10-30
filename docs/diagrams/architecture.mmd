@@ -1,0 +1,83 @@
+---
+title: DND Game Architecture
+---
+flowchart TD
+    subgraph ENTRY["Entry points"]
+        RUN["run.sh / run.bat"]
+        MAIN["game/main.py<br/>pygame init, asset + sprite loading,<br/>music, run() loop"]
+        MEDIT["map_editor.py<br/>standalone tile map editor<br/>(MapLayer, MapData, UndoStack)"]
+    end
+
+    subgraph MENU["Menus"]
+        MENUS["game/menus.py<br/>character_select / create_screen / map_select<br/>MenuContext"]
+    end
+
+    subgraph SESSION["Play session (runpy, fresh per session)"]
+        SESS["game/session.py<br/>main game loop, input, camera, rendering,<br/>spawning, NPC interaction, ability exec,<br/>floating text, level-up effects, TTS"]
+    end
+
+    subgraph ENGINE["game/engine"]
+        ENT["entities.py<br/>Entity, Hero, Monster, Ability,<br/>Condition, Projectile, GameState"]
+        AI["ai.py<br/>monster AI: patrol, aggro, call_for_help,<br/>melee / ranged / boss"]
+        HAI["hero_ai.py<br/>HeroAI: Fighter, Cleric, Paladin,<br/>Wizard, Rogue (auto-play / companions)"]
+        PATH["pathfinding.py<br/>A*, line of sight"]
+        WMAP["world_map.py<br/>WorldMap, MapTile, SpawnPoint"]
+    end
+
+    subgraph CONTENT["Content and rules"]
+        HEROES["content/heroes.py<br/>HERO_CLASSES, create_* factories"]
+        PROG["progression.py<br/>XP curve, level growth"]
+        QUESTS["quests.py<br/>Quest, QuestLog"]
+        SAVES["saves.py<br/>character save/load/migrate"]
+    end
+
+    subgraph DATA["Data on disk"]
+        MAPS[("data/maps/*.json")]
+        QJSON[("data/quests/*.json")]
+        SAVEF[("data/saves/*")]
+        MON[("monsters.json, powers.json,<br/>villains_and_heroes.json<br/>(design reference, not loaded by code)")]
+        ASSETS[("assets/<br/>tilesets, sprites, music")]
+    end
+
+    RUN --> MAIN
+    MAIN -->|"run_menus()"| MENUS
+    MENUS -->|"char_data, map_path"| MAIN
+    MAIN -->|"runpy.run_module + init_globals"| SESS
+    SESS -.->|"return_to_menu"| MAIN
+
+    MENUS --> SAVES
+    MENUS --> HEROES
+    MAIN --> HEROES
+    MAIN --> SAVES
+    MAIN --> ASSETS
+
+    SESS --> ENT
+    SESS --> AI
+    SESS --> HAI
+    SESS --> PATH
+    SESS --> WMAP
+    SESS --> HEROES
+    SESS --> PROG
+    SESS --> QUESTS
+    SESS --> SAVES
+
+    AI --> ENT
+    AI --> PATH
+    HAI --> ENT
+    HAI --> PATH
+    HEROES --> ENT
+
+    WMAP --> MAPS
+    QUESTS --> QJSON
+    SAVES --> SAVEF
+
+    MEDIT --> MAPS
+    MEDIT --> ASSETS
+
+    classDef entry fill:#ffd699,stroke:#cc7a00,color:#000
+    classDef engine fill:#99ccff,stroke:#0066cc,color:#000
+    classDef content fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef data fill:#eeeeee,stroke:#666,color:#000
+    classDef sess fill:#ff9999,stroke:#cc0000,color:#000
+    class HEROES,PROG,QUESTS,SAVES content
+    class SESS sess

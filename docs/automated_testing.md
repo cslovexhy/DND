@@ -97,3 +97,19 @@ tools/tune_difficulty.py
 3. Add structured JSON logging
 4. Build batch_test.py runner
 5. Build tune_difficulty.py auto-balancer
+
+## Headless mode (implemented — design/06 phase 0)
+
+```bash
+.venv/bin/python3 -m game.main --headless --seed 1 --max-time 60 --hero 0 --map data/maps/northshire.json
+# -> RESULT: TIMEOUT time=60.0s hp=430/430 kills=10 digest=31f54792fce7
+./test.sh          # all tests (unit, architecture, determinism, golden runs)
+./test.sh fast     # skip the slow headless runs
+```
+
+- No window/audio (SDL dummy drivers); simulated time advances 1/30 s per loop iteration with no sleeping.
+- Implies `--auto` (throwaway hero, never touches real saves). `--max-time` is simulated seconds.
+- Same seed => identical `digest` (hash of all hero/monster state). Golden results: `tests/golden/headless.json`;
+  regenerate deliberately with `UPDATE_GOLDEN=1 .venv/bin/python3 -m unittest tests.test_headless`.
+- Hero AI path caches now use game time instead of wall-clock (needed for determinism).
+- Rendering still runs each iteration (to a dummy display); skipping it comes with phase 3 (view separation).
