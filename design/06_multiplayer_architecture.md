@@ -76,3 +76,15 @@ bot soak tests (hero_ai as clients), network chaos tests, one command (`./test.s
   command log; `engine/replay.py` replays it with no pygame and reproduces the pygame session's final state
   digest exactly (tests/test_replay.py). Found and fixed on the way: movement speed depended on a render
   constant patched in by main.py (`CHAR_SCALE`); it is now owned by `engine/entities.py`.
+- Phase 3 — done: the client renders only from snapshots. `engine/snapshot.py` builds a JSON-able per-player
+  snapshot; `client/view.py` mirrors it (entity views persist by id so sprites attach once); `client/local_host.py`
+  is the in-process host. Rendering verified pixel-identical to before on 33 frames; a fitness test forbids sim
+  access in the render code.
+- Phase 4 — done (single player across processes, loopback only): `net/protocol.py` (JSON lines over TCP, versioned
+  hello/welcome/reject/frame/cmd), `net/server.py` (authoritative host, fixed 30 Hz real-time tick, flow control:
+  a backlogged client skips stale snapshots but keeps every event), `net/client.py` (`RemoteHost`, same interface as
+  `LocalHost`). `python3 -m game.net.server --map M --hero H [--auto]` + `python3 -m game.main --connect PORT`.
+  Tests: TCP streaming, version/garbage rejection, exact convergence of the client view to host state, the same
+  over a 150 ms ±60 ms latency proxy, and a real host process + headless pygame client process.
+  Security: the host binds 127.0.0.1 only. Cross-machine play (phase 5) needs a decision on LAN exposure and
+  how players are admitted before any non-loopback bind is added.

@@ -55,3 +55,20 @@ class NpcDialogue:
 
 GOLD = (255, 215, 0)
 HP_RED = (200, 50, 50)
+
+
+# --- (de)serialization for the network (design/06 phase 4) ---
+_BY_NAME = {cls.__name__: cls for cls in (FloatText, Ring, LevelUp, QuestReady, BindRightSkill, NpcDialogue)}
+
+
+def to_dict(ev):
+    import dataclasses
+    return {"type": type(ev).__name__, **dataclasses.asdict(ev)}
+
+
+def from_dict(d):
+    d = dict(d)
+    cls = _BY_NAME[d.pop("type")]
+    if "color" in d:
+        d["color"] = tuple(d["color"])
+    return cls(**d)

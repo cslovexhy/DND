@@ -235,6 +235,14 @@ if auto_mode:
             auto_hero_idx = int(sys.argv[i + 1])
     if USE_MAP is None:
         USE_MAP = "data/maps/northshire.json"
+# --connect PORT: join a host running on this machine (python3 -m game.net.server ...) instead of
+# running the simulation here. The host owns the character for now, so nothing is saved locally.
+CONNECT_PORT = None
+for i, arg in enumerate(sys.argv):
+    if arg == "--connect" and i + 1 < len(sys.argv):
+        CONNECT_PORT = int(sys.argv[i + 1])
+if CONNECT_PORT:
+    auto_mode = True   # skip the menus; behave like a throwaway session
 SAVING = not auto_mode
 
 TITLE_MUSIC = ["assets/music/01. Legends of Azeroth.mp3"]

@@ -51,7 +51,7 @@ class ClientReadsOnlySnapshotsTest(unittest.TestCase):
         """Everything after '# --- RENDER ---' in session.py draws from `view` (snapshots), never the sim."""
         with open(os.path.join(ROOT, "game", "session.py"), encoding="utf-8") as f:
             src = f.read()
-        render = src[src.index("    # --- RENDER ---"):].split("\nif world.record_commands")[0]
+        render = src[src.index("    # --- RENDER ---"):].split("\nif world is not None and world.record_commands")[0]
         code = "\n".join(line.split("#")[0] for line in render.splitlines())   # ignore comments
         import re
         for bad in (r"(?<![\w.])world\.", r"(?<![\w.])game_state\.", r"(?<![\w.])player\.",

@@ -29,6 +29,7 @@ from game.engine.world import World
 from game.engine.bootstrap import create_world, map_id_for
 from game.client.local_host import LocalHost
 from game.client.view import ClientView
+from game.net.client import RemoteHost
 from types import SimpleNamespace
 from game.engine.player import PlayerState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
@@ -123,18 +124,28 @@ def drain_events(events):
 
 # === GAME SETUP ===
 # The simulation is built by engine/bootstrap.py (shared with pygame-free tools). Art is attached through hooks.
+if CONNECT_PORT:
+    # Remote host on this machine: no simulation here, the client only sees snapshots + events.
+    host = RemoteHost("127.0.0.1", CONNECT_PORT, name=char_data["name"], class_name=char_data["class_name"])
+    USE_MAP = host.welcome["map"]
+    world = game_state = None
+    companions = []
+    world_map = WorldMap.load(USE_MAP)
+else:
+    try:
+        world, player = create_world(USE_MAP, char_data, debug=DEBUG, autopilot=auto_mode,
+                                     auto_companion=auto_mode and "--no-companion" not in sys.argv)
+    except ValueError as e:
+        print(f"ERROR: {e}")
+        print("Please open the map in the map editor and place a 'Hero Start' marker.")
+        pygame.quit()
+        sys.exit(1)
+    # Client <-> host. Single player: the host is in-process (LocalHost). The client reads only `view`.
+    host = LocalHost(world)
+    world_map = world.world_map    # static map data (tiles); the client draws it directly
+    game_state = world.game_state  # host-side state: only used for the headless RESULT line and debug logs
+    companions = world.companions  # host-side: debug logs only
 MAP_ID = map_id_for(USE_MAP)  # key for per-map quest progress
-try:
-    world, player = create_world(USE_MAP, char_data, debug=DEBUG, autopilot=auto_mode,
-                                 auto_companion=auto_mode and "--no-companion" not in sys.argv)
-except ValueError as e:
-    print(f"ERROR: {e}")
-    print("Please open the map in the map editor and place a 'Hero Start' marker.")
-    pygame.quit()
-    sys.exit(1)
-world_map = world.world_map  # static map data (tiles); the client draws it directly
-game_state = world.game_state  # host-side state: only used for the headless RESULT line and debug logs
-companions = world.companions  # host-side: debug logs only
 
 
 def _attach_sprite(v):
@@ -147,8 +158,6 @@ def _attach_sprite(v):
         v.sprite = get_dungeon_tile(*v.sprite_tile)
 
 
-# Client <-> host. Single player: the host is in-process (LocalHost). The client reads only `view`.
-host = LocalHost(world)
 view = ClientView(on_new_entity=_attach_sprite)
 view.apply(host.snapshot())
 hero = view.hero          # the local player's hero, as seen by the client
@@ -161,7 +170,7 @@ start_map_music(world_map.music)
 
 def save_game():
     """Persist this character's progress (level/xp/gold/kills + this map's quest state). Host-side."""
-    if not SAVING:
+    if not SAVING or world is None:
         return
     h = world.hero
     char_data.update({"level": h.level, "xp": h.xp, "gold": h.gold, "kills": h.kills})
@@ -169,8 +178,18 @@ def save_game():
     saves.save_character(char_data)
 
 
-print(f"[SAVE] {char_data['name']} Lv{hero.level} XP={hero.xp} Gold={hero.gold} Kills={hero.kills} "
-      f"on {MAP_ID}: active={world.quests.active} done={len(world.quests.completed)}")
+if world is not None:
+    print(f"[SAVE] {char_data['name']} Lv{hero.level} XP={hero.xp} Gold={hero.gold} Kills={hero.kills} "
+          f"on {MAP_ID}: active={world.quests.active} done={len(world.quests.completed)}")
+
+
+def result_line(outcome):
+    """Headless RESULT line. With a local sim it includes the full-state digest; a remote client
+    only knows what its snapshots told it."""
+    if world is not None:
+        return format_result(outcome, game_state, world.hero)
+    return (f"RESULT: {outcome} time={view.game_time:.1f}s hp={hero.hp:.0f}/{hero.max_hp} "
+            f"kills={hero.kills} client=remote")
 
 # Game speed (for AI observation)
 game_speed = 4.0 if auto_mode else 1.0  # 1x, 2x, 4x
@@ -383,7 +402,8 @@ def get_npc_at_screen(sx, sy):
 # Scripted input (headless regression tests): posts real pygame events on given ticks and fakes held modifiers.
 _input_script = InputScript(HEADLESS.input_script) if HEADLESS.enabled and HEADLESS.input_script else None
 key_mods = _input_script.key_mods if _input_script else pygame.key.get_mods
-world.record_commands = bool(HEADLESS.enabled and HEADLESS.record_commands)
+if world is not None:
+    world.record_commands = bool(HEADLESS.enabled and HEADLESS.record_commands)
 _tick = 0
 _sent_hold = False                      # last HoldPosition / BindLeftSkill values sent to the sim
 _sent_left = ability_keys[0]
@@ -392,8 +412,8 @@ return_to_menu = False
 while running:
     if HEADLESS.enabled:
         dt = HEADLESS.fixed_dt   # simulated time: no sleeping, one fixed step per iteration
-        if game_state.game_time >= HEADLESS.max_time:
-            print(format_result("TIMEOUT", game_state, world.hero), flush=True)
+        if view.game_time >= HEADLESS.max_time or getattr(host, "closed", False):
+            print(result_line("TIMEOUT"), flush=True)
             break
     else:
         dt = clock.tick(60) / 1000.0 * game_speed
@@ -488,7 +508,8 @@ while running:
 
     # --- End screen ---
     if view.adventure_failed:
-        world.command_queue.clear()  # dead: input is ignored
+        if world is not None:
+            world.command_queue.clear()  # dead: input is ignored
         screen.fill(BG)
         msg = "DEFEATED..."
         t = title_font.render(msg, True, HP_RED)
@@ -498,7 +519,7 @@ while running:
         screen.blit(font.render("Press ESC to return to character select", True, GRAY), (WIDTH//2-100, HEIGHT//2+55))
         pygame.display.flip()
         if auto_mode:
-            print(format_result("DEFEATED", game_state, world.hero), flush=True)
+            print(result_line("DEFEATED"), flush=True)
             if not HEADLESS.enabled:
                 pygame.time.wait(5000)
             running = False
@@ -513,7 +534,8 @@ while running:
         _sent_left = ability_keys[left_skill_idx]; host.send(BindLeftSkill(_sent_left))
 
     snap, events = host.step(dt)   # the client only sees snapshots + events from the host
-    view.apply(snap)
+    if snap is not None:           # a remote host may not have sent a new frame yet
+        view.apply(snap)
     drain_events(events)
 
     # Quest popup timer
@@ -529,7 +551,7 @@ while running:
     for e in effects: e.update(dt)
 
     # --- FRAME LOG ---
-    if DEBUG:
+    if DEBUG and world is not None:
         print(f"[FRAME t={game_state.game_time:.2f}s] hero=({hero.x:.0f},{hero.y:.0f}) hp={hero.hp:.0f}/{hero.max_hp} monsters={len(game_state.alive_monsters)}", flush=True)
         for m in game_state.alive_monsters:
             print(f"  [MOB] {m.name} pos=({m.x:.0f},{m.y:.0f}) hp={m.hp:.0f}/{m.max_hp} dist={hero.distance_to(m):.0f} aggro={getattr(m, 'aggro_state', '?')}", flush=True)
@@ -888,13 +910,16 @@ while running:
     screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill  1/2/3=Switch  F=Pot  F1-F4=Summon", True, (70,70,70)), (10, HEIGHT-18))
     pygame.display.flip()
 
-if world.record_commands:
+if world is not None and world.record_commands:
     from game.engine.replay import save_recording
     save_recording(HEADLESS.record_commands,
                    {"map": USE_MAP, "class_name": hero.class_name, "seed": HEADLESS.seed,
                     "max_time": HEADLESS.max_time}, world)
 
 save_game()
+
+if CONNECT_PORT:
+    host.close()
 
 # Stop any quest speech still playing when the session ends
 if _tts_process and _tts_process.poll() is None:
