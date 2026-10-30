@@ -18,7 +18,7 @@ class ConnectionRejected(Exception):
 
 
 class RemoteHost:
-    def __init__(self, host, port, name="player", class_name="Fighter", timeout=10.0):
+    def __init__(self, host, port, name="player", class_name="Fighter", timeout=10.0, character=None):
         self.sock = socket.create_connection((host, port), timeout=timeout)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.buf = LineBuffer()
@@ -27,7 +27,10 @@ class RemoteHost:
         self._latest = None
         self._events = []
         self.closed = False
-        self.sock.sendall(encode({"t": "hello", "v": PROTOCOL_VERSION, "name": name, "class_name": class_name}))
+        hello = {"t": "hello", "v": PROTOCOL_VERSION, "name": name, "class_name": class_name}
+        if character is not None:
+            hello["character"] = character   # joiners bring their own saved character
+        self.sock.sendall(encode(hello))
         welcome = self._wait_for(lambda: self.welcome is not None, timeout)
         if not welcome:
             raise ConnectionRejected(self.reject_reason or "no welcome from host")

@@ -6,8 +6,10 @@ Security: binds to 127.0.0.1 (this machine only) — there is deliberately no op
 interfaces yet. Playing across machines needs an explicit decision about exposure and authentication
 first (design/06, phase 5).
 
-Phase 4 scope: one player. The host owns a throwaway character (like --auto); the first client to say
-hello controls it (player id 0). Later clients are rejected until multiplayer lands (phase 5).
+Players: the world is created with the host player's character as player 0; the first client to say
+hello controls it (normally the host's own game, connected over loopback). Every later client brings its
+own character (validated) and joins as a new player, up to max_players. A joiner who leaves is removed;
+player 0's slot stays reserved so the host can reconnect.
 """
 import random
 import selectors
@@ -19,7 +21,7 @@ import time
 from game import saves
 from game.content.heroes import HERO_CLASSES
 from game.engine import commands, events as ev_mod
-from game.engine.bootstrap import create_world
+from game.engine.bootstrap import create_world, join_player, sanitize_character
 from game.engine.snapshot import make_snapshot
 from game.headless import FIXED_DT
 from game.net.protocol import PROTOCOL_VERSION, LineBuffer, encode
@@ -41,12 +43,17 @@ class _Conn:
 class HostServer:
     """Authoritative host. Call serve_forever() (blocking) or start() (background thread)."""
 
+    MAX_COMMANDS_PER_TICK = 30   # per player; extra commands are dropped (flood protection)
+
     def __init__(self, map_path, class_name="Fighter", seed=1, port=DEFAULT_PORT, tick_rate=30,
-                 autopilot=False, auto_companion=False):
+                 autopilot=False, auto_companion=False, host_character=None, max_players=4):
         random.seed(seed)
         self.map_path = map_path
-        char = saves.blank_character(class_name.lower(), class_name)
+        self.max_players = max_players
+        char = host_character or saves.blank_character(class_name.lower(), class_name)
         self.world, self.player = create_world(map_path, char, autopilot=autopilot, auto_companion=auto_companion)
+        self._next_player_id = 1
+        self._cmd_count = {}
         self.tick_rate = tick_rate
         self.dt = FIXED_DT if tick_rate == 30 else 1.0 / tick_rate
         self.sel = selectors.DefaultSelector()
@@ -132,18 +139,36 @@ class HostServer:
             if msg.get("v") != PROTOCOL_VERSION:
                 self._send(c, {"t": "reject", "reason": f"protocol version {msg.get('v')} != {PROTOCOL_VERSION}"})
                 self._close(c)
-            elif any(o.player_id == 0 for o in self.conns if o is not c):
-                self._send(c, {"t": "reject", "reason": "game is full (multiplayer arrives in phase 5)"})
+            elif c.player_id is not None:
+                return   # duplicate hello: ignore
+            elif not any(o.player_id == 0 for o in self.conns if o is not c):
+                self._admit(c, 0)                    # the host player's slot
+            elif sum(1 for o in self.conns if o.player_id is not None) >= self.max_players:
+                self._send(c, {"t": "reject", "reason": f"game is full ({self.max_players} players)"})
                 self._close(c)
             else:
-                c.player_id = 0
-                self._send(c, {"t": "welcome", "v": PROTOCOL_VERSION, "player_id": 0,
-                               "map": self.map_path, "tick_rate": self.tick_rate})
-                self._send(c, {"t": "frame", "snap": make_snapshot(self.world, 0), "events": []})
+                char = sanitize_character(msg.get("character")
+                                          or saves.blank_character(str(msg.get("name", "player")),
+                                                                   msg.get("class_name", "Fighter")))
+                pid = self._next_player_id
+                self._next_player_id += 1
+                join_player(self.world, pid, char, self.map_path)
+                self._admit(c, pid)
+                print(f"[HOST] {char['name']} ({char['class_name']} Lv{char['level']}) joined as player {pid}",
+                      flush=True)
         elif t == "cmd" and c.player_id is not None:
-            self.world.submit(commands.from_dict(msg["cmd"]), c.player_id)   # unknown types raise -> reject
+            n = self._cmd_count.get(c.player_id, 0)
+            if n < self.MAX_COMMANDS_PER_TICK:
+                self._cmd_count[c.player_id] = n + 1
+                self.world.submit(commands.from_dict(msg["cmd"]), c.player_id)   # unknown types raise -> reject
         elif t == "bye":
             self._close(c)
+
+    def _admit(self, c, pid):
+        c.player_id = pid
+        self._send(c, {"t": "welcome", "v": PROTOCOL_VERSION, "player_id": pid,
+                       "map": self.map_path, "tick_rate": self.tick_rate})
+        self._send(c, {"t": "frame", "snap": make_snapshot(self.world, pid), "events": []})
 
     def _send(self, c, msg):
         c.out += encode(msg)
@@ -163,6 +188,8 @@ class HostServer:
     def _close(self, c):
         if c in self.conns:
             self.conns.remove(c)
+            if c.player_id not in (None, 0):
+                self.world.remove_player(c.player_id)   # a joiner left; player 0's slot stays reserved
             try:
                 self.sel.unregister(c.sock)
             except (KeyError, ValueError):
@@ -179,12 +206,14 @@ class HostServer:
         w = self.world
         if not w.game_state.adventure_failed:
             w.step(self.dt)
+        self._cmd_count.clear()
         evs, w.events = w.events, []
-        payload = [ev_mod.to_dict(e) for e in evs]
+        payload = [(getattr(e, "player_id", None), ev_mod.to_dict(e)) for e in evs]
         for c in list(self.conns):
             if c.player_id is None:
                 continue
-            c.pending_events.extend(payload)
+            # personal events (level-up, quest dialogue...) only go to their player
+            c.pending_events.extend(d for pid, d in payload if pid is None or pid == c.player_id)
             self._flush(c)
             # Flow control: a client that hasn't drained the previous frame skips this snapshot
             # (only the newest one matters); its events are kept and sent with the next frame.

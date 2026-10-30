@@ -61,11 +61,73 @@ class NetTest(unittest.TestCase):
         finally:
             host.close()
 
-    def test_second_client_is_rejected_for_now(self):
+    def test_second_client_joins_as_new_player_with_own_character(self):
         a = RemoteHost("127.0.0.1", self.srv.port)
+        b = RemoteHost("127.0.0.1", self.srv.port,
+                       character={"name": "kid", "class_name": "Rogue", "level": 3, "xp": 10, "gold": 5,
+                                  "kills": 1, "quests": {}})
+        try:
+            self.assertEqual(a.welcome["player_id"], 0)
+            self.assertEqual(b.welcome["player_id"], 1)
+            va, vb = ClientView(), ClientView()
+            va.apply(a.snapshot())
+            vb.apply(b.snapshot())
+
+            def both_see_each_other():
+                for h, v in ((a, va), (b, vb)):
+                    snap, _ = h.step()
+                    if snap:
+                        v.apply(snap)
+                return len(va.allies) == 1 and len(vb.allies) == 1
+            self.assertTrue(wait_until(both_see_each_other))
+            self.assertEqual(vb.hero.class_name, "Rogue")
+            self.assertEqual(vb.hero.level, 3)
+            self.assertEqual(va.allies[0].player_name, "kid")
+            # b moves; a sees the ally move, a's own hero stays put
+            ax = va.hero.x
+            bx = vb.hero.x
+            b.send(C.MoveTo(bx + 150, vb.hero.y))
+
+            def a_sees_b_move():
+                for h, v in ((a, va), (b, vb)):
+                    snap, _ = h.step()
+                    if snap:
+                        v.apply(snap)
+                return va.allies and va.allies[0].x > bx + 30
+            self.assertTrue(wait_until(a_sees_b_move))
+            self.assertEqual(va.hero.x, ax)
+        finally:
+            b.close()
+            a.close()
+
+    def test_joiner_leaving_removes_their_hero(self):
+        a = RemoteHost("127.0.0.1", self.srv.port)
+        b = RemoteHost("127.0.0.1", self.srv.port, class_name="Cleric")
+        va = ClientView()
+        va.apply(a.snapshot())
+        b.close()
+
+        def ally_gone():
+            snap, _ = a.step()
+            if snap:
+                va.apply(snap)
+            return va.tick > 3 and not va.allies
+        self.assertTrue(wait_until(ally_gone))
+        self.assertEqual(len(self.srv.world.players), 1)
+        a.close()
+
+    def test_full_game_and_invalid_character_rejected(self):
+        self.srv.max_players = 2
+        a = RemoteHost("127.0.0.1", self.srv.port)
+        b = RemoteHost("127.0.0.1", self.srv.port)
         try:
             with self.assertRaises(ConnectionRejected):
                 RemoteHost("127.0.0.1", self.srv.port, timeout=3)
+            b.close()
+            time.sleep(0.2)
+            with self.assertRaises(ConnectionRejected):
+                RemoteHost("127.0.0.1", self.srv.port, timeout=3,
+                           character={"name": "x", "class_name": "Dragon"})
         finally:
             a.close()
 
@@ -192,6 +254,42 @@ class EndToEndTest(unittest.TestCase):
             srv.kill()
             srv.wait()
             srv.stdout.close()
+
+
+    def test_coop_two_game_processes_host_and_join(self):
+        """Game A hosts (--host-game), game B joins (--connect); both are headless pygame clients."""
+        import os
+        import subprocess
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        a = subprocess.Popen([sys.executable, "-m", "game.main", "--headless", "--host-game", "--port", str(port),
+                              "--map", MAP, "--hero", "4", "--max-time", "8"],
+                             cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:          # wait until A is hosting
+                line = a.stdout.readline()
+                if "[HOST] Hosting" in line or not line:
+                    break
+            b = subprocess.run([sys.executable, "-m", "game.main", "--headless", "--connect", str(port),
+                                "--hero", "3", "--max-time", "5"], cwd=root, capture_output=True, text=True,
+                               timeout=60)
+            out_b = b.stdout + b.stderr
+            self.assertEqual(b.returncode, 0, out_b[-1500:])
+            res_b = [l for l in out_b.splitlines() if l.startswith("RESULT: ")]
+            self.assertEqual(len(res_b), 1, out_b[-1500:])
+            self.assertIn("allies=1", res_b[0])          # B saw A's hero
+            out_a, _ = a.communicate(timeout=60)
+            self.assertEqual(a.returncode, 0, out_a[-1500:])
+            self.assertNotIn("Traceback", out_a)
+            self.assertIn("joined as player 1", out_a)
+        finally:
+            if a.poll() is None:
+                a.kill()
+                a.communicate()
 
 
 if __name__ == "__main__":

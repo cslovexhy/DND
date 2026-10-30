@@ -324,7 +324,8 @@ def available_maps():
 
 
 def map_select(ctx, char):
-    """Returns the chosen map path, None to go back to character select, or 'quit'."""
+    """Returns the chosen map path (solo), {"host": path} (H: host a co-op game on that map),
+    {"join": True} (J: join a co-op game hosted on this computer), None to go back, or 'quit'."""
     maps = available_maps()
     if not maps:
         return None
@@ -344,6 +345,10 @@ def map_select(ctx, char):
                     sel = (sel + 1) % len(maps)
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     return maps[sel]["path"]
+                if event.key == pygame.K_h:
+                    return {"host": maps[sel]["path"]}
+                if event.key == pygame.K_j:
+                    return {"join": True}
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for i in range(len(maps)):
                     rect = pygame.Rect(W // 2 - 250, 150 + i * 60, 500, 50)
@@ -358,8 +363,11 @@ def map_select(ctx, char):
         who = ctx.font.render(f"{char['name'].capitalize()} — Lv {char['level']} {char['class_name']}",
                               True, LIGHT_GRAY)
         screen.blit(who, (W // 2 - who.get_width() // 2, 100))
-        hint = ctx.font.render("Arrow keys / click to select, Enter to confirm, ESC = back", True, GRAY)
+        hint = ctx.font.render("Arrow keys / click to select, Enter = play solo, ESC = back", True, GRAY)
         screen.blit(hint, (W // 2 - hint.get_width() // 2, 120))
+        coop = ctx.font.render("Co-op (this computer only for now):  H = host the selected map    J = join a hosted game",
+                               True, (150, 180, 255))
+        screen.blit(coop, (W // 2 - coop.get_width() // 2, H - 40))
 
         for i, m in enumerate(maps):
             rect = pygame.Rect(W // 2 - 250, 150 + i * 60, 500, 50)
@@ -380,7 +388,8 @@ def map_select(ctx, char):
 # ---------------------------------------------------------------- flow
 
 def run_menus(ctx, preset_map=None):
-    """Character select -> map select. Returns (char_data, map_path), or None to quit the game.
+    """Character select -> map select. Returns (char_data, choice) where choice is a map path (solo),
+    {"host": map_path} or {"join": True}; or None to quit the game.
     If preset_map is given (--map on the command line) the map screen is skipped."""
     while True:
         action, char = character_select(ctx)

@@ -29,6 +29,7 @@ from game.engine.world import World
 from game.engine.bootstrap import create_world, map_id_for
 from game.client.local_host import LocalHost
 from game.client.view import ClientView
+from game.client import SessionAbort
 from game.net.client import RemoteHost
 from types import SimpleNamespace
 from game.engine.player import PlayerState
@@ -126,9 +127,26 @@ def drain_events(events):
 
 # === GAME SETUP ===
 # The simulation is built by engine/bootstrap.py (shared with pygame-free tools). Art is attached through hooks.
-if CONNECT_PORT:
-    # Remote host on this machine: no simulation here, the client only sees snapshots + events.
-    host = RemoteHost("127.0.0.1", CONNECT_PORT, name=char_data["name"], class_name=char_data["class_name"])
+NET_MODE = globals().get("NET_MODE")
+_host_server = None   # co-op host: the authoritative World runs in a background thread of this process
+if NET_MODE:
+    # Co-op: this client only sees snapshots + events from a host (ours, or another game's on this machine).
+    from game.net.server import HostServer, DEFAULT_PORT
+    from game.net.client import ConnectionRejected
+    _port = NET_PORT or DEFAULT_PORT
+    try:
+        if NET_MODE == "host":
+            _host_server = HostServer(USE_MAP, host_character=char_data, port=_port).start()
+            print(f"[HOST] Hosting {USE_MAP} on 127.0.0.1:{_host_server.port}", flush=True)
+        host = RemoteHost("127.0.0.1", _port, name=char_data["name"], class_name=char_data["class_name"],
+                          character=None if auto_mode else char_data)
+    except (OSError, ConnectionRejected) as e:
+        print(f"[NET] Could not {'host' if NET_MODE == 'host' else 'join'} a game on port {_port}: {e}", flush=True)
+        if _host_server:
+            _host_server.stop()
+        if auto_mode:
+            raise SystemExit(1)
+        raise SessionAbort(str(e))
     USE_MAP = host.welcome["map"]
     world = game_state = None
     companions = []
@@ -171,8 +189,15 @@ start_map_music(world_map.music)
 
 
 def save_game():
-    """Persist this character's progress (level/xp/gold/kills + this map's quest state). Host-side."""
-    if not SAVING or world is None:
+    """Persist this character's progress (level/xp/gold/kills + this map's quest state) on this machine."""
+    if not SAVING:
+        return
+    if world is None:
+        # Co-op: the host tells us our progress in every snapshot
+        prog = view.you.progress
+        char_data.update({k: prog[k] for k in ("level", "xp", "gold", "kills")})
+        char_data.setdefault("quests", {})[MAP_ID] = prog["quests"]
+        saves.save_character(char_data)
         return
     h = world.hero
     char_data.update({"level": h.level, "xp": h.xp, "gold": h.gold, "kills": h.kills})
@@ -191,7 +216,7 @@ def result_line(outcome):
     if world is not None:
         return format_result(outcome, game_state, world.hero)
     return (f"RESULT: {outcome} time={view.game_time:.1f}s hp={hero.hp:.0f}/{hero.max_hp} "
-            f"kills={hero.kills} client=remote")
+            f"kills={hero.kills} client=remote allies={len(view.allies)}")
 
 # Game speed (for AI observation)
 game_speed = 4.0 if auto_mode else 1.0  # 1x, 2x, 4x
@@ -941,8 +966,10 @@ if world is not None and world.record_commands:
 
 save_game()
 
-if CONNECT_PORT:
+if NET_MODE:
     host.close()
+    if _host_server:
+        _host_server.stop()
 
 # Stop any quest speech still playing when the session ends
 if _tts_process and _tts_process.poll() is None:

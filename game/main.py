@@ -26,6 +26,7 @@ from game.progression import (MAX_LEVEL, xp_to_next_level, apply_level_growth, s
 from game.quests import load_quest_log
 from game import saves
 from game.menus import MenuContext, run_menus
+from game.client import SessionAbort
 import game.engine.entities as _entities
 from game import headless as _headless
 
@@ -237,10 +238,15 @@ if auto_mode:
         USE_MAP = "data/maps/northshire.json"
 # --connect PORT: join a host running on this machine (python3 -m game.net.server ...) instead of
 # running the simulation here. The host owns the character for now, so nothing is saved locally.
+# --host-game [--port P]: host a co-op game of --map (with --auto/--headless) — mainly for tests.
 CONNECT_PORT = None
+NET_PORT = None
 for i, arg in enumerate(sys.argv):
     if arg == "--connect" and i + 1 < len(sys.argv):
-        CONNECT_PORT = int(sys.argv[i + 1])
+        CONNECT_PORT = NET_PORT = int(sys.argv[i + 1])
+    if arg == "--port" and i + 1 < len(sys.argv):
+        NET_PORT = int(sys.argv[i + 1])
+CLI_NET_MODE = "join" if CONNECT_PORT else ("host" if "--host-game" in sys.argv else None)
 if CONNECT_PORT:
     auto_mode = True   # skip the menus; behave like a throwaway session
 SAVING = not auto_mode
@@ -266,11 +272,18 @@ def run():
             if result is None:
                 break
             char_data, map_path = result
+        net_mode = CLI_NET_MODE               # None = solo; "host" / "join" = co-op over the network
+        if isinstance(map_path, dict):
+            net_mode = "host" if "host" in map_path else "join"
+            map_path = map_path.get("host")
         surface = pygame.display.get_surface()  # menus may have resized the window
         session_globals = {k: v for k, v in globals().items() if not (k.startswith("__") and k.endswith("__"))}
-        session_globals.update(char_data=char_data, USE_MAP=map_path, screen=surface,
+        session_globals.update(char_data=char_data, USE_MAP=map_path, screen=surface, NET_MODE=net_mode,
                                WIDTH=surface.get_width(), HEIGHT=surface.get_height())
-        result_ns = runpy.run_module("game.session", init_globals=session_globals, run_name="game.session")
+        try:
+            result_ns = runpy.run_module("game.session", init_globals=session_globals, run_name="game.session")
+        except SessionAbort:
+            result_ns = {"return_to_menu": True}   # e.g. co-op host/join failed: back to the menus
         if auto_mode or not result_ns.get("return_to_menu"):
             break
         preset_map = None
