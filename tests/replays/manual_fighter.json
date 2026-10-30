@@ -1,0 +1,476 @@
+{
+ "map": "data/maps/northshire.json",
+ "class_name": "Fighter",
+ "seed": 11,
+ "max_time": 60.0,
+ "commands": [
+  {
+   "tick": 0,
+   "player": 0,
+   "cmd": {
+    "type": "ToggleAutopilot"
+   }
+  },
+  {
+   "tick": 5,
+   "player": 0,
+   "cmd": {
+    "type": "ToggleCompanion",
+    "class_name": "Cleric"
+   }
+  },
+  {
+   "tick": 6,
+   "player": 0,
+   "cmd": {
+    "type": "ToggleCompanion",
+    "class_name": "Paladin"
+   }
+  },
+  {
+   "tick": 20,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 18
+   }
+  },
+  {
+   "tick": 132,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 736.7169050337504,
+    "y": 977.0223486589455,
+    "target_id": 17,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 146,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 739.716906280888,
+    "y": 983.0130052290272,
+    "target_id": 17,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 160,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "E",
+    "x": 746.1363663265925,
+    "y": 989.0523789697852,
+    "target_id": 17,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 195,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 198,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 199,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 593.4844562781064,
+    "y": 1001.4549157746188,
+    "target_id": 13,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 201,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 220,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 13
+   }
+  },
+  {
+   "tick": 332,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 580.082602269887,
+    "y": 849.3069810940366,
+    "target_id": 15,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 346,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 580.082602269887,
+    "y": 849.3069810940366,
+    "target_id": 15,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 360,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "E",
+    "x": 602.1010208674479,
+    "y": 1132.1716562134352,
+    "target_id": 14,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 395,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 398,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 399,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 675.1010208674479,
+    "y": 1125.1716562134352,
+    "target_id": 14,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 401,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 405,
+   "player": 0,
+   "cmd": {
+    "type": "MoveTo",
+    "x": 835.948059313182,
+    "y": 1072.4406622651577
+   }
+  },
+  {
+   "tick": 420,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 15
+   }
+  },
+  {
+   "tick": 532,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 650.9090389760415,
+    "y": 1333.478652157814,
+    "target_id": 20,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 546,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 654.9599626177014,
+    "y": 1327.325909546354,
+    "target_id": 20,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 560,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "E",
+    "x": 660.3169129096265,
+    "y": 1320.3898183444849,
+    "target_id": 20,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 595,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 598,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 599,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 466.5657929570448,
+    "y": 1252.973016424128,
+    "target_id": 8,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 601,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 610,
+   "player": 0,
+   "cmd": {
+    "type": "InteractNpc",
+    "npc_id": 119
+   }
+  },
+  {
+   "tick": 620,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 8
+   }
+  },
+  {
+   "tick": 732,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 477.2651960273163,
+    "y": 1347.0156776066524,
+    "target_id": 8,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 746,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 479.265195167648,
+    "y": 1355.0079202342058,
+    "target_id": 8,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 760,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "E",
+    "x": 477.88608263369656,
+    "y": 1354.8112272506478,
+    "target_id": 8,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 795,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 798,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 799,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 477.88608263369656,
+    "y": 1354.8112272506478,
+    "target_id": 8,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 801,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 805,
+   "player": 0,
+   "cmd": {
+    "type": "MoveTo",
+    "x": 1112.0191299478497,
+    "y": 1330.4833644684568
+   }
+  },
+  {
+   "tick": 813,
+   "player": 0,
+   "cmd": {
+    "type": "BindLeftSkill",
+    "ab_key": "R"
+   }
+  },
+  {
+   "tick": 820,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 8
+   }
+  },
+  {
+   "tick": 900,
+   "player": 0,
+   "cmd": {
+    "type": "ToggleCompanion",
+    "class_name": "Cleric"
+   }
+  },
+  {
+   "tick": 932,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 429.1230906685157,
+    "y": 1374.8492188552748,
+    "target_id": 9,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 946,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 429.12313284655056,
+    "y": 1374.90355540562,
+    "target_id": 9,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 960,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "E",
+    "x": 428.96883968851216,
+    "y": 1374.7649851921276,
+    "target_id": 9,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 995,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 998,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 999,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 441.58683484728766,
+    "y": 1371.979387864173,
+    "target_id": 3,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 1001,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 1020,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 3
+   }
+  }
+ ]
+}

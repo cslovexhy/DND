@@ -137,14 +137,10 @@ DOOR_COLOR = (180, 140, 60)
 # === LOAD SPRITES ===
 TILE_SRC = 16
 
-# Character scale: 1.0 = same size as map tile, 0.5 = half size.
-# Also scales movement speed proportionally so the map feels bigger.
-CHAR_SCALE = 0.5
+# Character scale (1.0 = same size as map tile) is a gameplay constant owned by the sim; sprites use it too.
+CHAR_SCALE = _entities.CHAR_SCALE
 CHAR_SIZE = int(TILE_SIZE * CHAR_SCALE)
 BOSS_SCALE = CHAR_SCALE * 1.5  # Bosses are 1.5x character size
-
-# Scale movement speed to match character size
-_entities.SPEED_SCALE = int(30 * CHAR_SCALE)
 
 dungeon_img = pygame.image.load("assets/kenney_dungeon/Tilemap/tilemap.png").convert_alpha()
 rpg_img = pygame.image.load("assets/kenney_rpg/Spritesheet/roguelikeSheet_transparent.png").convert_alpha()

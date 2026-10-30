@@ -113,3 +113,15 @@ tools/tune_difficulty.py
   regenerate deliberately with `UPDATE_GOLDEN=1 .venv/bin/python3 -m unittest tests.test_headless`.
 - Hero AI path caches now use game time instead of wall-clock (needed for determinism).
 - Rendering still runs each iteration (to a dummy display); skipping it comes with phase 3 (view separation).
+
+### Scripted input and command replays (design/06 phase 2)
+
+```bash
+# Drive the real mouse/keyboard code from a JSON script (see game/input_script.py), and record the commands:
+.venv/bin/python3 -m game.main --headless --seed 11 --max-time 60 --hero 0 --map data/maps/northshire.json \
+    --input-script tests/scripts/manual_fighter.json --record-commands /tmp/fighter.json
+# Replay the command log through the pure simulation (no pygame) — same RESULT/digest:
+.venv/bin/python3 -c "from game.engine import replay; print(replay.run_recording(replay.load_recording('/tmp/fighter.json')))"
+```
+If you change gameplay on purpose, regenerate goldens (`UPDATE_GOLDEN=1 ...`) and re-record tests/replays/ with the
+commands in tests/test_replay.py's docstring.

@@ -52,7 +52,8 @@ class World:
         self.entities = {}
         self.players = {}          # player_id -> PlayerState
         self.command_queue = []    # (player_id, command), applied at the start of the next frame
-        self.command_log = []      # (game_time, player_id, command) when recording
+        self.command_log = []      # (tick, player_id, command) when recording
+        self.tick = 0              # number of completed simulation steps
         self.record_commands = False
         self.register(hero)
         # One AI companion per class other than the player's own (summoned with ToggleCompanion)
@@ -81,7 +82,7 @@ class World:
         queue, self.command_queue = self.command_queue, []
         for player_id, cmd in queue:
             if self.record_commands:
-                self.command_log.append((self.game_state.game_time, player_id, cmd))
+                self.command_log.append((self.tick, player_id, cmd))
             player = self.players.get(player_id)
             if player is not None:
                 player.handle(cmd)
@@ -375,6 +376,7 @@ class World:
         # Expire Wall shield when buff expires
         if "Wall" not in hero.buffs and hero.absorb_shield > 0:
             hero.absorb_shield = 0
+        self.tick += 1
 
     # --- per-frame start ---
     def begin_frame(self, dt):

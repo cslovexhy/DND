@@ -5,6 +5,7 @@ They reference entities by id (never by object) and carry only plain values, so 
 logged, replayed in tests, and later sent over the network to the host (design/06, phases 2 and 4).
 The host validates every command; the client never decides the outcome.
 """
+import dataclasses
 from dataclasses import dataclass
 from typing import Optional
 
@@ -77,3 +78,18 @@ class BindLeftSkill:
 class HoldPosition:
     """Shift held: auto-attack does not walk toward an out-of-range target."""
     on: bool
+
+
+# --- (de)serialization: commands are plain data, so they can be logged and sent over a wire ---
+_BY_NAME = {cls.__name__: cls for cls in (
+    MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion, ToggleAutopilot, ToggleCompanion,
+    CancelChannel, BindLeftSkill, HoldPosition)}
+
+
+def to_dict(cmd):
+    return {"type": type(cmd).__name__, **dataclasses.asdict(cmd)}
+
+
+def from_dict(d):
+    d = dict(d)
+    return _BY_NAME[d.pop("type")](**d)

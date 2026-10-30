@@ -26,6 +26,7 @@ from game import saves
 from game.headless import format_result
 from game.input_script import InputScript
 from game.engine.world import World
+from game.engine.bootstrap import create_world, map_id_for
 from game.engine.player import PlayerState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition)
@@ -119,30 +120,37 @@ def drain_world_events():
 
 
 # === GAME SETUP ===
-world_map = WorldMap.load(USE_MAP)
-if world_map.hero_start is None:
-    print(f"ERROR: Map '{USE_MAP}' has no hero_start spawn point.")
+# The simulation is built by engine/bootstrap.py (shared with pygame-free tools). Art is attached through hooks.
+MAP_ID = map_id_for(USE_MAP)  # key for per-map quest progress
+hooks = {
+    "hero": lambda hero, info: setattr(hero, "sprite", HERO_SPRITES[info["sprite_key"]]),
+    "monster": lambda m: setattr(
+        m, "sprite", BOSS_SPRITES.get(m.name) or (BOSS_SPRITE if m.is_boss else MONSTER_SPRITES.get(m.name))),
+    "companion": lambda comp, info: setattr(comp, "sprite", HERO_SPRITES[info["sprite_key"]]),
+    "npc": lambda npc, d: setattr(npc, "sprite", get_dungeon_tile(d["sprite_col"], d["sprite_row"])),
+}
+try:
+    world, player = create_world(USE_MAP, char_data, debug=DEBUG, autopilot=auto_mode,
+                                 auto_companion=auto_mode and "--no-companion" not in sys.argv, hooks=hooks)
+except ValueError as e:
+    print(f"ERROR: {e}")
     print("Please open the map in the map editor and place a 'Hero Start' marker.")
     pygame.quit()
     sys.exit(1)
-dungeon = world_map  # Navigation duck-type (is_wall, is_floor, get_start_pos) used by AI/pathfinding
-MAP_ID = os.path.splitext(os.path.basename(USE_MAP))[0]  # key for per-map quest progress
-hero_wx, hero_wy = world_map.get_start_pos()
+world_map = world.world_map
+dungeon = world.dungeon  # Navigation duck-type (is_wall, is_floor, get_start_pos) used by AI/pathfinding
+hero = world.hero
+quests = world.quests
+game_state = world.game_state
+projectiles = world.projectiles  # active projectiles (owned by the World; mutate in place)
+companions = world.companions    # list of (hero_obj, ai_obj) tuples (owned by the World)
+npcs = world.npcs
+is_wall = world.is_wall
+check_los = world.check_los
+find_walkable_nearby = world.find_walkable_nearby
 if _audio_available:
     pygame.mixer.music.stop()
 start_map_music(world_map.music)
-
-hero_class = HERO_CLASS_BY_NAME[char_data["class_name"]]
-hero = hero_class["create"](char_data["name"].capitalize(), hero_wx, hero_wy)
-hero.sprite = HERO_SPRITES[hero_class["sprite_key"]]
-hero.xp = char_data["xp"]
-hero.gold = char_data["gold"]
-hero.kills = char_data["kills"]
-set_hero_level(hero, char_data["level"])  # re-applies per-level stat growth
-
-# Quest definitions come from data/quests/<map>.json; progress is per character AND per map.
-quests = load_quest_log(MAP_ID)
-quests.load_state(char_data.get("quests", {}).get(MAP_ID))
 
 
 def save_game():
@@ -157,26 +165,8 @@ def save_game():
 print(f"[SAVE] {char_data['name']} Lv{hero.level} XP={hero.xp} Gold={hero.gold} Kills={hero.kills} "
       f"on {MAP_ID}: active={quests.active} done={len(quests.completed)}")
 
-game_state = GameState()
-game_state.heroes.append(hero)
-game_state.objective_text = f"Explore {MAP_ID.replace('_', ' ').title()} and clear the area of monsters!"
-
-# The simulation (spawning, respawns, ...). Art is attached through hooks so the sim stays pygame-free.
-world = World(world_map, game_state, hero, quests=quests, debug=DEBUG)
-projectiles = world.projectiles  # active projectiles (owned by the World; mutate in place)
-world.on_monster_spawned = lambda m: setattr(
-    m, "sprite", BOSS_SPRITES.get(m.name) or (BOSS_SPRITE if m.is_boss else MONSTER_SPRITES.get(m.name)))
-world.on_companion_spawned = lambda comp, info: setattr(comp, "sprite", HERO_SPRITES[info["sprite_key"]])
-is_wall = world.is_wall
-check_los = world.check_los
-find_walkable_nearby = world.find_walkable_nearby
-
-# Player control state (movement, targeting, dash/channel, autopilot) lives in the sim layer
-player = PlayerState(world, hero, ai_enabled=auto_mode)
-world.add_player(0, player)   # local player (id 0); commands from this client go to it
-
 # Game speed (for AI observation)
-game_speed = 1.0  # 1x, 2x, 4x
+game_speed = 4.0 if auto_mode else 1.0  # 1x, 2x, 4x
 
 # Camera zoom (scroll wheel to adjust)
 cam_zoom = 1.0       # 1.0 = default view, 2.0 = zoomed in 200%
@@ -188,32 +178,6 @@ CAM_ZOOM_STEP = 0.1
 ability_keys = list(hero.abilities.keys())  # ["Q", "R", "E"]
 left_skill_idx = 0    # Index into ability_keys for left-click skill
 right_skill_idx = 1   # Index into ability_keys for right-click skill
-
-# Hero AI (toggle with TAB)
-from game.engine.hero_ai import create_hero_ai
-player.hero_ai = create_hero_ai(hero)
-player.hero_ai.set_nav_dungeon(dungeon)
-player.hero_ai.clock = lambda: game_state.game_time
-
-# AI Companions (summon with F1-F4): one per class other than the player's own.
-companions = world.companions  # list of (hero_obj, ai_obj) tuples (owned by the World)
-available_companions = [c for c in HERO_CLASSES if c["class"] != hero.class_name]
-
-def spawn_companion(comp_info):
-    """Summon an AI companion (sim in World.spawn_companion; the sprite is attached via the hook)."""
-    return world.spawn_companion(comp_info)
-
-
-# Auto-mode: summon a companion (Wizard unless that's the hero's class) and set 4x speed
-if auto_mode and available_companions and "--no-companion" not in sys.argv:
-    spawn_companion(next((c for c in available_companions if c["class"] == "Wizard"), available_companions[0]))
-
-if auto_mode:
-    game_speed = 4.0
-
-
-# Spawn the map's monsters at start
-world.spawn_world_map_monsters()
 
 
 # === QUEST POPUP PANEL ===
@@ -382,10 +346,6 @@ quest_popup_panel = None
 # === QUEST SYSTEM === (see game/quests.py; `quests` is this character's QuestLog for the current map)
 
 
-world.on_npc_spawned = lambda npc, d: setattr(npc, "sprite", get_dungeon_tile(d["sprite_col"], d["sprite_row"]))
-world.load_npcs()
-npcs = world.npcs
-
 # Quest interaction state
 quest_popup_timer = 0.0  # How long to show quest accepted/completed popup
 quest_popup_text = ""
@@ -416,6 +376,7 @@ def get_npc_at_screen(sx, sy):
 # Scripted input (headless regression tests): posts real pygame events on given ticks and fakes held modifiers.
 _input_script = InputScript(HEADLESS.input_script) if HEADLESS.enabled and HEADLESS.input_script else None
 key_mods = _input_script.key_mods if _input_script else pygame.key.get_mods
+world.record_commands = bool(HEADLESS.enabled and HEADLESS.record_commands)
 _tick = 0
 _sent_hold = False                      # last HoldPosition / BindLeftSkill values sent to the sim
 _sent_left = ability_keys[0]
@@ -920,6 +881,12 @@ while running:
     screen.blit(font.render(ai_label + speed_label, True, ai_color), (WIDTH - 160, HEIGHT - 18))
     screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill  1/2/3=Switch  F=Pot  F1-F4=Summon", True, (70,70,70)), (10, HEIGHT-18))
     pygame.display.flip()
+
+if world.record_commands:
+    from game.engine.replay import save_recording
+    save_recording(HEADLESS.record_commands,
+                   {"map": USE_MAP, "class_name": hero.class_name, "seed": HEADLESS.seed,
+                    "max_time": HEADLESS.max_time}, world)
 
 save_game()
 

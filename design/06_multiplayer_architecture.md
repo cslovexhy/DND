@@ -69,3 +69,10 @@ bot soak tests (hero_ai as clients), network chaos tests, one command (`./test.s
   Deferred to phase 3: removing the `runpy`/init_globals handoff (it is a client concern).
   Known leftover: cosmetic randomness (floating-text jitter) still draws from the global sim RNG; it moves to a
   view-only RNG in phase 3 (one deliberate golden regeneration).
+- Phase 2 — done: all player input goes through `engine/commands.py` (MoveTo, SelectTarget, Cast, InteractNpc,
+  AmbushTarget, UsePotion, ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition), submitted
+  with `World.submit()` and applied at the start of `World.step()`. Entities have stable ids (`eid`).
+  `engine/bootstrap.create_world()` builds the world for both client and tools. `--record-commands` writes a
+  command log; `engine/replay.py` replays it with no pygame and reproduces the pygame session's final state
+  digest exactly (tests/test_replay.py). Found and fixed on the way: movement speed depended on a render
+  constant patched in by main.py (`CHAR_SCALE`); it is now owned by `engine/entities.py`.

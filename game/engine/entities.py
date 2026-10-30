@@ -11,8 +11,11 @@ from typing import Optional
 # === SCALING CONSTANTS ===
 # Board game HP 1-12 → ARPG HP (×50 for granularity)
 HP_SCALE = 50
-# Board game Speed 5-7 → ARPG speed in pixels/sec
-SPEED_SCALE = 30  # speed 5 → 150 px/s, speed 6 → 180 px/s (before CHAR_SCALE)
+# Character scale: 1.0 = same size as map tile, 0.5 = half size. Gameplay constant (not just art):
+# movement speed scales with it so the map feels bigger. The client sizes sprites from it too.
+CHAR_SCALE = 0.5
+# Board game Speed 5-7 → ARPG speed in pixels/sec: 30 px/s per point at CHAR_SCALE 1.0
+SPEED_SCALE = int(30 * CHAR_SCALE)  # speed 5 → 75 px/s, speed 6 → 90 px/s
 
 
 class Condition(Enum):

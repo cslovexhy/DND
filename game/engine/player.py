@@ -15,6 +15,7 @@ from game.engine.entities import Condition, Projectile
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition)
 from game.engine.events import Ring, BindRightSkill, GOLD
+from game.engine.hero_ai import create_hero_ai
 from game.engine.pathfinding import astar
 
 
@@ -22,7 +23,9 @@ class PlayerState:
     def __init__(self, world, hero, ai_enabled=False, potions=3):
         self.world = world
         self.hero = hero
-        self.hero_ai = None              # autopilot brain (HeroAI), set by the session
+        self.hero_ai = create_hero_ai(hero)   # autopilot brain (HeroAI)
+        self.hero_ai.set_nav_dungeon(world.dungeon)
+        self.hero_ai.clock = lambda: world.game_state.game_time
         self.ai_enabled = ai_enabled     # autopilot on/off (TAB; on in --auto/--headless)
         # Movement / targeting
         self.move_path = []

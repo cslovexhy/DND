@@ -1,0 +1,770 @@
+{
+ "map": "data/maps/northshire.json",
+ "class_name": "Rogue",
+ "seed": 14,
+ "max_time": 60.0,
+ "commands": [
+  {
+   "tick": 0,
+   "player": 0,
+   "cmd": {
+    "type": "ToggleAutopilot"
+   }
+  },
+  {
+   "tick": 5,
+   "player": 0,
+   "cmd": {
+    "type": "ToggleCompanion",
+    "class_name": "Fighter"
+   }
+  },
+  {
+   "tick": 6,
+   "player": 0,
+   "cmd": {
+    "type": "ToggleCompanion",
+    "class_name": "Cleric"
+   }
+  },
+  {
+   "tick": 20,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 18
+   }
+  },
+  {
+   "tick": 132,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 770.7182527088116,
+    "y": 1174.0051531612567,
+    "target_id": 18,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 146,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 791.7182530701948,
+    "y": 1149.000874572363,
+    "target_id": 19,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 160,
+   "player": 0,
+   "cmd": {
+    "type": "AmbushTarget",
+    "target_id": 19
+   }
+  },
+  {
+   "tick": 195,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 198,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 199,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 834.1182530749415,
+    "y": 1079.0004217546716,
+    "target_id": 17,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 201,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 220,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 24
+   }
+  },
+  {
+   "tick": 332,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 830.9010148029203,
+    "y": 669.3941514155006,
+    "target_id": 23,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 346,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 840.7459600950634,
+    "y": 659.2981461984668,
+    "target_id": 23,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 360,
+   "player": 0,
+   "cmd": {
+    "type": "AmbushTarget",
+    "target_id": 23
+   }
+  },
+  {
+   "tick": 395,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 398,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 399,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 735.1569858772772,
+    "y": 682.5494942563614,
+    "target_id": 112,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 401,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 405,
+   "player": 0,
+   "cmd": {
+    "type": "MoveTo",
+    "x": 849.1569858772772,
+    "y": 900.5494942563614
+   }
+  },
+  {
+   "tick": 420,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 22
+   }
+  },
+  {
+   "tick": 532,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 695.6667523191817,
+    "y": 655.3204027116843,
+    "target_id": 112,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 546,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 695.6667523191817,
+    "y": 655.3204027116843,
+    "target_id": 112,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 560,
+   "player": 0,
+   "cmd": {
+    "type": "AmbushTarget",
+    "target_id": 112
+   }
+  },
+  {
+   "tick": 595,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 598,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 599,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 703.1003594987172,
+    "y": 629.7377224420861,
+    "target_id": 112,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 601,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 610,
+   "player": 0,
+   "cmd": {
+    "type": "InteractNpc",
+    "npc_id": 119
+   }
+  },
+  {
+   "tick": 620,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 37
+   }
+  },
+  {
+   "tick": 732,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 710.4448153388709,
+    "y": 673.3616996638011,
+    "target_id": 112,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 746,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 719.4448153388709,
+    "y": 695.3616996638011,
+    "target_id": 112,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 760,
+   "player": 0,
+   "cmd": {
+    "type": "AmbushTarget",
+    "target_id": 112
+   }
+  },
+  {
+   "tick": 795,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 798,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 799,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 1029.6320070586637,
+    "y": 551.27866791422,
+    "target_id": 37,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 801,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 805,
+   "player": 0,
+   "cmd": {
+    "type": "MoveTo",
+    "x": 822.6320070586637,
+    "y": 837.27866791422
+   }
+  },
+  {
+   "tick": 813,
+   "player": 0,
+   "cmd": {
+    "type": "BindLeftSkill",
+    "ab_key": "R"
+   }
+  },
+  {
+   "tick": 820,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 110
+   }
+  },
+  {
+   "tick": 900,
+   "player": 0,
+   "cmd": {
+    "type": "ToggleCompanion",
+    "class_name": "Fighter"
+   }
+  },
+  {
+   "tick": 932,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 1049.961638061469,
+    "y": 656.5860273319468,
+    "target_id": 37,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 946,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 1049.961638061469,
+    "y": 656.5860273319468,
+    "target_id": 37,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 960,
+   "player": 0,
+   "cmd": {
+    "type": "AmbushTarget",
+    "target_id": 37
+   }
+  },
+  {
+   "tick": 995,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 998,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 999,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 1046.9025897853112,
+    "y": 646.3733823987296,
+    "target_id": 37,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 1001,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 1020,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 37
+   }
+  },
+  {
+   "tick": 1132,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 993.591209646674,
+    "y": 592.6047894230844,
+    "target_id": 37,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 1146,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 987.591209646674,
+    "y": 590.6047894230844,
+    "target_id": 37,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 1160,
+   "player": 0,
+   "cmd": {
+    "type": "AmbushTarget",
+    "target_id": 37
+   }
+  },
+  {
+   "tick": 1195,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 1198,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 1199,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 992.8849027291398,
+    "y": 583.1663830862038,
+    "target_id": 37,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 1201,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 1205,
+   "player": 0,
+   "cmd": {
+    "type": "MoveTo",
+    "x": 896.5102226895291,
+    "y": 737.5182136645911
+   }
+  },
+  {
+   "tick": 1210,
+   "player": 0,
+   "cmd": {
+    "type": "InteractNpc",
+    "npc_id": 119
+   }
+  },
+  {
+   "tick": 1220,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 37
+   }
+  },
+  {
+   "tick": 1332,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 1028.2242013930759,
+    "y": 541.9683515087745,
+    "target_id": 37,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 1346,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 1031.2242013930759,
+    "y": 555.9683515087745,
+    "target_id": 37,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 1360,
+   "player": 0,
+   "cmd": {
+    "type": "AmbushTarget",
+    "target_id": 37
+   }
+  },
+  {
+   "tick": 1395,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 1398,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 1399,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 942.1034707397822,
+    "y": 448.47804551601496,
+    "target_id": 25,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 1401,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 1420,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 25
+   }
+  },
+  {
+   "tick": 1532,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 1012.6773853491986,
+    "y": 573.6340922748628,
+    "target_id": 36,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 1546,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 1009.6773853491986,
+    "y": 488.63409227486284,
+    "target_id": 35,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 1560,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "E",
+    "x": 995.6773853491986,
+    "y": 520.6340922748628,
+    "target_id": 35,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 1595,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 1598,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 1599,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 904.6773853491986,
+    "y": 505.63409227486284,
+    "target_id": 35,
+    "fallback_move": false
+   }
+  },
+  {
+   "tick": 1601,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": false
+   }
+  },
+  {
+   "tick": 1605,
+   "player": 0,
+   "cmd": {
+    "type": "MoveTo",
+    "x": 953.6773853491986,
+    "y": 617.6340922748628
+   }
+  },
+  {
+   "tick": 1620,
+   "player": 0,
+   "cmd": {
+    "type": "SelectTarget",
+    "target_id": 35
+   }
+  },
+  {
+   "tick": 1732,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "Q",
+    "x": 737.94862515817,
+    "y": 374.04871805857624,
+    "target_id": 30,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 1746,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 1044.94862515817,
+    "y": 280.04871805857624,
+    "target_id": 32,
+    "fallback_move": true
+   }
+  },
+  {
+   "tick": 1760,
+   "player": 0,
+   "cmd": {
+    "type": "AmbushTarget",
+    "target_id": 32
+   }
+  },
+  {
+   "tick": 1795,
+   "player": 0,
+   "cmd": {
+    "type": "UsePotion"
+   }
+  },
+  {
+   "tick": 1798,
+   "player": 0,
+   "cmd": {
+    "type": "HoldPosition",
+    "on": true
+   }
+  },
+  {
+   "tick": 1799,
+   "player": 0,
+   "cmd": {
+    "type": "Cast",
+    "ab_key": "R",
+    "x": 843.94862515817,
+    "y": 283.04871805857624,
+    "target_id": 31,
+    "fallback_move": false
+   }
+  }
+ ]
+}

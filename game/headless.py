@@ -26,6 +26,7 @@ class HeadlessConfig:
     enabled: bool = False
     seed: int = DEFAULT_SEED
     max_time: float = DEFAULT_MAX_TIME   # simulated seconds
+    record_commands: str = ""            # write the player-command log to this JSON file when the run ends
     input_script: str = ""               # JSON file of scripted player input (see game/input_script.py)
     fixed_dt: float = FIXED_DT
 
@@ -43,6 +44,7 @@ def parse_args(argv):
         seed=_arg_value(argv, "--seed", int, DEFAULT_SEED),
         max_time=_arg_value(argv, "--max-time", float, DEFAULT_MAX_TIME),
         input_script=_arg_value(argv, "--input-script", str, ""),
+        record_commands=_arg_value(argv, "--record-commands", str, ""),
     )
 
 
