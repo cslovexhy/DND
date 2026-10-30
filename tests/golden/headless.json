@@ -48,6 +48,48 @@
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
+  "manual_cleric": {
+    "digest": "65a80a761721",
+    "hp": "425/425",
+    "kills": "24",
+    "outcome": "TIMEOUT",
+    "time": "60.0s"
+  },
+  "manual_fighter": {
+    "digest": "5efe7b385274",
+    "hp": "0/430",
+    "kills": "13",
+    "outcome": "DEFEATED",
+    "time": "37.7s"
+  },
+  "manual_fighter_upside_down": {
+    "digest": "e91eb4335e14",
+    "hp": "0/400",
+    "kills": "4",
+    "outcome": "DEFEATED",
+    "time": "48.2s"
+  },
+  "manual_paladin": {
+    "digest": "820adadc94f8",
+    "hp": "412/428",
+    "kills": "23",
+    "outcome": "TIMEOUT",
+    "time": "60.0s"
+  },
+  "manual_rogue": {
+    "digest": "13610781a8e0",
+    "hp": "420/420",
+    "kills": "23",
+    "outcome": "TIMEOUT",
+    "time": "60.0s"
+  },
+  "manual_wizard": {
+    "digest": "f0e63eaf5b93",
+    "hp": "267/318",
+    "kills": "14",
+    "outcome": "TIMEOUT",
+    "time": "60.0s"
+  },
   "northshire_church": {
     "digest": "899547acd5da",
     "hp": "428/428",

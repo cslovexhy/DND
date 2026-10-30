@@ -1,0 +1,61 @@
+"""Scripted player input for headless regression tests (client side; uses pygame events).
+
+A script is a JSON list of events keyed by simulation tick (one tick = one headless loop iteration):
+
+  {"tick": 5,  "type": "key",   "key": "TAB"}                      # pygame.K_TAB (toggle autopilot)
+  {"tick": 6,  "type": "mods",  "mods": ["shift"]}                 # held modifier keys from now on
+  {"tick": 10, "type": "click", "button": 1, "at": "nearest_monster"}
+  {"tick": 20, "type": "click", "button": 3, "at": {"dx": 100, "dy": 0}}   # offset from the hero (world px)
+  {"tick": 30, "type": "click", "button": 3, "at": [1200, 900]}            # absolute world position
+
+`at` may also be "nearest_npc" or "hero". The events are posted as real pygame events, so the
+normal input code path is exercised exactly as if a human had clicked.
+"""
+import json
+
+import pygame
+
+
+class InputScript:
+    def __init__(self, path):
+        with open(path, encoding="utf-8") as f:
+            self.events = sorted(json.load(f), key=lambda e: e["tick"])
+        self.next_idx = 0
+        self.mods = 0   # pygame KMOD_* bits currently "held"
+
+    def key_mods(self):
+        return self.mods
+
+    def _resolve(self, at, hero, game_state, npcs):
+        if at == "hero":
+            return hero.x, hero.y
+        if at == "nearest_monster":
+            cands = [m for m in game_state.alive_monsters if not getattr(m, "stealthed", False)]
+            m = min(cands, key=lambda m: hero.distance_to(m)) if cands else None
+            return (m.x, m.y) if m else (hero.x, hero.y)
+        if at == "nearest_npc":
+            n = min(npcs, key=lambda n: hero.distance_to(n)) if npcs else None
+            return (n.x, n.y) if n else (hero.x, hero.y)
+        if isinstance(at, dict):
+            return hero.x + at.get("dx", 0), hero.y + at.get("dy", 0)
+        return at[0], at[1]
+
+    def post_due(self, tick, hero, game_state, npcs, width, height, cam_zoom):
+        """Post every event scheduled for this tick as pygame events."""
+        while self.next_idx < len(self.events) and self.events[self.next_idx]["tick"] <= tick:
+            e = self.events[self.next_idx]
+            self.next_idx += 1
+            kind = e["type"]
+            if kind == "mods":
+                self.mods = 0
+                for m in e["mods"]:
+                    self.mods |= {"shift": pygame.KMOD_SHIFT, "ctrl": pygame.KMOD_CTRL}[m]
+            elif kind == "key":
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=getattr(pygame, "K_" + e["key"])))
+            elif kind == "click":
+                wx, wy = self._resolve(e["at"], hero, game_state, npcs)
+                sx = int((wx - hero.x) * cam_zoom + width // 2)
+                sy = int((wy - hero.y) * cam_zoom + height // 2)
+                pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(sx, sy), button=e["button"]))
+            else:
+                raise ValueError(f"unknown input script event type: {kind}")

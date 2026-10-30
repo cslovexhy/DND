@@ -1,0 +1,767 @@
+[
+{
+"tick": 0,
+"type": "key",
+"key": "TAB"
+},
+{
+"tick": 5,
+"type": "key",
+"key": "F1"
+},
+{
+"tick": 6,
+"type": "key",
+"key": "F2"
+},
+{
+"tick": 20,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 130,
+"type": "key",
+"key": "1"
+},
+{
+"tick": 132,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 144,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 146,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 158,
+"type": "key",
+"key": "3"
+},
+{
+"tick": 160,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 172,
+"type": "key",
+"key": "4"
+},
+{
+"tick": 174,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 195,
+"type": "key",
+"key": "f"
+},
+{
+"tick": 198,
+"type": "mods",
+"mods": [
+"shift"
+]
+},
+{
+"tick": 199,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 201,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 220,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 330,
+"type": "key",
+"key": "1"
+},
+{
+"tick": 332,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 344,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 346,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 358,
+"type": "key",
+"key": "3"
+},
+{
+"tick": 360,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 372,
+"type": "key",
+"key": "4"
+},
+{
+"tick": 374,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 395,
+"type": "key",
+"key": "f"
+},
+{
+"tick": 398,
+"type": "mods",
+"mods": [
+"shift"
+]
+},
+{
+"tick": 399,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 401,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 405,
+"type": "click",
+"button": 1,
+"at": {
+"dx": 30,
+"dy": 80
+}
+},
+{
+"tick": 420,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 530,
+"type": "key",
+"key": "1"
+},
+{
+"tick": 532,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 544,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 546,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 558,
+"type": "key",
+"key": "3"
+},
+{
+"tick": 560,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 572,
+"type": "key",
+"key": "4"
+},
+{
+"tick": 574,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 595,
+"type": "key",
+"key": "f"
+},
+{
+"tick": 598,
+"type": "mods",
+"mods": [
+"shift"
+]
+},
+{
+"tick": 599,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 601,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 610,
+"type": "click",
+"button": 3,
+"at": "nearest_npc"
+},
+{
+"tick": 620,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 730,
+"type": "key",
+"key": "1"
+},
+{
+"tick": 732,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 744,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 746,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 758,
+"type": "key",
+"key": "3"
+},
+{
+"tick": 760,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 772,
+"type": "key",
+"key": "4"
+},
+{
+"tick": 774,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 795,
+"type": "key",
+"key": "f"
+},
+{
+"tick": 798,
+"type": "mods",
+"mods": [
+"shift"
+]
+},
+{
+"tick": 799,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 801,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 805,
+"type": "click",
+"button": 1,
+"at": {
+"dx": 30,
+"dy": 80
+}
+},
+{
+"tick": 812,
+"type": "mods",
+"mods": [
+"ctrl"
+]
+},
+{
+"tick": 813,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 814,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 820,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 900,
+"type": "key",
+"key": "F1"
+},
+{
+"tick": 930,
+"type": "key",
+"key": "1"
+},
+{
+"tick": 932,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 944,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 946,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 958,
+"type": "key",
+"key": "3"
+},
+{
+"tick": 960,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 972,
+"type": "key",
+"key": "4"
+},
+{
+"tick": 974,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 995,
+"type": "key",
+"key": "f"
+},
+{
+"tick": 998,
+"type": "mods",
+"mods": [
+"shift"
+]
+},
+{
+"tick": 999,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 1001,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 1020,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 1130,
+"type": "key",
+"key": "1"
+},
+{
+"tick": 1132,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1144,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 1146,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1158,
+"type": "key",
+"key": "3"
+},
+{
+"tick": 1160,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1172,
+"type": "key",
+"key": "4"
+},
+{
+"tick": 1174,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1195,
+"type": "key",
+"key": "f"
+},
+{
+"tick": 1198,
+"type": "mods",
+"mods": [
+"shift"
+]
+},
+{
+"tick": 1199,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 1201,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 1205,
+"type": "click",
+"button": 1,
+"at": {
+"dx": 30,
+"dy": 80
+}
+},
+{
+"tick": 1210,
+"type": "click",
+"button": 3,
+"at": "nearest_npc"
+},
+{
+"tick": 1220,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 1330,
+"type": "key",
+"key": "1"
+},
+{
+"tick": 1332,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1344,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 1346,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1358,
+"type": "key",
+"key": "3"
+},
+{
+"tick": 1360,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1372,
+"type": "key",
+"key": "4"
+},
+{
+"tick": 1374,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1395,
+"type": "key",
+"key": "f"
+},
+{
+"tick": 1398,
+"type": "mods",
+"mods": [
+"shift"
+]
+},
+{
+"tick": 1399,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 1401,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 1420,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 1530,
+"type": "key",
+"key": "1"
+},
+{
+"tick": 1532,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1544,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 1546,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1558,
+"type": "key",
+"key": "3"
+},
+{
+"tick": 1560,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1572,
+"type": "key",
+"key": "4"
+},
+{
+"tick": 1574,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1595,
+"type": "key",
+"key": "f"
+},
+{
+"tick": 1598,
+"type": "mods",
+"mods": [
+"shift"
+]
+},
+{
+"tick": 1599,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 1601,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 1605,
+"type": "click",
+"button": 1,
+"at": {
+"dx": 30,
+"dy": 80
+}
+},
+{
+"tick": 1612,
+"type": "mods",
+"mods": [
+"ctrl"
+]
+},
+{
+"tick": 1613,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 1614,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 1620,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 1730,
+"type": "key",
+"key": "1"
+},
+{
+"tick": 1732,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1744,
+"type": "key",
+"key": "2"
+},
+{
+"tick": 1746,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1758,
+"type": "key",
+"key": "3"
+},
+{
+"tick": 1760,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1772,
+"type": "key",
+"key": "4"
+},
+{
+"tick": 1774,
+"type": "click",
+"button": 3,
+"at": "nearest_monster"
+},
+{
+"tick": 1795,
+"type": "key",
+"key": "f"
+},
+{
+"tick": 1798,
+"type": "mods",
+"mods": [
+"shift"
+]
+},
+{
+"tick": 1799,
+"type": "click",
+"button": 1,
+"at": "nearest_monster"
+},
+{
+"tick": 1801,
+"type": "mods",
+"mods": []
+},
+{
+"tick": 1810,
+"type": "click",
+"button": 3,
+"at": "nearest_npc"
+}
+]

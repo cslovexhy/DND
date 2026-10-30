@@ -5,6 +5,7 @@ Pure Python: must NOT import pygame (enforced by tests/test_architecture.py), so
 imported before pygame.init() to configure the SDL environment.
 
   python3 -m game.main --headless [--seed N] [--max-time SECONDS] [--hero IDX] [--map PATH]
+                       [--input-script FILE.json]   (scripted manual input; use a TAB event to turn the autopilot off)
 
 Headless implies --auto (throwaway hero, AI on, never touches real saves). Time is simulated:
 every loop iteration advances the game by FIXED_DT seconds and nothing sleeps, so a 60 s game
@@ -25,6 +26,7 @@ class HeadlessConfig:
     enabled: bool = False
     seed: int = DEFAULT_SEED
     max_time: float = DEFAULT_MAX_TIME   # simulated seconds
+    input_script: str = ""               # JSON file of scripted player input (see game/input_script.py)
     fixed_dt: float = FIXED_DT
 
 
@@ -40,6 +42,7 @@ def parse_args(argv):
         enabled="--headless" in argv,
         seed=_arg_value(argv, "--seed", int, DEFAULT_SEED),
         max_time=_arg_value(argv, "--max-time", float, DEFAULT_MAX_TIME),
+        input_script=_arg_value(argv, "--input-script", str, ""),
     )
 
 

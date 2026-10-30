@@ -27,13 +27,19 @@ SCENARIOS = [(f"hero{i}_seed1", i, 1, MAP, MAX_TIME) for i in range(5)] + [
     ("northshire_church", 2, 5, "data/maps/northshire_church.json", 60),
     ("northshire_long_respawns", 0, 7, MAP, 200),
 ]
+# Scripted MANUAL play (autopilot off, real mouse/keyboard code path): (name, hero, seed, map, seconds, script)
+MANUAL = [(f"manual_{n}", i, 11 + i, MAP, 60, f"tests/scripts/manual_{n}.json")
+          for i, n in enumerate(["fighter", "cleric", "paladin", "rogue", "wizard"])] + [
+    ("manual_fighter_upside_down", 0, 21, "data/maps/upside_down.json", 60, "tests/scripts/manual_fighter.json"),
+]
 
 
-def run_headless(hero_idx, seed, max_time=MAX_TIME, map_path=MAP):
+def run_headless(hero_idx, seed, max_time=MAX_TIME, map_path=MAP, script=None):
     env = dict(os.environ, PYTHONHASHSEED="random")
     p = subprocess.run(
         [sys.executable, "-m", "game.main", "--headless", "--seed", str(seed),
-         "--max-time", str(max_time), "--hero", str(hero_idx), "--map", map_path],
+         "--max-time", str(max_time), "--hero", str(hero_idx), "--map", map_path]
+        + (["--input-script", script] if script else []),
         cwd=ROOT, capture_output=True, text=True, timeout=120, env=env)
     lines = [l for l in p.stdout.splitlines() if l.startswith("RESULT: ")]
     assert p.returncode == 0 and len(lines) == 1, f"rc={p.returncode}\n{p.stdout[-800:]}\n{p.stderr[-800:]}"
@@ -76,6 +82,8 @@ class HeadlessRunTest(unittest.TestCase):
 
     def test_golden_runs(self):
         results = {name: run_headless(h, sd, max_time=t, map_path=mp) for name, h, sd, mp, t in SCENARIOS}
+        results.update({name: run_headless(h, sd, max_time=t, map_path=mp, script=sc)
+                        for name, h, sd, mp, t, sc in MANUAL})
         if os.environ.get("UPDATE_GOLDEN"):
             with open(GOLDEN, "w") as f:
                 json.dump(results, f, indent=2, sort_keys=True)

@@ -24,6 +24,7 @@ from game.progression import (MAX_LEVEL, xp_to_next_level, apply_level_growth, s
 from game.quests import load_quest_log
 from game import saves
 from game.headless import format_result
+from game.input_script import InputScript
 from game.engine.world import World
 from game.engine.player import PlayerState
 from game.engine import abilities
@@ -409,6 +410,10 @@ def get_npc_at_screen(sx, sy):
 
 
 # === MAIN GAME LOOP ===
+# Scripted input (headless regression tests): posts real pygame events on given ticks and fakes held modifiers.
+_input_script = InputScript(HEADLESS.input_script) if HEADLESS.enabled and HEADLESS.input_script else None
+key_mods = _input_script.key_mods if _input_script else pygame.key.get_mods
+_tick = 0
 running = True
 return_to_menu = False
 while running:
@@ -419,6 +424,10 @@ while running:
             break
     else:
         dt = clock.tick(60) / 1000.0 * game_speed
+
+    if _input_script:
+        _input_script.post_due(_tick, hero, game_state, npcs, WIDTH, HEIGHT, cam_zoom)
+    _tick += 1
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
@@ -453,7 +462,7 @@ while running:
             if event.key == pygame.K_3: right_skill_idx = 2 if len(ability_keys) > 2 else right_skill_idx
             if event.key == pygame.K_4: right_skill_idx = 3 if len(ability_keys) > 3 else right_skill_idx
             # Shift+1,2,3 = switch left-click skill
-            mods = pygame.key.get_mods()
+            mods = key_mods()
             if mods & pygame.KMOD_CTRL:
                 if event.key == pygame.K_1: left_skill_idx = 0
                 if event.key == pygame.K_2: left_skill_idx = 1
@@ -489,7 +498,7 @@ while running:
             wx = (mx_s - WIDTH//2) / cam_zoom + hero.x
             wy = (my_s - HEIGHT//2) / cam_zoom + hero.y
             clicked_monster = get_monster_at_screen(mx_s, my_s)
-            shift_held = pygame.key.get_mods() & pygame.KMOD_SHIFT
+            shift_held = key_mods() & pygame.KMOD_SHIFT
 
             if event.button == 1:  # Left-click
                 if shift_held:
@@ -589,7 +598,7 @@ while running:
 
     player.update_ambush()
 
-    player.auto_attack(ability_keys[left_skill_idx], hold_position=bool(pygame.key.get_mods() & pygame.KMOD_SHIFT))
+    player.auto_attack(ability_keys[left_skill_idx], hold_position=bool(key_mods() & pygame.KMOD_SHIFT))
 
     # === COMPANION AI ===
     world.update_companions(dt)
