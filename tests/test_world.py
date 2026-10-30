@@ -6,7 +6,7 @@ import unittest
 from game.content.heroes import HERO_CLASS_BY_NAME
 from game.content.monsters import SPAWN_STATS
 from game.engine.entities import GameState
-from game.engine.events import FloatText, LevelUp
+from game.engine.events import FloatText, LevelUp, NpcDialogue
 from game.engine.player import PlayerState
 from game.engine.world import World
 from game.engine.world_map import WorldMap
@@ -71,6 +71,23 @@ class WorldTest(unittest.TestCase):
         key, ab = next(iter(hero.abilities.items()))
         player.cast_ability(key, ab, hero.x, hero.y, None)   # single-target skill with no target must not crash
         self.assertEqual(player.move_path, [])
+
+    def test_npc_quest_offer_and_accept(self):
+        world, hero, gs = make_world()
+        world.load_npcs()
+        self.assertTrue(world.npcs)
+        npc = next((n for n in world.npcs if n.has_available_quest()), None)
+        self.assertIsNotNone(npc, "northshire should have an NPC with a level-1 quest")
+        self.assertTrue(npc.is_in_range(npc.x, npc.y))
+        self.assertTrue(world.interact_with_npc(npc))
+        dialogues = [e for e in world.events if isinstance(e, NpcDialogue)]
+        self.assertEqual(len(dialogues), 1)
+        self.assertIn(dialogues[0].mode, ("accept", "turnin"))
+        # a second conversation does not offer the same quest again
+        world.events.clear()
+        world.interact_with_npc(npc)
+        self.assertFalse(any(e.quest is dialogues[0].quest and e.mode == "accept"
+                             for e in world.events if isinstance(e, NpcDialogue)))
 
 
 if __name__ == "__main__":

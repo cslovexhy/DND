@@ -13,8 +13,9 @@ from game.engine import abilities
 from game.engine.ai import (generate_patrol_route, setup_monster_aggro, aggro_monster, call_for_help,
                             run_monster_ai, AggroState)
 from game.engine.entities import Condition, Monster, Projectile
-from game.engine.events import FloatText, Ring, LevelUp, QuestReady, GOLD, HP_RED
+from game.engine.events import FloatText, Ring, LevelUp, QuestReady, NpcDialogue, GOLD, HP_RED
 from game.engine.hero_ai import create_hero_ai
+from game.engine.npc import NPC
 from game.engine.pathfinding import astar, has_line_of_sight
 from game.engine.world_map import TILE_SIZE
 from game.content.monsters import SPAWN_STATS, respawn_delay
@@ -43,6 +44,8 @@ class World:
         # Hooks the client sets to decorate new entities (e.g. attach sprites) without the sim knowing about art
         self.on_monster_spawned = None
         self.on_companion_spawned = None
+        self.on_npc_spawned = None
+        self.npcs = []
 
     # --- helpers ---
     def is_wall(self, wx, wy):
@@ -131,6 +134,53 @@ class World:
             m = self.spawn_single_world_monster(sp)
             if m:
                 self.game_state.monsters.append(m)
+
+    def load_npcs(self):
+        """Create NPCs from map data (each map defines its own NPCs in the JSON)."""
+        for npc_def in self.world_map.data.get("npcs", []):
+            tx, ty = npc_def["x"], npc_def["y"]
+            wx, wy = self.world_map.get_spawn_world_pos(tx, ty)
+            npc = NPC(self, npc_def["name"], wx, wy, npc_id=npc_def["npc_id"],
+                      gender=npc_def.get("gender", "male"))
+            if self.on_npc_spawned:
+                self.on_npc_spawned(npc, npc_def)
+            self.npcs.append(npc)
+
+    def interact_with_npc(self, npc):
+        """Handle quest turn-in and acceptance for a specific NPC. Returns True if interaction happened."""
+        hero = self.hero
+        quests = self.quests
+        interacted = False
+        voice = "Samantha" if npc.gender == "female" else "Daniel"
+
+        # First: turn in any completed quests at this NPC
+        for qid in quests.turn_ins_for_npc(npc.npc_id):
+            q = quests.turn_in(qid)
+            hero.xp += q.rewards_xp
+            hero.gold += q.rewards_gold
+            self.float_text(hero.x, hero.y - 40, f"+{q.rewards_xp}xp +{q.rewards_gold}g", GOLD)
+            self.events.append(NpcDialogue(
+                q, "turnin", npc.name,
+                f"Well done! {q.title} complete. Here's your reward: {q.rewards_xp} experience and {q.rewards_gold} gold.",
+                voice))
+            interacted = True
+
+        # Second: offer and accept an available quest from this NPC
+        if not interacted:  # Don't pile accept on top of turn-in
+            for qid in quests.available_for_npc(npc.npc_id, hero.level):
+                q = quests.quests[qid]
+                if quests.accept(qid):
+                    # No-objective quest (intro) — completed and turned in on the spot
+                    hero.xp += q.rewards_xp
+                    hero.gold += q.rewards_gold
+                    mode = "turnin"
+                else:
+                    mode = "accept"
+                self.events.append(NpcDialogue(q, mode, npc.name, q.description, voice))
+                interacted = True
+                break  # One quest popup at a time
+
+        return interacted
 
     # --- respawning ---
     def queue_respawn(self, m):

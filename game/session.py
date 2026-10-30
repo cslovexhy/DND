@@ -27,7 +27,7 @@ from game.headless import format_result
 from game.engine.world import World
 from game.engine.player import PlayerState
 from game.engine import abilities
-from game.engine.events import FloatText, Ring, LevelUp, QuestReady, BindRightSkill
+from game.engine.events import FloatText, Ring, LevelUp, QuestReady, BindRightSkill, NpcDialogue
 
 # === EFFECTS ===
 floating_texts = []
@@ -91,7 +91,7 @@ class AoeRing:
 
 def drain_world_events():
     """Turn the simulation's view events into on-screen effects / popups / saves."""
-    global quest_popup_text, quest_popup_timer, quest_popup_color, right_skill_idx
+    global quest_popup_text, quest_popup_timer, quest_popup_color, right_skill_idx, quest_popup_panel
     for ev in world.events:
         if isinstance(ev, FloatText):
             floating_texts.append(FloatingText(ev.x, ev.y, ev.text, ev.color))
@@ -103,6 +103,10 @@ def drain_world_events():
         elif isinstance(ev, BindRightSkill):
             if ev.ability_key in ability_keys:
                 right_skill_idx = ability_keys.index(ev.ability_key)
+        elif isinstance(ev, NpcDialogue):
+            quest_popup_panel = QuestPopupPanel(ev.quest, mode=ev.mode, npc_name=ev.npc_name)
+            speak_text(ev.speech, ev.voice)
+            save_game()
         elif isinstance(ev, QuestReady):
             quest_popup_text = f"Quest Complete: {ev.title} — Return to NPC"
             quest_popup_timer = 3.0
@@ -374,39 +378,9 @@ quest_popup_panel = None
 # === QUEST SYSTEM === (see game/quests.py; `quests` is this character's QuestLog for the current map)
 
 
-class NPC(Entity):
-    """A quest-giving NPC. Inherits all combat/entity attributes but doesn't fight by default."""
-    def __init__(self, name, x, y, npc_id, gender="male", level=1, sprite=None):
-        # NPC has minimal combat stats (hp=5 gives 250 HP, ac=10 no armor, speed=0 stationary)
-        super().__init__(name, x, y, hp=5, ac=10, speed=0)
-        self.npc_id = npc_id  # matches quest.npc_id
-        self.gender = gender  # "male" or "female" — used for TTS voice
-        self.level = level
-        self.sprite = sprite
-        self.interact_range = 80  # pixels — how close hero must be to interact
-
-    def has_available_quest(self):
-        """Does this NPC have a quest to offer?"""
-        return len(quests.available_for_npc(self.npc_id, hero.level)) > 0
-
-    def has_turn_in(self):
-        """Does this NPC have a quest ready to turn in?"""
-        return len(quests.turn_ins_for_npc(self.npc_id)) > 0
-
-    def is_in_range(self, hx, hy):
-        dx = self.x - hx
-        dy = self.y - hy
-        return (dx*dx + dy*dy) <= self.interact_range * self.interact_range
-
-
-# Create NPCs from map data (each map defines its own NPCs in the JSON)
-npcs = []
-for npc_def in world_map.data.get("npcs", []):
-    tx, ty = npc_def["x"], npc_def["y"]
-    wx, wy = world_map.get_spawn_world_pos(tx, ty)
-    npc = NPC(npc_def["name"], wx, wy, npc_id=npc_def["npc_id"], gender=npc_def.get("gender", "male"))
-    npc.sprite = get_dungeon_tile(npc_def["sprite_col"], npc_def["sprite_row"])
-    npcs.append(npc)
+world.on_npc_spawned = lambda npc, d: setattr(npc, "sprite", get_dungeon_tile(d["sprite_col"], d["sprite_row"]))
+world.load_npcs()
+npcs = world.npcs
 
 # Quest interaction state
 quest_popup_timer = 0.0  # How long to show quest accepted/completed popup
@@ -432,45 +406,6 @@ def get_npc_at_screen(sx, sy):
         if abs(npc.x - wx) < TILE_SIZE and abs(npc.y - wy) < TILE_SIZE:
             return npc
     return None
-
-
-def interact_with_npc(npc):
-    """Handle quest turn-in and acceptance for a specific NPC. Returns True if interaction happened."""
-    global quest_popup_panel
-    interacted = False
-
-    voice = "Samantha" if npc.gender == "female" else "Daniel"
-
-    # First: turn in any completed quests at this NPC
-    for qid in quests.turn_ins_for_npc(npc.npc_id):
-        q = quests.turn_in(qid)
-        hero.xp += q.rewards_xp
-        hero.gold += q.rewards_gold
-        floating_texts.append(FloatingText(hero.x, hero.y - 40,
-            f"+{q.rewards_xp}xp +{q.rewards_gold}g", GOLD))
-        # Show turn-in popup panel
-        quest_popup_panel = QuestPopupPanel(q, mode="turnin", npc_name=npc.name)
-        speak_text(f"Well done! {q.title} complete. Here's your reward: {q.rewards_xp} experience and {q.rewards_gold} gold.", voice)
-        save_game()
-        interacted = True
-
-    # Second: offer and accept an available quest from this NPC
-    if not interacted:  # Don't pile accept on top of turn-in
-        for qid in quests.available_for_npc(npc.npc_id, hero.level):
-            q = quests.quests[qid]
-            if quests.accept(qid):
-                # No-objective quest (intro) — completed and turned in on the spot
-                hero.xp += q.rewards_xp
-                hero.gold += q.rewards_gold
-                quest_popup_panel = QuestPopupPanel(q, mode="turnin", npc_name=npc.name)
-            else:
-                quest_popup_panel = QuestPopupPanel(q, mode="accept", npc_name=npc.name)
-            speak_text(q.description, voice)
-            save_game()
-            interacted = True
-            break  # One quest popup at a time
-
-    return interacted
 
 
 # === MAIN GAME LOOP ===
@@ -602,7 +537,8 @@ while running:
                 # Check if clicking on an NPC first
                 clicked_npc = get_npc_at_screen(mx_s, my_s)
                 if clicked_npc and clicked_npc.is_in_range(hero.x, hero.y):
-                    interact_with_npc(clicked_npc)
+                    world.interact_with_npc(clicked_npc)
+                    drain_world_events()
                 elif clicked_npc and not clicked_npc.is_in_range(hero.x, hero.y):
                     # Walk to NPC
                     player.move_path = astar(dungeon, hero.x, hero.y, clicked_npc.x, clicked_npc.y)

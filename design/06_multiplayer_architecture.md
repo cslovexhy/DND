@@ -59,3 +59,13 @@ bot soak tests (hero_ai as clients), network chaos tests, one command (`./test.s
 - Python+pygame is fine for 2-4 player co-op; sim is the part to port if scale grows.
 - Hosting binds to LAN only by default, with a join code; internet exposure only via an explicit relay step.
 - Assumed 2-4 players on a home LAN; characters stay per machine.
+
+## Status
+
+- Phase 0 — done (headless deterministic mode, golden + architecture tests, `./test.sh`).
+- Phase 1 — done: simulation extracted from session.py into `game/engine/` (`World`, `PlayerState`, `abilities`,
+  `npc`, `events`, `content/monsters`). session.py went from ~2130 to ~1000 lines and is now input + rendering +
+  a thin frame loop. Golden runs (5 heroes, 5 maps, 200 s respawn run) are identical to pre-refactor.
+  Deferred to phase 3: removing the `runpy`/init_globals handoff (it is a client concern).
+  Known leftover: cosmetic randomness (floating-text jitter) still draws from the global sim RNG; it moves to a
+  view-only RNG in phase 3 (one deliberate golden regeneration).

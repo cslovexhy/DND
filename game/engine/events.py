@@ -43,5 +43,15 @@ class BindRightSkill:
     ability_key: str
 
 
+@dataclass
+class NpcDialogue:
+    """An NPC conversation: the client shows a quest panel, speaks the text and saves progress."""
+    quest: object
+    mode: str          # "accept" or "turnin"
+    npc_name: str
+    speech: str
+    voice: str
+
+
 GOLD = (255, 215, 0)
 HP_RED = (200, 50, 50)

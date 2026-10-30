@@ -1,83 +1,96 @@
 ---
-title: DND Game Architecture
+title: DND Game Architecture (after phase 1)
 ---
 flowchart TD
-    subgraph ENTRY["Entry points"]
-        RUN["run.sh / run.bat"]
-        MAIN["game/main.py<br/>pygame init, asset + sprite loading,<br/>music, run() loop"]
-        MEDIT["map_editor.py<br/>standalone tile map editor<br/>(MapLayer, MapData, UndoStack)"]
+    subgraph ENTRY["Entry points / tools"]
+        RUN["run.sh / test.sh"]
+        MAIN["game/main.py<br/>pygame init, asset + sprite loading,<br/>music, run() loop, --headless/--auto"]
+        MEDIT["map_editor.py<br/>standalone tile map editor"]
     end
 
-    subgraph MENU["Menus"]
-        MENUS["game/menus.py<br/>character_select / create_screen / map_select<br/>MenuContext"]
+    subgraph MENU["Client: menus"]
+        MENUS["game/menus.py<br/>character select / create / map select"]
     end
 
-    subgraph SESSION["Play session (runpy, fresh per session)"]
-        SESS["game/session.py<br/>main game loop, input, camera, rendering,<br/>spawning, NPC interaction, ability exec,<br/>floating text, level-up effects, TTS"]
+    subgraph CLIENT["Client: play session (runpy per session)"]
+        SESS["game/session.py<br/>input, camera, rendering, HUD, quest panel,<br/>TTS, saves; turns World events into effects"]
     end
 
-    subgraph ENGINE["game/engine"]
-        ENT["entities.py<br/>Entity, Hero, Monster, Ability,<br/>Condition, Projectile, GameState"]
-        AI["ai.py<br/>monster AI: patrol, aggro, call_for_help,<br/>melee / ranged / boss"]
-        HAI["hero_ai.py<br/>HeroAI: Fighter, Cleric, Paladin,<br/>Wizard, Rogue (auto-play / companions)"]
-        PATH["pathfinding.py<br/>A*, line of sight"]
-        WMAP["world_map.py<br/>WorldMap, MapTile, SpawnPoint"]
+    subgraph SIM["Simulation (pure Python, no pygame)  game/engine"]
+        WORLD["world.py  World<br/>spawning, respawns, kills/XP/level-ups,<br/>companion AI, monster AI, projectiles,<br/>NPC interaction, begin_frame"]
+        PLAYER["player.py  PlayerState<br/>move path, target, dash/channel, potions,<br/>cast_ability, autopilot (hero AI)"]
+        ABIL["abilities.py<br/>shared ability execution"]
+        EVENTS["events.py<br/>FloatText, Ring, LevelUp, QuestReady,<br/>NpcDialogue, BindRightSkill"]
+        ENT["entities.py<br/>Entity, Hero, Monster, Ability, GameState..."]
+        AI["ai.py  monster AI"]
+        HAI["hero_ai.py  hero / companion AI"]
+        NPC["npc.py  NPC"]
+        PATH["pathfinding.py  A*, LOS"]
+        WMAP["world_map.py  WorldMap"]
     end
 
-    subgraph CONTENT["Content and rules"]
-        HEROES["content/heroes.py<br/>HERO_CLASSES, create_* factories"]
-        PROG["progression.py<br/>XP curve, level growth"]
-        QUESTS["quests.py<br/>Quest, QuestLog"]
-        SAVES["saves.py<br/>character save/load/migrate"]
+    subgraph CONTENT["Content and rules (pure)"]
+        HEROES["content/heroes.py"]
+        MONSTERS["content/monsters.py  SPAWN_STATS"]
+        PROG["progression.py"]
+        QUESTS["quests.py"]
+        SAVES["saves.py"]
+        HEADLESS["headless.py<br/>fixed-step time, state digest"]
     end
 
     subgraph DATA["Data on disk"]
         MAPS[("data/maps/*.json")]
         QJSON[("data/quests/*.json")]
         SAVEF[("data/saves/*")]
-        MON[("monsters.json, powers.json,<br/>villains_and_heroes.json<br/>(design reference, not loaded by code)")]
-        ASSETS[("assets/<br/>tilesets, sprites, music")]
+        ASSETS[("assets/")]
+        GOLD[("tests/golden/headless.json")]
     end
 
     RUN --> MAIN
     MAIN -->|"run_menus()"| MENUS
     MENUS -->|"char_data, map_path"| MAIN
-    MAIN -->|"runpy.run_module + init_globals"| SESS
+    MAIN -->|"runpy + init_globals"| SESS
     SESS -.->|"return_to_menu"| MAIN
-
-    MENUS --> SAVES
-    MENUS --> HEROES
-    MAIN --> HEROES
-    MAIN --> SAVES
+    MAIN --> HEADLESS
     MAIN --> ASSETS
 
-    SESS --> ENT
-    SESS --> AI
-    SESS --> HAI
-    SESS --> PATH
-    SESS --> WMAP
-    SESS --> HEROES
-    SESS --> PROG
-    SESS --> QUESTS
-    SESS --> SAVES
-
+    SESS -->|"intents: cast, move, interact"| PLAYER
+    SESS -->|"frame steps"| WORLD
+    WORLD -->|"events"| EVENTS
+    EVENTS -->|"drain_world_events()"| SESS
+    PLAYER --> WORLD
+    PLAYER --> ABIL
+    WORLD --> ABIL
+    WORLD --> AI
+    WORLD --> HAI
+    WORLD --> NPC
+    WORLD --> PATH
+    WORLD --> WMAP
+    WORLD --> MONSTERS
+    WORLD --> QUESTS
+    WORLD --> PROG
     AI --> ENT
-    AI --> PATH
     HAI --> ENT
-    HAI --> PATH
+    ABIL --> ENT
     HEROES --> ENT
+    MENUS --> SAVES
+    MENUS --> HEROES
+    SESS --> SAVES
 
     WMAP --> MAPS
     QUESTS --> QJSON
     SAVES --> SAVEF
-
     MEDIT --> MAPS
     MEDIT --> ASSETS
+    HEADLESS -.->|"golden runs"| GOLD
 
     classDef entry fill:#ffd699,stroke:#cc7a00,color:#000
-    classDef engine fill:#99ccff,stroke:#0066cc,color:#000
+    classDef sim fill:#99ccff,stroke:#0066cc,color:#000
     classDef content fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef data fill:#eeeeee,stroke:#666,color:#000
-    classDef sess fill:#ff9999,stroke:#cc0000,color:#000
-    class HEROES,PROG,QUESTS,SAVES content
-    class SESS sess
+    classDef client fill:#ff9999,stroke:#cc0000,color:#000
+    class RUN,MAIN,MEDIT entry
+    class MENUS,SESS client
+    class WORLD,PLAYER,ABIL,EVENTS,ENT,AI,HAI,NPC,PATH,WMAP sim
+    class HEROES,MONSTERS,PROG,QUESTS,SAVES,HEADLESS content
+    class MAPS,QJSON,SAVEF,ASSETS,GOLD data
