@@ -68,9 +68,10 @@ def stab(world, caster, target, ab):
     caster.swing_timer = caster.weapon_speed
     if getattr(caster, 'stealthed', False):
         caster.stealthed = False
-        # Main hero only: the client rebinds right-click back to Stealth
-        if caster is world.hero:
-            world.events.append(BindRightSkill("R"))
+        # Player heroes only (not companions): the client rebinds right-click back to Stealth
+        player = world.player_for_hero(caster)
+        if player is not None:
+            world.events.append(BindRightSkill("R", player.player_id))
     dmg_amount = ab.calc_damage(caster.base_damage)
     # Crit check
     if random.random() < getattr(caster, 'crit_chance', 0.05):

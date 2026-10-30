@@ -32,12 +32,12 @@ DEMOGORGON_AURA_SLOW = 0.8       # enemies move at 80% speed (20% slow) in aura
 class World:
     def __init__(self, world_map, game_state, hero, quests=None, debug=False):
         self.debug = debug
-        self.quests = quests       # this character's QuestLog for the current map
+        self.quests = quests       # player 0's QuestLog for this map (each PlayerState has its own)
         self.projectiles = []      # active projectiles (Wanding, Frostbolt, monster arrows)
         self.world_map = world_map
         self.dungeon = world_map   # navigation duck-type (is_wall, is_floor, get_start_pos) used by AI/pathfinding
         self.game_state = game_state
-        self.hero = hero           # the local player's hero (becomes a list of players in phase 5)
+        self.hero = hero           # player 0's hero (the host's own player); other players: self.players
         self.companions = []       # list of (hero_obj, ai_obj) tuples
         self.events = []           # view events produced this frame (engine/events.py)
         # Respawn queue: min-heap of (respawn_at_game_time, seq, SpawnPoint)
@@ -73,7 +73,36 @@ class World:
         return self.entities.get(eid)
 
     def add_player(self, player_id, player_state):
+        player_state.player_id = player_id
         self.players[player_id] = player_state
+        if player_state.hero is not self.hero:   # player 0's hero is registered by __init__
+            self.game_state.heroes.append(player_state.hero)
+            self.register(player_state.hero)
+
+    def remove_player(self, player_id):
+        """A player left: remove their hero and their companions from the world."""
+        player = self.players.pop(player_id, None)
+        if player is None:
+            return
+        for comp, ai in [c for c in self.companions if getattr(c[0], "owner", None) is player]:
+            self.companions.remove((comp, ai))
+            self.game_state.heroes.remove(comp)
+            self.unregister(comp)
+        if player.hero in self.game_state.heroes and player.hero is not self.hero:
+            self.game_state.heroes.remove(player.hero)
+            self.unregister(player.hero)
+
+    @property
+    def player_list(self):
+        """Players in a stable order (by id)."""
+        return [self.players[pid] for pid in sorted(self.players)]
+
+    @property
+    def player_heroes(self):
+        return [p.hero for p in self.player_list]
+
+    def player_for_hero(self, hero):
+        return next((p for p in self.players.values() if p.hero is hero), None)
 
     def submit(self, command, player_id=0):
         """Queue a player command; it is applied at the start of the next frame (begin_frame)."""
@@ -120,12 +149,14 @@ class World:
         return x, y
 
     # --- spawning ---
-    def spawn_companion(self, comp_info):
-        """Summon an AI companion of the given class. Its level is fixed at the player's CURRENT level
-        when summoned (it does not level up afterwards). Returns the companion hero."""
-        hero = self.hero
+    def spawn_companion(self, comp_info, owner=None):
+        """Summon an AI companion of the given class for `owner` (a PlayerState; default player 0).
+        Its level is fixed at the owner's CURRENT level when summoned (it does not level up afterwards)."""
+        owner = owner or self.players.get(0)
+        hero = owner.hero if owner else self.hero
         cx, cy = self.find_walkable_nearby(hero.x, hero.y, radius=60)
         comp = comp_info["create"](comp_info["companion_name"], cx, cy)
+        comp.owner = owner       # follows and fights for this player
         if self.on_companion_spawned:
             self.on_companion_spawned(comp, comp_info)
         set_hero_level(comp, hero.level)
@@ -191,10 +222,13 @@ class World:
             self.npcs.append(npc)
             self.register(npc)
 
-    def interact_with_npc(self, npc):
-        """Handle quest turn-in and acceptance for a specific NPC. Returns True if interaction happened."""
-        hero = self.hero
-        quests = self.quests
+    def interact_with_npc(self, npc, player=None):
+        """Handle quest turn-in and acceptance for a specific NPC and player (default player 0).
+        Returns True if interaction happened."""
+        player = player or self.players[0]
+        hero = player.hero
+        quests = player.quests
+        pid = player.player_id
         interacted = False
         voice = "Samantha" if npc.gender == "female" else "Daniel"
 
@@ -207,7 +241,7 @@ class World:
             self.events.append(NpcDialogue(
                 quest_info(q), "turnin", npc.name,
                 f"Well done! {q.title} complete. Here's your reward: {q.rewards_xp} experience and {q.rewards_gold} gold.",
-                voice))
+                voice, pid))
             interacted = True
 
         # Second: offer and accept an available quest from this NPC
@@ -221,7 +255,7 @@ class World:
                     mode = "turnin"
                 else:
                     mode = "accept"
-                self.events.append(NpcDialogue(quest_info(q), mode, npc.name, q.description, voice))
+                self.events.append(NpcDialogue(quest_info(q), mode, npc.name, q.description, voice, pid))
                 interacted = True
                 break  # One quest popup at a time
 
@@ -251,11 +285,12 @@ class World:
         2. Aura: slows nearby heroes by 20% (SLOWED) and shows a blue "chill" visual on
            the player (visual only — not a real freeze/movement lock).
         """
-        hero = self.hero
         gs = self.game_state
-        # Decay the player's chill visual each frame (re-set to 0.3 while in an aura).
-        if getattr(hero, 'chill_visual', 0.0) > 0:
-            hero.chill_visual = max(0.0, hero.chill_visual - dt)
+        player_heroes = self.player_heroes
+        # Decay the players' chill visual each frame (re-set to 0.3 while in an aura).
+        for hero in player_heroes:
+            if getattr(hero, 'chill_visual', 0.0) > 0:
+                hero.chill_visual = max(0.0, hero.chill_visual - dt)
         for m in gs.monsters:
             if not m.alive or m.name != "Demogorgon":
                 continue
@@ -280,7 +315,7 @@ class World:
             # 2) Slow / chill aura — affects heroes (player + companions) in radius.
             #    Gameplay effect is a 20% slow (NOT a movement lock). The player also
             #    gets a visual blue "chill" marker so the aura reads on-screen.
-            targets = [hero] + [c for c, _ in self.companions]
+            targets = player_heroes + [c for c, _ in self.companions]
             for t in targets:
                 if not t.alive:
                     continue
@@ -290,49 +325,53 @@ class World:
                                       slow_factor=DEMOGORGON_AURA_SLOW)
                     # Blue chill VISUAL on the player (not a real freeze) — timer-based
                     # so it fades shortly after leaving the aura.
-                    if t is hero:
+                    if t in player_heroes:
                         t.chill_visual = 0.3
 
     # --- kills, XP, quests, level-ups ---
     def process_kills(self):
         """Award XP/gold/quest progress for freshly killed monsters and queue their respawn."""
-        hero = self.hero
+        # Co-op party rules: every player gets the full XP, their own gold roll, the kill and quest credit.
         for m in self.game_state.monsters:
             if not m.alive and m.experience > 0:
-                hero.xp += m.experience
-                hero.gold += random.randint(10, 30) * m.experience
-                hero.kills += 1
-                self.float_text(m.x, m.y + 10, f"+{m.experience}xp", GOLD)
-                # Quest kill tracking
-                for aq, just_completed in self.quests.record_kill(m.name):
-                    self.float_text(hero.x, hero.y - 50, aq.get_progress_text(), (200, 200, 255))
-                    if just_completed:
-                        self.events.append(QuestReady(aq.title))
+                for player in self.player_list:
+                    hero = player.hero
+                    hero.xp += m.experience
+                    hero.gold += random.randint(10, 30) * m.experience
+                    hero.kills += 1
+                    if player.player_id == 0 or len(self.players) == 1:
+                        self.float_text(m.x, m.y + 10, f"+{m.experience}xp", GOLD)
+                    # Quest kill tracking
+                    for aq, just_completed in player.quests.record_kill(m.name):
+                        self.float_text(hero.x, hero.y - 50, aq.get_progress_text(), (200, 200, 255))
+                        if just_completed:
+                            self.events.append(QuestReady(aq.title, player.player_id))
                 m.experience = 0
                 # Queue for respawn (every monster that came from a spawn point; bosses just take much longer)
                 self.queue_respawn(m)
 
     def process_level_ups(self):
-        hero = self.hero
-        while hero.level < MAX_LEVEL and hero.xp >= xp_to_next_level(hero.level):
-            hero.xp -= xp_to_next_level(hero.level)
-            hero.level += 1
-            growth = growth_for(hero.class_name)
-            apply_level_growth(hero)  # also full-heals on level-up
-            self.events.append(LevelUp(hero.x, hero.y))
-            self.float_text(hero.x, hero.y - 30,
-                            f"Lv {hero.level}! +{growth['hp']:.0f}HP +{growth['damage']:.0f}dmg", GOLD)
+        for player in self.player_list:
+            hero = player.hero
+            while hero.level < MAX_LEVEL and hero.xp >= xp_to_next_level(hero.level):
+                hero.xp -= xp_to_next_level(hero.level)
+                hero.level += 1
+                growth = growth_for(hero.class_name)
+                apply_level_growth(hero)  # also full-heals on level-up
+                self.events.append(LevelUp(hero.x, hero.y, player.player_id))
+                self.float_text(hero.x, hero.y - 30,
+                                f"Lv {hero.level}! +{growth['hp']:.0f}HP +{growth['damage']:.0f}dmg", GOLD)
 
     # --- projectiles ---
     def update_projectiles(self, dt):
-        hero = self.hero
         gs = self.game_state
+        hero_side = set(map(id, self.player_heroes)) | {id(c) for c, _ in self.companions}
         for proj in self.projectiles:
             result = proj.update(dt)
             if result is not None:
                 dmg, hit_target = result
                 # Determine if source is a hero (player or companion)
-                source_is_hero = (proj.source == hero) or any(proj.source == c for c, _ in self.companions)
+                source_is_hero = id(proj.source) in hero_side
                 if source_is_hero:
                     self.float_text(hit_target.x, hit_target.y - 20, f"{dmg:.0f}", proj.color)
                     # Aggro on hit: directly aggro the hit monster + call for help
@@ -358,7 +397,6 @@ class World:
     # --- one simulation step ---
     def step(self, dt):
         """Advance the simulation by dt seconds: apply queued commands, then run every system in order."""
-        hero = self.hero
         gs = self.game_state
         alive = self.begin_frame(dt)
         for pid in sorted(self.players):
@@ -372,31 +410,33 @@ class World:
         self.process_kills()
         self.process_level_ups()
         self.process_respawns()
-        if not hero.alive:
-            gs.check_hero_death(hero)
+        # Game over when every player's hero is down (single player: when the hero dies)
+        if self.players and not any(h.alive for h in self.player_heroes):
+            gs.adventure_failed = True
         self.update_projectiles(dt)
         # Expire Wall shield when buff expires
-        if "Wall" not in hero.buffs and hero.absorb_shield > 0:
-            hero.absorb_shield = 0
+        for hero in self.player_heroes:
+            if "Wall" not in hero.buffs and hero.absorb_shield > 0:
+                hero.absorb_shield = 0
         self.tick += 1
 
     # --- per-frame start ---
     def begin_frame(self, dt):
         """Start-of-frame bookkeeping: Holy Light completion, combat flags, Demogorgon skills, entity timers.
         Returns the list of alive monsters (snapshot used by the monster AI later this frame)."""
-        hero = self.hero
         gs = self.game_state
         self._apply_commands()
-        # Check Holy Light cast completion BEFORE update (buff gets removed during update)
-        if "Holy Light Casting" in hero.buffs and hero.buffs["Holy Light Casting"]["remaining"] <= dt:
-            heal_amount = hero.buffs["Holy Light Casting"]["heal"]
-            heal = hero.heal(heal_amount)
-            self.float_text(hero.x, hero.y - 30, f"+{heal:.0f} HP", (100, 255, 100))
-            del hero.buffs["Holy Light Casting"]
+        for hero in self.player_heroes:
+            # Check Holy Light cast completion BEFORE update (buff gets removed during update)
+            if "Holy Light Casting" in hero.buffs and hero.buffs["Holy Light Casting"]["remaining"] <= dt:
+                heal_amount = hero.buffs["Holy Light Casting"]["heal"]
+                heal = hero.heal(heal_amount)
+                self.float_text(hero.x, hero.y - 30, f"+{heal:.0f} HP", (100, 255, 100))
+                del hero.buffs["Holy Light Casting"]
 
-        # Update combat state for health regeneration
-        hero.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == hero
-                             for m in gs.monsters)
+            # Update combat state for health regeneration
+            hero.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == hero
+                                 for m in gs.monsters)
         for comp, _ in self.companions:
             if comp.alive:
                 comp.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == comp
@@ -415,11 +455,12 @@ class World:
     # --- companion AI ---
     def update_companions(self, dt):
         """Run each summoned companion's AI for this frame (combat abilities, then follow the hero)."""
-        hero = self.hero
         gs = self.game_state
         for comp, comp_ai in self.companions:
             if not comp.alive:
                 continue
+            owner = getattr(comp, "owner", None)
+            hero = owner.hero if owner is not None else self.hero   # the player this companion follows
             # Track stealth duration
             if comp.stealthed:
                 comp._stealth_time = getattr(comp, '_stealth_time', 0) + dt

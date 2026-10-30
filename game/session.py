@@ -101,6 +101,8 @@ def drain_events(events):
     """Turn the simulation's view events into on-screen effects / popups / saves."""
     global quest_popup_text, quest_popup_timer, quest_popup_color, right_skill_idx, quest_popup_panel
     for ev in events:
+        if not view.is_mine(ev):
+            continue   # another player's level-up / quest dialogue
         if isinstance(ev, FloatText):
             floating_texts.append(FloatingText(ev.x, ev.y, ev.text, ev.color))
         elif isinstance(ev, Ring):
@@ -150,7 +152,7 @@ MAP_ID = map_id_for(USE_MAP)  # key for per-map quest progress
 
 def _attach_sprite(v):
     """Art for an entity the client just learned about (the simulation never deals with sprites)."""
-    if v.kind in ("hero", "companion"):
+    if v.kind in ("hero", "ally", "companion"):
         v.sprite = HERO_SPRITES[HERO_CLASS_BY_NAME[v.class_name]["sprite_key"]]
     elif v.kind == "monster":
         v.sprite = BOSS_SPRITES.get(v.name) or (BOSS_SPRITE if v.is_boss else MONSTER_SPRITES.get(v.name))
@@ -665,6 +667,27 @@ while running:
         # Name tag
         nt = font.render(comp.name, True, (150, 180, 255))
         screen.blit(nt, (csx + csw//2 - nt.get_width()//2, csy - 20))
+
+    # Other players (multiplayer)
+    for ally in view.allies:
+        if not ally.alive or not ally.sprite:
+            continue
+        asw, ash = int(ally.sprite.get_width() * cam_zoom), int(ally.sprite.get_height() * cam_zoom)
+        asx = int((ally.x - cx) * cam_zoom + WIDTH//2 - asw//2)
+        asy = int((ally.y - cy) * cam_zoom + HEIGHT//2 - ash//2)
+        if asx < -asw or asx > WIDTH or asy < -ash or asy > HEIGHT:
+            continue
+        a_s = pygame.transform.flip(ally.sprite, True, False) if ally.facing_left else ally.sprite
+        a_s = pygame.transform.scale(a_s, (asw, ash))
+        if ally.stealthed:
+            a_s = a_s.copy()
+            a_s.set_alpha(100)
+        screen.blit(a_s, (asx, asy))
+        pygame.draw.rect(screen, HP_BG, (asx-1, asy-9, asw+2, 6))
+        pygame.draw.rect(screen, HP_RED, (asx, asy-8, asw, 4))
+        pygame.draw.rect(screen, HP_GREEN, (asx, asy-8, int(asw*ally.hp/ally.max_hp), 4))
+        at = font.render(f"{ally.player_name} (Lv {ally.level})", True, GOLD)
+        screen.blit(at, (asx + asw//2 - at.get_width()//2, asy - 22))
 
     # Projectiles
     for proj in view.projectiles:

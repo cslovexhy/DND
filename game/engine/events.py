@@ -1,5 +1,8 @@
 """Simulation -> view events (pure data; no pygame).
 
+Events with a `player_id` concern only that player (their level-up, quest dialogue, skill rebind);
+clients ignore other players' personal events. Events without one (FloatText, Ring) are for everyone.
+
 The simulation never draws anything. When something happens that the player should see or hear
 (damage numbers, rings, level-ups) it appends one of these to World.events; the client turns them
 into floating text / effects / sounds. Over the network (design/06 phase 4) these are the messages
@@ -29,18 +32,21 @@ class Ring:
 class LevelUp:
     x: float
     y: float
+    player_id: int = 0
 
 
 @dataclass
 class QuestReady:
     """A quest objective was just completed (client shows a popup; host persists progress)."""
     title: str
+    player_id: int = 0
 
 
 @dataclass
 class BindRightSkill:
     """The client should switch the player's right-click skill slot to this ability key."""
     ability_key: str
+    player_id: int = 0
 
 
 @dataclass
@@ -51,6 +57,7 @@ class NpcDialogue:
     npc_name: str
     speech: str
     voice: str
+    player_id: int = 0
 
 
 GOLD = (255, 215, 0)

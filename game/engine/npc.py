@@ -14,13 +14,15 @@ class NPC(Entity):
         self.sprite = sprite
         self.interact_range = 80  # pixels — how close hero must be to interact
 
-    def has_available_quest(self):
-        """Does this NPC have a quest to offer?"""
-        return len(self.world.quests.available_for_npc(self.npc_id, self.world.hero.level)) > 0
+    def has_available_quest(self, player=None):
+        """Does this NPC have a quest to offer this player (default player 0)?"""
+        player = player or self.world.players[0]
+        return len(player.quests.available_for_npc(self.npc_id, player.hero.level)) > 0
 
-    def has_turn_in(self):
-        """Does this NPC have a quest ready to turn in?"""
-        return len(self.world.quests.turn_ins_for_npc(self.npc_id)) > 0
+    def has_turn_in(self, player=None):
+        """Does this NPC have a quest ready to turn in for this player (default player 0)?"""
+        player = player or self.world.players[0]
+        return len(player.quests.turn_ins_for_npc(self.npc_id)) > 0
 
     def is_in_range(self, hx, hy):
         dx = self.x - hx

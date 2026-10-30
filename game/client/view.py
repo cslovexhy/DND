@@ -54,6 +54,7 @@ class ClientView:
         self.entities = {}
         self.hero = None
         self.companions = []
+        self.allies = []          # other players' heroes (multiplayer)
         self.monsters = []
         self.npcs = []
         self.projectiles = []
@@ -65,7 +66,7 @@ class ClientView:
 
     def apply(self, snap):
         seen = set()
-        hero, companions, monsters, npcs = None, [], [], []
+        hero, companions, monsters, npcs, allies = None, [], [], [], []
         for d in snap["entities"]:
             v = self.entities.get(d["id"])
             if v is None or v.kind != d["kind"]:
@@ -80,6 +81,8 @@ class ClientView:
                 hero = v
             elif d["kind"] == "companion":
                 companions.append(v)
+            elif d["kind"] == "ally":
+                allies.append(v)
             elif d["kind"] == "monster":
                 monsters.append(v)
             else:
@@ -87,6 +90,7 @@ class ClientView:
         for eid in [e for e in self.entities if e not in seen]:
             del self.entities[eid]
         self.hero, self.companions, self.monsters, self.npcs = hero, companions, monsters, npcs
+        self.allies = allies
         self.projectiles = [ProjectileView(p, self.entities.get(p["target_id"])) for p in snap["projectiles"]]
         you = dict(snap["you"])
         you["abilities"] = {a["key"]: AbilityView(a) for a in you["abilities"]}
@@ -100,6 +104,11 @@ class ClientView:
         self.game_time = snap["game_time"]
         self.objective_text = snap["objective_text"]
         self.adventure_failed = snap["adventure_failed"]
+
+    def is_mine(self, event):
+        """Personal events (with a player_id) are only for that player's client."""
+        pid = getattr(event, "player_id", None)
+        return pid is None or self.you is None or pid == self.you.player_id
 
     @property
     def alive_monsters(self):

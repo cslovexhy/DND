@@ -24,7 +24,7 @@ def _entity(e, kind):
     if kind == "monster":
         d["is_boss"] = bool(e.is_boss)
         d["unique"] = bool(getattr(e, "unique", False))
-    elif kind in ("hero", "companion"):
+    elif kind in ("hero", "ally", "companion"):
         d["class_name"] = e.class_name
         d["absorb_shield"] = e.absorb_shield
         d["buffs"] = sorted(e.buffs)
@@ -41,13 +41,13 @@ def quest_info(q):
             "rewards_xp": q.rewards_xp, "rewards_gold": q.rewards_gold}
 
 
-def _quests(world):
-    ql = world.quests
+def _quests(player):
+    ql = player.quests
     active = [{"title": q.title, "accepted": q.accepted, "turned_in": q.turned_in,
                "has_objectives": bool(q.objectives), "progress_text": q.get_progress_text(),
                "complete": q.is_complete()}
               for q in ql.active_objects()]
-    return {"active": active, "any_available": bool(ql.available(world.hero.level)), "has_quests": bool(ql.quests)}
+    return {"active": active, "any_available": bool(ql.available(player.hero.level)), "has_quests": bool(ql.quests)}
 
 
 def make_snapshot(world, player_id=0):
@@ -55,13 +55,18 @@ def make_snapshot(world, player_id=0):
     hero = player.hero
     gs = world.game_state
     entities = [_entity(hero, "hero")]
+    for other in world.player_list:          # other players' heroes
+        if other is not player:
+            d = _entity(other.hero, "ally")
+            d["player_name"] = other.name
+            entities.append(d)
     entities += [_entity(c, "companion") for c, _ in world.companions]
     entities += [_entity(m, "monster") for m in gs.monsters]
     for n in world.npcs:
         d = _entity(n, "npc")
         d["sprite_tile"] = list(getattr(n, "sprite_tile", None) or ())
-        d["turn_in"] = n.has_turn_in()
-        d["quest_available"] = n.has_available_quest()
+        d["turn_in"] = n.has_turn_in(player)
+        d["quest_available"] = n.has_available_quest(player)
         entities.append(d)
     projectiles = [{"x": p.x, "y": p.y, "color": list(p.color), "radius": p.radius,
                     "target_id": p.target.eid if p.target is not None else None}
@@ -76,7 +81,10 @@ def make_snapshot(world, player_id=0):
         "frostbolt_channel_timer": player.frostbolt_channel_timer,
         "abilities": [{"key": k, "name": a.name, "remaining": a.remaining, "ready": a.is_ready()}
                       for k, a in hero.abilities.items()],
-        "quests": _quests(world),
+        "player_id": player.player_id,
+        "quests": _quests(player),
+        "progress": {"level": hero.level, "xp": hero.xp, "gold": hero.gold, "kills": hero.kills,
+                     "quests": player.quests.to_state()},   # what this player's machine saves
     }
     return {
         "v": SNAPSHOT_VERSION,

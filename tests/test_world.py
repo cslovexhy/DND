@@ -23,6 +23,7 @@ def make_world(hero_class="Fighter"):
     gs = GameState()
     gs.heroes.append(hero)
     world = World(wm, gs, hero, quests=load_quest_log("northshire"))
+    world.add_player(0, PlayerState(world, hero))
     return world, hero, gs
 
 
@@ -66,7 +67,7 @@ class WorldTest(unittest.TestCase):
 
     def test_player_state_defaults_and_potion_free_cast_no_target(self):
         world, hero, gs = make_world("Fighter")
-        player = PlayerState(world, hero)
+        player = world.players[0]
         self.assertEqual(player.potions, 3)
         key, ab = next(iter(hero.abilities.items()))
         player.cast_ability(key, ab, hero.x, hero.y, None)   # single-target skill with no target must not crash
@@ -118,3 +119,93 @@ class SnapshotTest(unittest.TestCase):
         world.step(1 / 30)
         view.apply(make_snapshot(world))
         self.assertIs(view.hero, hero_view)
+
+
+class MultiplayerSimTest(unittest.TestCase):
+    """Two players in one world (pure sim)."""
+
+    def setUp(self):
+        from game import saves
+        from game.engine.bootstrap import create_world, join_player
+        random.seed(5)
+        self.world, self.p0 = create_world(MAP, saves.blank_character("ann", "Fighter"))
+        self.p1 = join_player(self.world, 1, saves.blank_character("bob", "Wizard"), MAP)
+
+    def test_both_heroes_exist_with_own_ids_and_quests(self):
+        w = self.world
+        self.assertEqual(len(w.player_heroes), 2)
+        self.assertNotEqual(self.p0.hero.eid, self.p1.hero.eid)
+        self.assertIsNot(self.p0.quests, self.p1.quests)
+        self.assertIn(self.p1.hero, w.game_state.heroes)
+
+    def test_commands_go_to_the_right_player(self):
+        from game.engine import commands as C
+        w = self.world
+        x0, x1 = self.p0.hero.x, self.p1.hero.x
+        w.submit(C.MoveTo(x1 + 200, self.p1.hero.y), player_id=1)
+        for _ in range(30):
+            w.step(1 / 30)
+        self.assertEqual(self.p0.hero.x, x0)            # player 0 didn't move
+        self.assertGreater(self.p1.hero.x, x1 + 30)     # player 1 walked
+
+    def test_party_kill_credit_and_personal_level_up_events(self):
+        from game.engine.events import LevelUp
+        w = self.world
+        w.spawn_world_map_monsters() if not w.game_state.monsters else None
+        m = w.game_state.monsters[0]
+        m.take_damage(m.max_hp * 10)
+        self.p1.hero.xp = 10 ** 6   # player 1 will level up, player 0 won't
+        w.process_kills()
+        w.process_level_ups()
+        self.assertEqual((self.p0.hero.kills, self.p1.hero.kills), (1, 1))
+        ups = [e for e in w.events if isinstance(e, LevelUp)]
+        self.assertTrue(ups and all(e.player_id == 1 for e in ups))
+
+    def test_snapshots_are_per_player(self):
+        from game.engine.snapshot import make_snapshot
+        s0, s1 = make_snapshot(self.world, 0), make_snapshot(self.world, 1)
+        self.assertEqual(s0["you"]["hero_id"], self.p0.hero.eid)
+        self.assertEqual(s1["you"]["hero_id"], self.p1.hero.eid)
+        kinds1 = {e["id"]: e["kind"] for e in s1["entities"]}
+        self.assertEqual(kinds1[self.p1.hero.eid], "hero")
+        self.assertEqual(kinds1[self.p0.hero.eid], "ally")
+
+    def test_companions_follow_their_owner(self):
+        from game.engine import commands as C
+        w = self.world
+        w.submit(C.ToggleCompanion("Cleric"), player_id=1)
+        w.step(1 / 30)
+        comp = w.companions[-1][0]
+        self.assertIs(comp.owner, self.p1)
+        # player 0 toggling Cleric summons their OWN cleric instead of dismissing player 1's
+        w.submit(C.ToggleCompanion("Cleric"), player_id=0)
+        w.step(1 / 30)
+        self.assertEqual(sum(1 for c, _ in w.companions if c.class_name == "Cleric"), 2)
+
+    def test_game_over_only_when_everyone_is_down(self):
+        w = self.world
+        self.p0.hero.take_damage(10 ** 6)
+        w.step(1 / 30)
+        self.assertFalse(w.game_state.adventure_failed)
+        self.p1.hero.take_damage(10 ** 6)
+        w.step(1 / 30)
+        self.assertTrue(w.game_state.adventure_failed)
+
+    def test_remove_player(self):
+        from game.engine import commands as C
+        w = self.world
+        w.submit(C.ToggleCompanion("Rogue"), player_id=1)
+        w.step(1 / 30)
+        w.remove_player(1)
+        self.assertEqual(len(w.player_heroes), 1)
+        self.assertNotIn(self.p1.hero, w.game_state.heroes)
+        self.assertFalse(any(getattr(c, "owner", None) is self.p1 for c, _ in w.companions))
+
+    def test_sanitize_character(self):
+        from game.engine.bootstrap import sanitize_character
+        ok = sanitize_character({"name": "x" * 50, "class_name": "Rogue", "level": 3, "xp": 5, "gold": 1, "kills": 0})
+        self.assertEqual(len(ok["name"]), 20)
+        for bad in ({"class_name": "Dragon"}, {"class_name": "Rogue", "level": 999},
+                    {"class_name": "Rogue", "gold": -5}, {"class_name": "Rogue", "xp": "lots"}, "nope"):
+            with self.assertRaises(ValueError):
+                sanitize_character(bad)

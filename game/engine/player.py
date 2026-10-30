@@ -16,13 +16,19 @@ from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, Ambus
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition)
 from game.engine.events import Ring, BindRightSkill, GOLD
 from game.engine.hero_ai import create_hero_ai
+from game.content.heroes import HERO_CLASSES
 from game.engine.pathfinding import astar
 
 
 class PlayerState:
-    def __init__(self, world, hero, ai_enabled=False, potions=3):
+    def __init__(self, world, hero, ai_enabled=False, potions=3, quests=None, name=None):
         self.world = world
         self.hero = hero
+        self.player_id = 0               # set by World.add_player
+        self.name = name or hero.name
+        self.quests = quests if quests is not None else world.quests   # this player's QuestLog for the map
+        # One AI companion per class other than this player's own (summoned with ToggleCompanion)
+        self.available_companions = [c for c in HERO_CLASSES if c["class"] != hero.class_name]
         self.hero_ai = create_hero_ai(hero)   # autopilot brain (HeroAI)
         self.hero_ai.set_nav_dungeon(world.dungeon)
         self.hero_ai.clock = lambda: world.game_state.game_time
@@ -106,7 +112,7 @@ class PlayerState:
             if npc is None or npc not in world.npcs:
                 return
             if npc.is_in_range(hero.x, hero.y):
-                world.interact_with_npc(npc)
+                world.interact_with_npc(npc, self)
             else:
                 # Walk to NPC
                 self.move_path = astar(world.dungeon, hero.x, hero.y, npc.x, npc.y)
@@ -130,11 +136,12 @@ class PlayerState:
         elif isinstance(cmd, ToggleAutopilot):
             self.ai_enabled = not self.ai_enabled
         elif isinstance(cmd, ToggleCompanion):
-            comp_info = next((c for c in world.available_companions if c["class"] == cmd.class_name), None)
+            comp_info = next((c for c in self.available_companions if c["class"] == cmd.class_name), None)
             if comp_info is None:
                 return
             # Already summoned — dismiss; otherwise summon
-            existing = [(i, c) for i, (c, _) in enumerate(world.companions) if c.class_name == comp_info["class"]]
+            existing = [(i, c) for i, (c, _) in enumerate(world.companions)
+                        if c.class_name == comp_info["class"] and getattr(c, "owner", None) is self]
             if existing:
                 idx, comp = existing[0]
                 world.companions.pop(idx)
@@ -142,7 +149,7 @@ class PlayerState:
                 world.unregister(comp)
                 world.float_text(comp.x, comp.y - 30, f"{comp.name} dismissed", (200, 150, 150))
             else:
-                comp = world.spawn_companion(comp_info)
+                comp = world.spawn_companion(comp_info, owner=self)
                 world.float_text(comp.x, comp.y - 30, f"{comp.name} joined! (Lv {comp.level})", GOLD)
         elif isinstance(cmd, BindLeftSkill):
             if cmd.ab_key in hero.abilities:
@@ -187,7 +194,7 @@ class PlayerState:
                 hero.stealthed = False
                 self.world.float_text(hero.x, hero.y - 40, "Stealth broken!", (200, 200, 200))
                 # Auto-bind right-click back to Stealth
-                self.world.events.append(BindRightSkill("R"))
+                self.world.events.append(BindRightSkill("R", self.player_id))
             dmg_amount = ab.calc_damage(hero.base_damage)
             # Crit roll
             hero.last_crit = random.random() < hero.crit_chance
@@ -212,7 +219,7 @@ class PlayerState:
             hero.stealthed = True
             self.selected_target = None  # Stop auto-attack
             # Auto-bind right-click to Ambush
-            self.world.events.append(BindRightSkill("E"))
+            self.world.events.append(BindRightSkill("E", self.player_id))
             # Drop aggro from all monsters targeting hero (except bosses)
             for m in gs.alive_monsters:
                 if hasattr(m, 'aggro_target') and m.aggro_target == hero and not m.is_boss:
@@ -243,7 +250,7 @@ class PlayerState:
             # Break stealth
             hero.stealthed = False
             # Auto-bind right-click back to Stealth
-            self.world.events.append(BindRightSkill("R"))
+            self.world.events.append(BindRightSkill("R", self.player_id))
             # Damage: 3x weapon + 20% target max HP
             dmg_amount = ab.calc_damage(hero.base_damage) + clicked_monster.max_hp * 0.2
             dmg = clicked_monster.take_damage(dmg_amount)
