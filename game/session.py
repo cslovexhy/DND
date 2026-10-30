@@ -25,7 +25,8 @@ from game.quests import load_quest_log
 from game import saves
 from game.headless import format_result
 from game.engine.world import World
-from game.engine.events import FloatText, Ring, LevelUp, QuestReady
+from game.engine import abilities
+from game.engine.events import FloatText, Ring, LevelUp, QuestReady, BindRightSkill
 
 # === EFFECTS ===
 floating_texts = []
@@ -89,7 +90,7 @@ class AoeRing:
 
 def drain_world_events():
     """Turn the simulation's view events into on-screen effects / popups / saves."""
-    global quest_popup_text, quest_popup_timer, quest_popup_color
+    global quest_popup_text, quest_popup_timer, quest_popup_color, right_skill_idx
     for ev in world.events:
         if isinstance(ev, FloatText):
             floating_texts.append(FloatingText(ev.x, ev.y, ev.text, ev.color))
@@ -98,6 +99,9 @@ def drain_world_events():
         elif isinstance(ev, LevelUp):
             effects.append(LevelUpEffect(ev.x, ev.y))
             save_game()
+        elif isinstance(ev, BindRightSkill):
+            if ev.ability_key in ability_keys:
+                right_skill_idx = ability_keys.index(ev.ability_key)
         elif isinstance(ev, QuestReady):
             quest_popup_text = f"Quest Complete: {ev.title} — Return to NPC"
             quest_popup_timer = 3.0
@@ -150,7 +154,7 @@ game_state.heroes.append(hero)
 game_state.objective_text = f"Explore {MAP_ID.replace('_', ' ').title()} and clear the area of monsters!"
 
 # The simulation (spawning, respawns, ...). Art is attached through hooks so the sim stays pygame-free.
-world = World(world_map, game_state, hero, quests=quests)
+world = World(world_map, game_state, hero, quests=quests, debug=DEBUG)
 projectiles = world.projectiles  # active projectiles (owned by the World; mutate in place)
 world.on_monster_spawned = lambda m: setattr(
     m, "sprite", BOSS_SPRITES.get(m.name) or (BOSS_SPRITE if m.is_boss else MONSTER_SPRITES.get(m.name)))
@@ -490,104 +494,6 @@ def interact_with_npc(npc):
     return interacted
 
 
-# === SHARED ABILITY EXECUTION HELPERS ===
-# These are the "do the thing" functions called by both _cast_ability (player)
-# and the companion AI loop. Validation (range, LOS, cooldown) is done by the caller.
-
-def _exec_fire_blast(caster, target, ab):
-    """Execute Fire Blast: instant ranged nuke. Returns damage dealt."""
-    ab.use()
-    dmg_amount = ab.calc_damage(caster.base_damage)
-    dmg = target.take_damage(dmg_amount)
-    floating_texts.append(FloatingText(target.x, target.y - 20, f"{dmg:.0f}", (255, 130, 50)))
-    effects.append(AoeRing(target.x, target.y, 30, (255, 100, 0)))
-    if hasattr(target, 'aggro_state') and target.aggro_state != "aggroed":
-        from game.engine.ai import aggro_monster as _aggro
-        _aggro(target, caster, game_state.monsters)
-    call_for_help(target, game_state.monsters, caster)
-    return dmg
-
-
-def _exec_ranged_projectile(caster, target, ab, color, apply_slow=False):
-    """Spawn a homing projectile (Wanding, Frostbolt). Returns the Projectile."""
-    ab.use()
-    caster.swing_timer = caster.weapon_speed
-    proj_damage = ab.calc_damage(caster.base_damage)
-    proj = Projectile(x=caster.x, y=caster.y, target=target,
-                      speed=500.0, damage=proj_damage,
-                      color=color, source=caster)
-    if apply_slow:
-        proj.apply_slow = True
-    projectiles.append(proj)
-    return proj
-
-
-def _exec_judgement(caster, target, ab):
-    """Execute Judgement: ranged holy damage, consumes Seal. Returns damage dealt."""
-    ab.use()
-    total_damage = ab.calc_damage(caster.base_damage)
-    seal_consumed = False
-    if "Righteous Seal" in caster.buffs:
-        total_damage += caster.base_damage
-        del caster.buffs["Righteous Seal"]
-        seal_consumed = True
-        floating_texts.append(FloatingText(target.x, target.y - 40, "Seal Consumed!", (255, 200, 50)))
-    dmg = target.take_damage(total_damage)
-    floating_texts.append(FloatingText(target.x, target.y - 20, f"{dmg:.0f}", (255, 255, 150)))
-    if hasattr(target, 'aggro_state') and target.aggro_state != "aggroed":
-        from game.engine.ai import aggro_monster as _aggro
-        _aggro(target, caster, game_state.monsters)
-    call_for_help(target, game_state.monsters, caster)
-    return dmg
-
-
-def _exec_stab(caster, target, ab):
-    """Execute Stab: fast melee attack. Returns damage dealt."""
-    global right_skill_idx
-    ab.use()
-    caster.swing_timer = caster.weapon_speed
-    if getattr(caster, 'stealthed', False):
-        caster.stealthed = False
-        # Auto-bind right-click back to Stealth (main hero only)
-        if caster is hero and "R" in ability_keys:
-            right_skill_idx = ability_keys.index("R")
-    dmg_amount = ab.calc_damage(caster.base_damage)
-    # Crit check
-    import random as _rng
-    if _rng.random() < getattr(caster, 'crit_chance', 0.05):
-        dmg_amount *= 2.0
-        floating_texts.append(FloatingText(target.x, target.y - 40, "CRIT!", (255, 255, 0)))
-    dmg = target.take_damage(dmg_amount)
-    floating_texts.append(FloatingText(target.x, target.y - 20, f"{dmg:.0f}", (180, 255, 180)))
-    if hasattr(target, 'aggro_state') and target.aggro_state != "aggroed":
-        from game.engine.ai import aggro_monster as _aggro
-        _aggro(target, caster, game_state.monsters)
-    call_for_help(target, game_state.monsters, caster)
-    return dmg
-
-
-def _exec_smite(caster, target, ab):
-    """Execute Smite: melee with Seal bonus. Returns damage dealt."""
-    ab.use()
-    caster.swing_timer = caster.weapon_speed
-    bonus = 1.0 + (caster.buffs.get("Righteous Seal", {}).get("bonus", 0))
-    dmg_amount = ab.calc_damage(caster.base_damage) * bonus
-    dmg = target.take_damage(dmg_amount)
-    floating_texts.append(FloatingText(target.x, target.y - 20, f"{dmg:.0f}", WHITE))
-    if hasattr(target, 'aggro_state') and target.aggro_state != "aggroed":
-        from game.engine.ai import aggro_monster as _aggro
-        _aggro(target, caster, game_state.monsters)
-    call_for_help(target, game_state.monsters, caster)
-    return dmg
-
-
-def _can_ranged_hit(caster, target, ab):
-    """Check if a ranged ability can hit: in range + line of sight."""
-    if caster.distance_to(target) > ab.range:
-        return False
-    return check_los(caster.x, caster.y, target.x, target.y)
-
-
 def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
     """Cast an ability — handles AoE, single target, dash, stun, call-for-help, and Quinn's Seal system."""
     global move_path, selected_target, dash_active, dash_target_x, dash_target_y, dash_stun_target, dash_stun_duration, dash_damage, frostbolt_channeling, frostbolt_channel_timer, frostbolt_target, ambush_target, right_skill_idx
@@ -704,7 +610,7 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
         if not check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
             floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
             return
-        _exec_fire_blast(hero, clicked_monster, ab)
+        abilities.fire_blast(world, hero, clicked_monster, ab)
         hero.gcd = hero.GCD_DURATION
         move_path = []
         return
@@ -769,7 +675,7 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
             return
         if hero.swing_timer > 0:
             return  # Gated by weapon speed
-        _exec_ranged_projectile(hero, clicked_monster, ab, color=(255, 220, 100))
+        abilities.ranged_projectile(world, hero, clicked_monster, ab, color=(255, 220, 100))
         hero.gcd = hero.GCD_DURATION
         # Don't clear selected_target — keep auto-attacking
         move_path = []
@@ -829,7 +735,7 @@ def _cast_ability(ab_key, ab, wx, wy, clicked_monster):
         if not check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
             floating_texts.append(FloatingText(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100)))
             return
-        _exec_judgement(hero, clicked_monster, ab)
+        abilities.judgement(world, hero, clicked_monster, ab)
         hero.gcd = hero.GCD_DURATION
         move_path = []
         selected_target = None
@@ -1314,231 +1220,11 @@ while running:
                     move_path = astar(dungeon, hero.x, hero.y, selected_target.x, selected_target.y)
 
     # === COMPANION AI ===
-    for comp, comp_ai in companions:
-        if not comp.alive:
-            continue
-        # Track stealth duration
-        if comp.stealthed:
-            comp._stealth_time = getattr(comp, '_stealth_time', 0) + dt
-        comp_action = comp_ai.update(game_state.alive_monsters, dt, is_wall)
-
-        if comp_action.get("use_potion") and comp.hp < comp.max_hp * 0.4:
-            heal = comp.heal(150)
-            if heal:
-                floating_texts.append(FloatingText(comp.x, comp.y - 30, f"+{heal:.0f}", (100, 255, 100)))
-
-        comp_acted = False
-        if comp_action.get("use_ability"):
-            ab_key = comp_action["use_ability"]
-            ab = comp.abilities.get(ab_key)
-            if ab and ab.is_ready() and comp.gcd <= 0:
-                comp_acted = True
-                target_m = comp_action.get("ability_target_monster")
-
-                # LOS check for targeted abilities — pathfind if blocked
-                if target_m and not check_los(comp.x, comp.y, target_m.x, target_m.y):
-                    path = astar(dungeon, comp.x, comp.y, target_m.x, target_m.y)
-                    if path:
-                        comp.move_toward(path[0][0], path[0][1], dt, is_wall)
-                # Handle dash abilities (Charge) — just teleport + damage for companions
-                elif comp_action.get("dash"):
-                    tx, ty, dash_target, dash_dmg, dash_stun = comp_action["dash"]
-                    if dash_target and dash_target.alive and comp.distance_to(dash_target) <= 300:
-                        if not check_los(comp.x, comp.y, dash_target.x, dash_target.y):
-                            path = astar(dungeon, comp.x, comp.y, dash_target.x, dash_target.y)
-                            if path:
-                                comp.move_toward(path[0][0], path[0][1], dt, is_wall)
-                        else:
-                            ab.use()
-                            comp.x, comp.y = tx, ty
-                            dmg = dash_target.take_damage(dash_dmg)
-                            floating_texts.append(FloatingText(dash_target.x, dash_target.y - 20, f"{dmg:.0f}", (255, 200, 50)))
-                            if dash_stun > 0 and dash_target.alive:
-                                dash_target.apply_condition(Condition.STUNNED, dash_stun)
-                            call_for_help(dash_target, game_state.monsters, hero)
-                elif ab.name == "Frost Nova":
-                    # Heskan's AoE freeze — specific handler (bypasses swing_timer)
-                    ab.use()
-                    comp.gcd = comp.GCD_DURATION
-                    dmg_amount = ab.calc_damage(comp.base_damage)
-                    hit_count = 0
-                    for m in game_state.alive_monsters:
-                        if comp.distance_to(m) <= ab.radius:
-                            dmg = m.take_damage(dmg_amount)
-                            m.apply_condition(Condition.FROZEN, 4.0)
-                            floating_texts.append(FloatingText(m.x, m.y - 20, f"{dmg:.0f}", (180, 220, 255)))
-                            hit_count += 1
-                    print(f"[COMP_SKILL] {comp.name} Frost Nova hit {hit_count} targets", flush=True) if DEBUG else None
-                    effects.append(AoeRing(comp.x, comp.y, ab.radius, (150, 200, 255)))
-                elif ab.name == "Demoralizing Shout":
-                    # Vistra's AoE debuff
-                    ab.use()
-                    comp.gcd = comp.GCD_DURATION
-                    hit_count = 0
-                    for m in game_state.alive_monsters:
-                        if comp.distance_to(m) <= ab.radius:
-                            m.buffs["Demoralized"] = {"remaining": 10.0, "damage_mult": 0.5}
-                            m.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.5)
-                            floating_texts.append(FloatingText(m.x, m.y - 20, "Demoralized!", (200, 150, 50)))
-                            hit_count += 1
-                    if hit_count > 0:
-                        effects.append(AoeRing(comp.x, comp.y, ab.radius, ab.color))
-                elif ab.radius > 0:
-                    # AoE (generic)
-                    hits = comp.use_ability(ab_key, game_state.alive_monsters, target_pos=(comp.x, comp.y))
-                    if hits:
-                        effects.append(AoeRing(comp.x, comp.y, ab.radius, ab.color))
-                        for name, dmg in hits:
-                            floating_texts.append(FloatingText(comp.x, comp.y - 20, f"{dmg:.0f}", GOLD))
-                elif ab.name == "Wanding" and target_m and target_m.alive:
-                    # Quinn's ranged projectile
-                    if comp.swing_timer <= 0 and _can_ranged_hit(comp, target_m, ab):
-                        _exec_ranged_projectile(comp, target_m, ab, color=(255, 220, 100))
-                elif ab.name == "Wall":
-                    # Quinn's shield — on target ally
-                    ab.use()
-                    wall_target = comp_action.get("ability_target_ally", comp)
-                    wall_target.absorb_shield = comp.surge_value
-                    wall_target.buffs["Wall"] = {"remaining": 15.0}
-                    floating_texts.append(FloatingText(wall_target.x, wall_target.y - 30, f"Wall!", (100, 180, 255)))
-                elif ab.name == "Renew":
-                    # Quinn's HoT — on target ally
-                    ab.use()
-                    renew_target = comp_action.get("ability_target_ally", comp)
-                    hot_total = comp.surge_value * 0.5
-                    renew_target.buffs["Renew"] = {"remaining": 8.0, "hot_per_sec": hot_total / 8.0}
-                    floating_texts.append(FloatingText(renew_target.x, renew_target.y - 30, "Renew!", (100, 255, 150)))
-                elif ab.name == "Frostbolt" and target_m and target_m.alive:
-                    # Heskan's channeled bolt — simplified for companion (instant projectile)
-                    if comp.swing_timer <= 0 and _can_ranged_hit(comp, target_m, ab):
-                        _exec_ranged_projectile(comp, target_m, ab, color=(150, 200, 255), apply_slow=True)
-                elif ab.name == "Fire Blast" and target_m and target_m.alive:
-                    # Heskan's instant nuke
-                    if _can_ranged_hit(comp, target_m, ab):
-                        _exec_fire_blast(comp, target_m, ab)
-                elif ab.name == "Stealth":
-                    # Tarak's stealth
-                    ab.use()
-                    comp.stealthed = True
-                    comp.gcd = comp.GCD_DURATION
-                    comp._stealth_time = 0.0  # Track how long stealthed
-                    # Drop aggro (except bosses)
-                    for m in game_state.alive_monsters:
-                        if hasattr(m, 'aggro_target') and m.aggro_target == comp and not m.is_boss:
-                            from game.engine.ai import AggroState
-                            m.aggro_state = AggroState.RESETTING
-                            m.aggro_target = None
-                elif ab.name == "Ambush" and target_m and target_m.alive:
-                    # Tarak's stealth burst — need at least 0.5s in stealth
-                    stealth_time = getattr(comp, '_stealth_time', 0)
-                    if comp.stealthed and stealth_time >= 0.5 and comp.distance_to(target_m) <= ab.range:
-                        ab.use()
-                        comp.stealthed = False
-                        dmg_amount = ab.calc_damage(comp.base_damage) + target_m.max_hp * 0.2
-                        dmg = target_m.take_damage(dmg_amount)
-                        floating_texts.append(FloatingText(target_m.x, target_m.y - 20, f"{dmg:.0f}", (255, 50, 50)))
-                        floating_texts.append(FloatingText(target_m.x, target_m.y - 40, "AMBUSH!", (255, 50, 50)))
-                        call_for_help(target_m, game_state.monsters, hero)
-                elif ab.name == "Stab" and target_m and target_m.alive:
-                    # Tarak's fast melee
-                    if comp.swing_timer <= 0 and comp.distance_to(target_m) <= ab.range:
-                        _exec_stab(comp, target_m, ab)
-                elif ab.name == "Smite" and target_m and target_m.alive:
-                    # Keyleth's melee
-                    if comp.swing_timer <= 0 and comp.distance_to(target_m) <= ab.range:
-                        _exec_smite(comp, target_m, ab)
-                elif ab.name == "Righteous Seal":
-                    # Keyleth's self-buff
-                    ab.use()
-                    comp.buffs["Righteous Seal"] = {"remaining": 10.0, "bonus": 0.25}
-                elif ab.name == "Judgement" and target_m and target_m.alive:
-                    # Keyleth's ranged holy bolt
-                    if _can_ranged_hit(comp, target_m, ab):
-                        _exec_judgement(comp, target_m, ab)
-                elif ab.name == "Holy Light":
-                    # Keyleth's self-heal
-                    ab.use()
-                    heal = comp.heal(150)
-                    if heal:
-                        floating_texts.append(FloatingText(comp.x, comp.y - 30, f"+{heal:.0f}", (100, 255, 100)))
-                elif target_m and target_m.alive:
-                    # Generic fallback
-                    if comp.distance_to(target_m) <= ab.range and comp.swing_timer <= 0:
-                        hits = comp.use_ability(ab_key, [target_m])
-                        for name, dmg in hits:
-                            floating_texts.append(FloatingText(target_m.x, target_m.y - 20, f"{dmg:.0f}", WHITE))
-                            call_for_help(target_m, game_state.monsters, hero)
-
-        if comp_action.get("move_to") and not comp_acted:
-            tx, ty = comp_action["move_to"]
-            # Repath periodically (every 0.5s) or if no cached path
-            if not hasattr(comp, '_comp_path'):
-                comp._comp_path = []
-                comp._comp_repath_timer = 0
-            comp._comp_repath_timer -= dt
-            if comp._comp_repath_timer <= 0 or not comp._comp_path:
-                comp._comp_path = astar(dungeon, comp.x, comp.y, tx, ty)
-                comp._comp_repath_timer = 0.5
-            if comp._comp_path:
-                wx, wy = comp._comp_path[0]
-                if math.sqrt((wx - comp.x)**2 + (wy - comp.y)**2) < 8:
-                    comp._comp_path.pop(0)
-                if comp._comp_path:
-                    comp.move_toward(comp._comp_path[0][0], comp._comp_path[0][1], dt, is_wall)
-
-        else:
-            # No combat action — follow the hero
-            dist_to_hero = comp.distance_to(hero)
-            if dist_to_hero > 600:
-                # Too far — teleport to hero (walkable position)
-                comp.x, comp.y = find_walkable_nearby(hero.x, hero.y, radius=60)
-                comp._follow_path = None
-            elif dist_to_hero > 80:
-                # Recalculate path every time (hero moves)
-                comp._follow_path = astar(dungeon, comp.x, comp.y, hero.x, hero.y)
-            else:
-                comp._follow_path = None
-
-            # Walk along path
-            if hasattr(comp, '_follow_path') and comp._follow_path:
-                tx, ty = comp._follow_path[0]
-                d = math.sqrt((tx - comp.x)**2 + (ty - comp.y)**2)
-                if d < 12:
-                    comp._follow_path.pop(0)
-                else:
-                    spd = comp.base_speed * dt
-                    nx = comp.x + ((tx - comp.x) / d) * min(spd, d)
-                    ny = comp.y + ((ty - comp.y) / d) * min(spd, d)
-                    if not is_wall(nx, ny):
-                        comp.x = nx
-                        comp.y = ny
-                    elif not is_wall(nx, comp.y):
-                        comp.x = nx
-                    elif not is_wall(comp.x, ny):
-                        comp.y = ny
-                    else:
-                        comp._follow_path = None
-                    comp.facing_left = (tx - comp.x) < 0
+    world.update_companions(dt)
+    drain_world_events()
 
     # Monster AI — all alive monsters with aggro system
-    all_heroes = [h for h in game_state.heroes if h.alive]
-    for m in alive:
-        result = run_monster_ai(m, all_heroes, dt, is_wall, all_monsters=game_state.monsters)
-        if result and result[0] in ("attack", "ranged_attack", "aoe_attack"):
-            hit_hero = result[1]
-            floating_texts.append(FloatingText(hit_hero.x+random.randint(-10,10), hit_hero.y-30, f"{result[2]:.0f}", HP_RED))
-            # Demogorgon reveals when it attacks; stealth timer restarts from now.
-            if m.name == "Demogorgon":
-                m._last_attack_time = game_state.game_time
-                m.stealthed = False
-        elif result and result[0] == "ranged_attack_projectile":
-            target_hero = result[1]
-            proj_damage = result[2]
-            proj = Projectile(x=m.x, y=m.y, target=target_hero,
-                              speed=350.0, damage=proj_damage,
-                              color=(255, 80, 80), source=m)
-            proj.on_hit_condition = m.on_hit_condition
-            projectiles.append(proj)
+    world.update_monsters(dt, alive)
 
     # Kills, XP, quest progress, level-ups (World emits events for the popups / save)
     world.process_kills()
@@ -1579,6 +1265,8 @@ while running:
         for comp, _ in companions:
             if comp.alive:
                 print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist={hero.distance_to(comp):.0f}", flush=True)
+
+    drain_world_events()  # anything emitted since the last drain (e.g. by input handling)
 
     # --- RENDER ---
     screen.fill(BG)

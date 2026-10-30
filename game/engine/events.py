@@ -37,5 +37,11 @@ class QuestReady:
     title: str
 
 
+@dataclass
+class BindRightSkill:
+    """The client should switch the player's right-click skill slot to this ability key."""
+    ability_key: str
+
+
 GOLD = (255, 215, 0)
 HP_RED = (200, 50, 50)
