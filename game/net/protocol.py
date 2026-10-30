@@ -10,11 +10,12 @@ host -> client
   {"t": "welcome", "v": PROTOCOL_VERSION, "player_id": 0, "map": "data/maps/x.json",
    "map_data": {...map JSON...}, "map_hash": "...", "tick_rate": 30}   (joiners validate map_data)
   {"t": "reject", "reason": "..."}
-  {"t": "frame", "snap": <snapshot.make_snapshot>, "events": [<events.to_dict>, ...]}
+  {"t": "frame", "snap": <snapshot without "entities">, "ents": <delta.DeltaEncoder.encode>,
+   "events": [<events.to_dict>, ...]}
 """
 import json
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2   # 2: entity deltas in frames, map data in welcome
 MAX_LINE = 4 * 1024 * 1024   # refuse absurdly large messages (bytes)
 
 

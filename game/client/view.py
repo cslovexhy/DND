@@ -49,8 +49,15 @@ class ProjectileView:
 class ClientView:
     """Everything one client knows about the world, as of the last snapshot applied."""
 
-    def __init__(self, on_new_entity=None):
+    TELEPORT_DISTANCE = 300   # px: jumps bigger than this (respawn, companion teleport) are not smoothed
+
+    def __init__(self, on_new_entity=None, interpolate=False, tick_rate=30):
         self.on_new_entity = on_new_entity   # callback(view) to attach art for new entities
+        # Remote play: snapshots arrive ~30x/s; draw entities gliding between the last two positions
+        # instead of jumping, so movement looks smooth at 60 fps. Off for local play (exact positions).
+        self.interpolate = interpolate
+        self.interval = 1.0 / tick_rate
+        self._elapsed = 0.0
         self.entities = {}
         self.hero = None
         self.companions = []
@@ -74,6 +81,17 @@ class ClientView:
                 self.entities[d["id"]] = v
                 if self.on_new_entity:
                     self.on_new_entity(v)
+                v._fx = v._tx = v.x
+                v._fy = v._ty = v.y
+            elif self.interpolate:
+                shown_x, shown_y = v.x, v.y
+                v.update(d)
+                v._tx, v._ty = v.x, v.y
+                if math.hypot(v._tx - shown_x, v._ty - shown_y) > self.TELEPORT_DISTANCE:
+                    v._fx, v._fy = v._tx, v._ty
+                else:
+                    v._fx, v._fy = shown_x, shown_y
+                    v.x, v.y = shown_x, shown_y
             else:
                 v.update(d)
             seen.add(d["id"])
@@ -100,10 +118,21 @@ class ClientView:
         you["quests"] = SimpleNamespace(active=[SimpleNamespace(**a) for a in q["active"]],
                                         any_available=q["any_available"], has_quests=q["has_quests"])
         self.you = SimpleNamespace(**you)
+        self._elapsed = 0.0
         self.tick = snap["tick"]
         self.game_time = snap["game_time"]
         self.objective_text = snap["objective_text"]
         self.adventure_failed = snap["adventure_failed"]
+
+    def advance(self, dt):
+        """Move interpolated entities toward their latest snapshot position (call once per rendered frame)."""
+        if not self.interpolate:
+            return
+        self._elapsed += dt
+        a = min(1.0, self._elapsed / self.interval)
+        for v in self.entities.values():
+            v.x = v._fx + (v._tx - v._fx) * a
+            v.y = v._fy + (v._ty - v._fy) * a
 
     def is_mine(self, event):
         """Personal events (with a player_id) are only for that player's client."""

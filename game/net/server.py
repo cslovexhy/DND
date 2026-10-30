@@ -26,6 +26,7 @@ from game.engine.snapshot import make_snapshot
 from game.engine.map_schema import content_hash
 from game.headless import FIXED_DT
 from game.net.protocol import PROTOCOL_VERSION, LineBuffer, encode
+from game.net.delta import DeltaEncoder
 
 LOOPBACK = "127.0.0.1"
 DEFAULT_PORT = 5577
@@ -39,6 +40,7 @@ class _Conn:
         self.player_id = None
         self.out = b""             # bytes not yet accepted by the socket
         self.pending_events = []   # events not yet delivered (held while the client is backlogged)
+        self.delta = DeltaEncoder()  # entity changes relative to the last frame sent to this client
 
 
 class HostServer:
@@ -172,7 +174,8 @@ class HostServer:
         self._send(c, {"t": "welcome", "v": PROTOCOL_VERSION, "player_id": pid, "map": self.map_path,
                        "map_data": self.world.world_map.data, "map_hash": self.map_hash,
                        "tick_rate": self.tick_rate})
-        self._send(c, {"t": "frame", "snap": make_snapshot(self.world, pid), "events": []})
+        c.out += self._frame(c)
+        self._flush(c)
 
     def _send(self, c, msg):
         c.out += encode(msg)
@@ -202,7 +205,9 @@ class HostServer:
 
     # --- simulation ---
     def _frame(self, c):
-        msg = {"t": "frame", "snap": make_snapshot(self.world, c.player_id), "events": c.pending_events}
+        snap = make_snapshot(self.world, c.player_id)
+        ents = c.delta.encode(snap.pop("entities"))
+        msg = {"t": "frame", "snap": snap, "ents": ents, "events": c.pending_events}
         c.pending_events = []
         return encode(msg)
 

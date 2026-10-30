@@ -97,6 +97,12 @@ bot soak tests (hero_ai as clients), network chaos tests, one command (`./test.s
   to joiners in the welcome message and joiners validate it as untrusted data. The map editor now writes
   schema_version, reports problems on save, and keeps fields it doesn't edit (it used to drop NPCs and music).
 
+- Phase 7 — done (except cross-machine): entity delta compression per client (~850 KB/s -> ~125 KB/s per player at
+  30 Hz, protocol v2), client-side interpolation between snapshots for remote play (local play stays exact), and
+  joiners auto-reconnect with their saved progress if the host drops. Desync checks are not needed: clients apply
+  the host's full authoritative state (deltas are exact, TCP is ordered). Own-movement prediction deferred: on a
+  home LAN the delay is ~1 snapshot (33 ms).
+
 ## Open decision: playing across machines
 
 Everything above works between game windows on one computer (127.0.0.1). Kids on other laptops need the host to

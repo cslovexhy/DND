@@ -14,6 +14,7 @@ import random
 import sys
 import os
 import subprocess
+import time
 
 from game.engine.entities import Entity, Hero, Monster, Ability, Condition, GameState, Projectile
 from game.engine.world_map import WorldMap, TILE_SIZE
@@ -188,7 +189,8 @@ def _attach_sprite(v):
         v.sprite = get_dungeon_tile(*v.sprite_tile)
 
 
-view = ClientView(on_new_entity=_attach_sprite)
+view = ClientView(on_new_entity=_attach_sprite, interpolate=world is None,
+                  tick_rate=host.welcome["tick_rate"] if world is None else 30)
 view.apply(host.snapshot())
 hero = view.hero          # the local player's hero, as seen by the client
 # F1-F4 summon one AI companion per class other than the player's own
@@ -218,6 +220,34 @@ def save_game():
 if world is not None:
     print(f"[SAVE] {char_data['name']} Lv{hero.level} XP={hero.xp} Gold={hero.gold} Kills={hero.kills} "
           f"on {MAP_ID}: active={world.quests.active} done={len(world.quests.completed)}")
+
+
+def _reconnect(timeout=15.0):
+    """The host went away: keep our progress and try to rejoin for a while (shows a message)."""
+    global host, view, hero
+    save_game()
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                return False
+        screen.fill(BG)
+        msg = big_font.render("Connection to the host lost — reconnecting...  (ESC = give up)", True, GOLD)
+        screen.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2))
+        pygame.display.flip()
+        try:
+            new_host = RemoteHost("127.0.0.1", _port, name=char_data["name"],
+                                  class_name=char_data["class_name"], character=char_data, timeout=2)
+        except (OSError, ConnectionRejected):
+            pygame.time.wait(1000)
+            continue
+        host = new_host
+        view = ClientView(on_new_entity=_attach_sprite, interpolate=True, tick_rate=host.welcome["tick_rate"])
+        view.apply(host.snapshot())
+        hero = view.hero
+        print(f"[NET] Reconnected as player {host.welcome['player_id']}", flush=True)
+        return True
+    return False
 
 
 def result_line(outcome):
@@ -449,7 +479,7 @@ return_to_menu = False
 while running:
     if HEADLESS.enabled:
         dt = HEADLESS.fixed_dt   # simulated time: no sleeping, one fixed step per iteration
-        if view.game_time >= HEADLESS.max_time or getattr(host, "closed", False):
+        if view.game_time >= HEADLESS.max_time or (getattr(host, "closed", False) and "--reconnect" not in sys.argv):
             print(result_line("TIMEOUT"), flush=True)
             break
     else:
@@ -573,6 +603,13 @@ while running:
     snap, events = host.step(dt)   # the client only sees snapshots + events from the host
     if snap is not None:           # a remote host may not have sent a new frame yet
         view.apply(snap)
+    view.advance(dt)               # remote play: glide between snapshots
+    if NET_MODE == "join" and host.closed and (not auto_mode or "--reconnect" in sys.argv):
+        if not _reconnect():
+            print("[NET] Lost the connection to the host.", flush=True)
+            running = False
+            return_to_menu = True
+            continue
     drain_events(events)
 
     # Quest popup timer

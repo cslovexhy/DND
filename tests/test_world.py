@@ -209,3 +209,35 @@ class MultiplayerSimTest(unittest.TestCase):
                     {"class_name": "Rogue", "gold": -5}, {"class_name": "Rogue", "xp": "lots"}, "nope"):
             with self.assertRaises(ValueError):
                 sanitize_character(bad)
+
+
+class InterpolationTest(unittest.TestCase):
+    def _snap(self, x, tick):
+        return {"tick": tick, "game_time": tick / 30, "objective_text": "", "adventure_failed": False,
+                "entities": [{"id": 1, "kind": "hero", "name": "h", "x": x, "y": 0.0, "hp": 1, "max_hp": 1,
+                              "alive": True, "facing_left": False, "flash_timer": 0, "stealthed": False,
+                              "level": 1, "conditions": []}],
+                "projectiles": [],
+                "you": {"hero_id": 1, "abilities": [], "selected_target_id": None, "player_id": 0,
+                        "quests": {"active": [], "any_available": False, "has_quests": False}}}
+
+    def test_glides_between_snapshots_and_snaps_on_teleport(self):
+        from game.client.view import ClientView
+        v = ClientView(interpolate=True, tick_rate=30)
+        v.apply(self._snap(0.0, 1))
+        v.apply(self._snap(30.0, 2))
+        self.assertEqual(v.hero.x, 0.0)          # starts where it was drawn
+        v.advance(1 / 60)
+        self.assertAlmostEqual(v.hero.x, 15.0)   # halfway after half an interval
+        v.advance(1)
+        self.assertEqual(v.hero.x, 30.0)         # never overshoots
+        v.apply(self._snap(5000.0, 3))           # teleport: no slow slide across the map
+        self.assertEqual(v.hero.x, 5000.0)
+
+    def test_local_play_is_exact(self):
+        from game.client.view import ClientView
+        v = ClientView()
+        v.apply(self._snap(0.0, 1))
+        v.apply(self._snap(30.0, 2))
+        v.advance(1 / 60)
+        self.assertEqual(v.hero.x, 30.0)

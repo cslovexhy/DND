@@ -8,7 +8,7 @@ from game.engine import commands as C
 from game.engine.snapshot import make_snapshot
 from game.client.view import ClientView
 from game.net.client import RemoteHost, ConnectionRejected
-from game.net.protocol import encode, LineBuffer
+from game.net.protocol import encode, LineBuffer, PROTOCOL_VERSION
 from game.net.server import HostServer
 
 MAP = "data/maps/northshire.json"
@@ -162,7 +162,7 @@ class NetTest(unittest.TestCase):
         time.sleep(0.2)
         s.close()
         s = socket.create_connection(("127.0.0.1", self.srv.port), timeout=3)
-        s.sendall(encode({"t": "hello", "v": 1}) + encode({"t": "cmd", "cmd": {"type": "NoSuchCommand"}}))
+        s.sendall(encode({"t": "hello", "v": PROTOCOL_VERSION}) + encode({"t": "cmd", "cmd": {"type": "NoSuchCommand"}}))
         time.sleep(0.2)
         s.close()
         # host still alive and serving
@@ -200,6 +200,29 @@ class NetTest(unittest.TestCase):
             self.assertTrue(view.you.ai_enabled)
         finally:
             host.close()
+
+
+class DeltaTest(unittest.TestCase):
+    def test_delta_roundtrip_and_savings(self):
+        import random
+        from game import saves
+        from game.engine.bootstrap import create_world
+        from game.net.delta import DeltaEncoder, DeltaDecoder
+        random.seed(4)
+        world, _ = create_world(MAP, saves.blank_character("a", "Rogue"), autopilot=True, auto_companion=True)
+        enc, dec = DeltaEncoder(), DeltaDecoder()
+        full_bytes = delta_bytes = 0
+        for i in range(150):
+            world.step(1 / 30)
+            if i == 60:
+                m = world.game_state.monsters[0]
+                world.game_state.monsters.remove(m)        # an entity disappears
+            ents = make_snapshot(world)["entities"]
+            d = json.loads(json.dumps(enc.encode(ents)))
+            self.assertEqual(dec.decode(d), json.loads(json.dumps(ents)))
+            full_bytes += len(json.dumps(ents))
+            delta_bytes += len(json.dumps(d))
+        self.assertLess(delta_bytes, full_bytes / 3, "deltas should be much smaller than full snapshots")
 
 
 class BadNetworkTest(unittest.TestCase):
@@ -302,6 +325,38 @@ class EndToEndTest(unittest.TestCase):
             if a.poll() is None:
                 a.kill()
                 a.communicate()
+
+
+    def test_joiner_reconnects_after_host_restart(self):
+        import os
+        import subprocess
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        server = [sys.executable, "-m", "game.net.server", "--map", MAP, "--port", str(port)]
+        first = subprocess.Popen(server + ["--max-ticks", "60"], cwd=root, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True)
+        first.stdout.readline()
+        cli = subprocess.Popen([sys.executable, "-m", "game.main", "--headless", "--connect", str(port),
+                                "--reconnect", "--max-time", "3"], cwd=root, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True)
+        second = None
+        try:
+            first.communicate(timeout=30)                 # host 1 ends after 2 s
+            time.sleep(1.5)
+            second = subprocess.Popen(server + ["--max-ticks", "300"], cwd=root, stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, text=True)
+            out, _ = cli.communicate(timeout=60)
+            self.assertEqual(cli.returncode, 0, out[-1500:])
+            self.assertIn("[NET] Reconnected", out)
+            self.assertTrue(any(l.startswith("RESULT: ") for l in out.splitlines()), out[-1500:])
+        finally:
+            for p in (first, cli, second):
+                if p is not None and p.poll() is None:
+                    p.kill()
+                    p.communicate()
 
 
 if __name__ == "__main__":

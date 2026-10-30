@@ -11,6 +11,7 @@ import time
 
 from game.engine import commands, events as ev_mod
 from game.net.protocol import PROTOCOL_VERSION, LineBuffer, encode
+from game.net.delta import DeltaDecoder
 
 
 class ConnectionRejected(Exception):
@@ -26,6 +27,8 @@ class RemoteHost:
         self.sel.register(self.sock, selectors.EVENT_READ)
         self._latest = None
         self._events = []
+        self._delta = DeltaDecoder()
+        self.bytes_received = 0
         self.closed = False
         hello = {"t": "hello", "v": PROTOCOL_VERSION, "name": name, "class_name": class_name}
         if character is not None:
@@ -90,6 +93,7 @@ class RemoteHost:
             if not data:
                 self.closed = True
                 break
+            self.bytes_received += len(data)
             for msg in self.buf.feed(data):
                 t = msg["t"]
                 if t == "welcome":
@@ -98,5 +102,7 @@ class RemoteHost:
                     self.reject_reason = msg.get("reason")
                     self.closed = True
                 elif t == "frame":
-                    self._latest = msg["snap"]           # only the newest snapshot matters
+                    snap = msg["snap"]
+                    snap["entities"] = self._delta.decode(msg["ents"])   # decode every frame, in order
+                    self._latest = snap                  # only the newest snapshot matters
                     self._events.extend(ev_mod.from_dict(e) for e in msg["events"])
