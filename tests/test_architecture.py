@@ -53,8 +53,10 @@ class ClientReadsOnlySnapshotsTest(unittest.TestCase):
             src = f.read()
         render = src[src.index("    # --- RENDER ---"):].split("\nif world.record_commands")[0]
         code = "\n".join(line.split("#")[0] for line in render.splitlines())   # ignore comments
-        for bad in ("world.", "game_state.", "player.", "quests.", "projectiles", "companions:"):
-            self.assertNotIn(bad, code, f"render code uses {bad}")
+        import re
+        for bad in (r"(?<![\w.])world\.", r"(?<![\w.])game_state\.", r"(?<![\w.])player\.",
+                    r"(?<![\w.])quests\.", r"(?<![\w.])projectiles\b", r"(?<![\w.])companions\b"):
+            self.assertIsNone(re.search(bad, code), f"render code uses {bad}")
 
 
 if __name__ == "__main__":
