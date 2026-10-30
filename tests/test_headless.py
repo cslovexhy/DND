@@ -18,8 +18,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GOLDEN = os.path.join(ROOT, "tests", "golden", "headless.json")
 MAP = "data/maps/northshire.json"
 MAX_TIME = 30
-# (hero class index, seed) — one scenario per hero class
-SCENARIOS = [(i, 1) for i in range(5)]
+# (name, hero class index, seed, map, simulated seconds). One per hero class on northshire, plus
+# the other maps, plus a long run (200 s) so mob respawns (60 s) are exercised.
+SCENARIOS = [(f"hero{i}_seed1", i, 1, MAP, MAX_TIME) for i in range(5)] + [
+    ("upside_down", 3, 2, "data/maps/upside_down.json", 60),
+    ("goldshire", 4, 3, "data/maps/goldshire.json", 60),
+    ("haycock", 1, 4, "data/maps/haycock.json", 60),
+    ("northshire_church", 2, 5, "data/maps/northshire_church.json", 60),
+    ("northshire_long_respawns", 0, 7, MAP, 200),
+]
 
 
 def run_headless(hero_idx, seed, max_time=MAX_TIME, map_path=MAP):
@@ -68,7 +75,7 @@ class HeadlessRunTest(unittest.TestCase):
         self.assertLess(time.time() - t0, 40, "60 simulated seconds should take far less than 60 real seconds")
 
     def test_golden_runs(self):
-        results = {f"hero{h}_seed{s}": run_headless(h, s) for h, s in SCENARIOS}
+        results = {name: run_headless(h, sd, max_time=t, map_path=mp) for name, h, sd, mp, t in SCENARIOS}
         if os.environ.get("UPDATE_GOLDEN"):
             with open(GOLDEN, "w") as f:
                 json.dump(results, f, indent=2, sort_keys=True)

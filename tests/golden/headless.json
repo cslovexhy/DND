@@ -1,4 +1,18 @@
 {
+  "goldshire": {
+    "digest": "33488b617705",
+    "hp": "300/300",
+    "kills": "17",
+    "outcome": "TIMEOUT",
+    "time": "60.0s"
+  },
+  "haycock": {
+    "digest": "6356b899ebe8",
+    "hp": "425/425",
+    "kills": "14",
+    "outcome": "TIMEOUT",
+    "time": "60.0s"
+  },
   "hero0_seed1": {
     "digest": "31f54792fce7",
     "hp": "430/430",
@@ -33,5 +47,26 @@
     "kills": "7",
     "outcome": "TIMEOUT",
     "time": "30.0s"
+  },
+  "northshire_church": {
+    "digest": "899547acd5da",
+    "hp": "428/428",
+    "kills": "20",
+    "outcome": "TIMEOUT",
+    "time": "60.0s"
+  },
+  "northshire_long_respawns": {
+    "digest": "45d0fc040dca",
+    "hp": "490/490",
+    "kills": "70",
+    "outcome": "TIMEOUT",
+    "time": "200.0s"
+  },
+  "upside_down": {
+    "digest": "1a64b1bb55ee",
+    "hp": "400/400",
+    "kills": "2",
+    "outcome": "TIMEOUT",
+    "time": "60.0s"
   }
 }

@@ -24,6 +24,8 @@ from game.progression import (MAX_LEVEL, xp_to_next_level, apply_level_growth, s
 from game.quests import load_quest_log
 from game import saves
 from game.headless import format_result
+from game.engine.world import World
+from game.engine.events import FloatText, Ring, LevelUp
 
 # === EFFECTS ===
 floating_texts = []
@@ -129,6 +131,15 @@ game_state = GameState()
 game_state.heroes.append(hero)
 game_state.objective_text = f"Explore {MAP_ID.replace('_', ' ').title()} and clear the area of monsters!"
 
+# The simulation (spawning, respawns, ...). Art is attached through hooks so the sim stays pygame-free.
+world = World(world_map, game_state, hero)
+world.on_monster_spawned = lambda m: setattr(
+    m, "sprite", BOSS_SPRITES.get(m.name) or (BOSS_SPRITE if m.is_boss else MONSTER_SPRITES.get(m.name)))
+world.on_companion_spawned = lambda comp, info: setattr(comp, "sprite", HERO_SPRITES[info["sprite_key"]])
+is_wall = world.is_wall
+check_los = world.check_los
+find_walkable_nearby = world.find_walkable_nearby
+
 # Movement state
 move_path = []
 selected_target = None
@@ -175,55 +186,12 @@ hero_ai.clock = lambda: game_state.game_time
 ai_enabled = auto_mode  # Auto mode starts with AI on
 
 # AI Companions (summon with F1-F4): one per class other than the player's own.
-companions = []  # list of (hero_obj, ai_obj) tuples
+companions = world.companions  # list of (hero_obj, ai_obj) tuples (owned by the World)
 available_companions = [c for c in HERO_CLASSES if c["class"] != hero.class_name]
 
-def is_wall(wx, wy):
-    return dungeon.is_wall(wx, wy)
-
-
-def check_los(x1, y1, x2, y2):
-    """Check line of sight between two world positions using the active dungeon."""
-    return has_line_of_sight(dungeon, x1, y1, x2, y2)
-
-
-def find_walkable_nearby(x, y, radius=60, attempts=20):
-    """Find a walkable position near (x, y). Returns (wx, wy) or (x, y) as fallback."""
-    for _ in range(attempts):
-        nx = x + random.randint(-radius, radius)
-        ny = y + random.randint(-radius, radius)
-        if not is_wall(nx, ny):
-            return nx, ny
-    # Fallback: try the exact point
-    if not is_wall(x, y):
-        return x, y
-    # Last resort: spiral outward to find any walkable tile
-    for r in range(1, radius // TILE_SIZE + 3):
-        for dx in range(-r, r + 1):
-            for dy in range(-r, r + 1):
-                tx = x + dx * TILE_SIZE
-                ty = y + dy * TILE_SIZE
-                if not is_wall(tx, ty):
-                    return tx, ty
-    return x, y
-
-
 def spawn_companion(comp_info):
-    """Summon an AI companion of the given class. Its level is fixed at the player's CURRENT level
-    when summoned (it does not level up afterwards). Returns the companion hero."""
-    cx, cy = find_walkable_nearby(hero.x, hero.y, radius=60)
-    comp = comp_info["create"](comp_info["companion_name"], cx, cy)
-    comp.sprite = HERO_SPRITES[comp_info["sprite_key"]]
-    set_hero_level(comp, hero.level)
-    comp_ai = create_hero_ai(comp)
-    comp_ai.set_nav_dungeon(dungeon)
-    comp_ai.clock = lambda: game_state.game_time
-    # Give AI access to all heroes for ally-targeting abilities
-    if hasattr(comp_ai, 'allies'):
-        comp_ai.allies = game_state.heroes
-    companions.append((comp, comp_ai))
-    game_state.heroes.append(comp)
-    return comp
+    """Summon an AI companion (sim in World.spawn_companion; the sprite is attached via the hook)."""
+    return world.spawn_companion(comp_info)
 
 
 # Auto-mode: summon a companion (Wizard unless that's the hero's class) and set 4x speed
@@ -234,143 +202,8 @@ if auto_mode:
     game_speed = 4.0
 
 
-# World map monster stats lookup
-SPAWN_STATS = {
-    "kobold_dragonshield": {"name": "Kobold Dragonshield", "hp": 1, "ac": 16, "speed": 5, "atk": 7, "dmg": 1, "xp": 5},
-    "snake": {"name": "Snake", "hp": 1, "ac": 13, "speed": 6, "atk": 7, "dmg": 0, "xp": 5, "condition": (Condition.POISONED, 3.0)},
-    "orc_smasher": {"name": "Orc Smasher", "hp": 2, "ac": 15, "speed": 4, "atk": 9, "dmg": 1, "xp": 10},
-    "orc_archer": {"name": "Orc Archer", "hp": 1, "ac": 13, "speed": 4, "atk": 6, "dmg": 1, "xp": 5, "ranged": True},
-    "grey_wolf": {"name": "Grey Wolf", "hp": 2, "ac": 14, "speed": 5, "atk": 8, "dmg": 2, "xp": 10},
-    "duergar_guard": {"name": "Duergar Guard", "hp": 2, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 10},
-    "gibbering_mouther": {"name": "Gibbering Mouther", "hp": 2, "ac": 14, "speed": 3, "atk": 8, "dmg": 1, "xp": 15},
-    "grell": {"name": "Grell", "hp": 2, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 10, "condition": (Condition.POISONED, 3.0)},
-    "human_cultist": {"name": "Human Cultist", "hp": 1, "ac": 14, "speed": 5, "atk": 6, "dmg": 1, "xp": 5, "condition": (Condition.POISONED, 3.0)},
-    "legion_devil": {"name": "Legion Devil", "hp": 1, "ac": 16, "speed": 5, "atk": 11, "dmg": 1, "xp": 15},
-    # Stranger Things set (Upside Down). Demogorgon: fast (1.5x player speed 6 = 9) and hits hard.
-    "demogorgon": {"name": "Demogorgon", "hp": 8, "ac": 16, "speed": 9, "atk": 10, "dmg": 3, "xp": 20, "relentless": True, "hive_mind": (1000, ["demogorgon", "vecna"])},
-    "demodog": {"name": "Demodog", "hp": 2, "ac": 15, "speed": 7, "atk": 8, "dmg": 2, "xp": 10},
-    "demobat": {"name": "Demobat", "hp": 1, "ac": 14, "speed": 8, "atk": 7, "dmg": 1, "xp": 5},
-    "vecna": {"name": "Vecna", "hp": 10, "ac": 18, "speed": 5, "atk": 11, "dmg": 3, "xp": 50, "boss": True},
-    "meerak": {"name": "Meerak", "hp": 6, "ac": 17, "speed": 5, "atk": 8, "dmg": 1, "xp": 25, "boss": True},
-    "ashardalon": {"name": "Ashardalon", "hp": 12, "ac": 16, "speed": 4, "atk": 10, "dmg": 2, "xp": 50, "boss": True},
-    "bellax": {"name": "Bellax", "hp": 9, "ac": 17, "speed": 4, "atk": 8, "dmg": 2, "xp": 40, "boss": True},
-    "karash": {"name": "Karash", "hp": 5, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 25, "boss": True},
-    "margrath": {"name": "Margrath", "hp": 5, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 25, "boss": True},
-    "rage_drake": {"name": "Rage Drake", "hp": 5, "ac": 15, "speed": 6, "atk": 9, "dmg": 2, "xp": 25, "boss": True},
-    "otyugh": {"name": "Otyugh", "hp": 5, "ac": 14, "speed": 3, "atk": 8, "dmg": 2, "xp": 25, "boss": True},
-    "garrick_padfoot": {"name": "Garrick Padfoot", "hp": 4, "ac": 15, "speed": 5, "atk": 8, "dmg": 2, "xp": 30, "unique": True, "respawn_mult": 3},
-}
-
-def spawn_single_world_monster(sp):
-    """Spawn a single monster from a SpawnPoint. Returns the Monster or None."""
-    mt = SPAWN_STATS.get(sp.type)
-    if mt is None:
-        return None
-    wx, wy = world_map.get_spawn_world_pos(sp.x, sp.y)
-    is_boss = mt.get("boss", False)
-    m = Monster(mt["name"], "Monster", wx, wy,
-                hp=mt["hp"], ac=mt["ac"], speed=mt["speed"],
-                attack_bonus=mt["atk"], attack_damage=mt["dmg"],
-                experience=mt["xp"], is_boss=is_boss)
-    # Named monsters (Garrick, Vecna) have their own enlarged sprite; other bosses share the generic one.
-    m.sprite = BOSS_SPRITES.get(mt["name"]) or (BOSS_SPRITE if is_boss else MONSTER_SPRITES.get(mt["name"]))
-    m.unique = mt.get("unique", False)  # one-of-a-kind minion: name shown, but respawns/leashes like a normal mob
-    if mt.get("condition"):
-        m.on_hit_condition = mt["condition"]
-    if mt.get("ranged"):
-        m.ranged_attack_range = 250
-        m.ranged_attack_damage = m.base_damage
-    if mt.get("relentless"):
-        m.relentless = True  # never leash-resets aggro (set before setup_monster_aggro)
-    if mt.get("hive_mind"):
-        m.hive_mind = mt["hive_mind"]  # (range, [spawn_types]) — type-filtered aggro share
-    m.spawn_type = sp.type  # spawn-type key (e.g. "demogorgon") for hive_mind matching
-    # Track spawn origin for respawn system
-    m.spawn_point = sp
-    setup_monster_aggro(m, nav_dungeon=dungeon)
-    generate_patrol_route(m, patrol_radius=100, collision_fn=is_wall)
-    return m
-
-
-def spawn_world_map_monsters():
-    """Spawn all monsters from world map spawn data."""
-    for sp in world_map.get_monster_spawns():
-        m = spawn_single_world_monster(sp)
-        if m:
-            game_state.monsters.append(m)
-
-
-# --- Demogorgon special skills ---
-DEMOGORGON_STEALTH_DELAY = 6.0   # seconds since last attack before auto-stealth
-DEMOGORGON_AURA_RADIUS = 90.0    # pixels; aura reaches this far
-DEMOGORGON_AURA_SLOW = 0.8       # enemies move at 80% speed (20% slow) in aura
-
-
-def update_demogorgon_skills(dt):
-    """Per-frame skills for every Demogorgon:
-    1. Auto-stealth: becomes invisible after DEMOGORGON_STEALTH_DELAY seconds have
-       passed since its last attack; reveals the moment it attacks.
-    2. Aura: slows nearby heroes by 20% (SLOWED) and shows a blue "chill" visual on
-       the player (visual only — not a real freeze/movement lock).
-    """
-    from game.engine.entities import Condition
-    # Decay the player's chill visual each frame (re-set to 0.3 while in an aura).
-    if getattr(hero, 'chill_visual', 0.0) > 0:
-        hero.chill_visual = max(0.0, hero.chill_visual - dt)
-    for m in game_state.monsters:
-        if not m.alive or m.name != "Demogorgon":
-            continue
-
-        # 1) Auto-stealth based purely on time since last attack.
-        #    (_last_attack_time is stamped in the AI loop when it lands a hit.)
-        #    Taking ANY damage (single-target or AoE) also counts as activity and
-        #    reveals it, restarting the stealth timer.
-        if getattr(m, 'was_hit', False):
-            m._last_attack_time = game_state.game_time
-            m.was_hit = False
-        last_atk = getattr(m, '_last_attack_time', None)
-        if last_atk is None:
-            # Never attacked yet — start stealthed after the delay from spawn.
-            m._last_attack_time = -DEMOGORGON_STEALTH_DELAY
-            last_atk = m._last_attack_time
-        if game_state.game_time - last_atk >= DEMOGORGON_STEALTH_DELAY:
-            m.stealthed = True
-        else:
-            m.stealthed = False
-
-        # 2) Slow / chill aura — affects heroes (player + companions) in radius.
-        #    Gameplay effect is a 20% slow (NOT a movement lock). The player also
-        #    gets a visual blue "chill" marker so the aura reads on-screen.
-        targets = [hero] + [c for c, _ in companions]
-        for t in targets:
-            if not t.alive:
-                continue
-            if m.distance_to(t) <= DEMOGORGON_AURA_RADIUS:
-                # 20% slow (refreshed each frame so it persists while in aura)
-                t.apply_condition(Condition.SLOWED, 0.3, source="Demogorgon Aura",
-                                  slow_factor=DEMOGORGON_AURA_SLOW)
-                # Blue chill VISUAL on the player (not a real freeze) — timer-based
-                # so it fades shortly after leaving the aura.
-                if t is hero:
-                    t.chill_visual = 0.3
-
-
-# Respawn system — dead mobs respawn after RESPAWN_TIME seconds (x a per-monster multiplier)
-import heapq
-import itertools
-RESPAWN_TIME = 60.0  # seconds before a killed regular mob respawns
-BOSS_RESPAWN_MULT = 10  # bosses take 10x as long (600s) unless SPAWN_STATS sets "respawn_mult"
-respawn_heap = []     # min-heap of (respawn_at_game_time, seq, SpawnPoint); earliest due time first
-_respawn_seq = itertools.count()  # tiebreaker so equal times never compare SpawnPoint objects
-
-
-def respawn_delay(m):
-    """Seconds until a killed monster respawns: RESPAWN_TIME x its "respawn_mult" (default 1, bosses 10)."""
-    stats = SPAWN_STATS.get(getattr(m, "spawn_type", None), {})
-    return RESPAWN_TIME * stats.get("respawn_mult", BOSS_RESPAWN_MULT if m.is_boss else 1)
-
 # Spawn the map's monsters at start
-spawn_world_map_monsters()
+world.spawn_world_map_monsters()
 
 
 # === QUEST POPUP PANEL ===
@@ -1269,7 +1102,7 @@ while running:
             m.in_combat = getattr(m, 'aggro_state', '') == 'aggroed'
 
     # --- Demogorgon special skills (auto-stealth + slow/freeze aura) ---
-    update_demogorgon_skills(dt)
+    world.update_demogorgon_skills(dt)
 
     game_state.update(dt)
     alive = game_state.alive_monsters
@@ -1705,9 +1538,7 @@ while running:
                     save_game()
             m.experience = 0
             # Queue for respawn (every monster that came from a spawn point; bosses just take much longer)
-            if hasattr(m, 'spawn_point') and m.spawn_point:
-                heapq.heappush(respawn_heap, (game_state.game_time + respawn_delay(m),
-                                              next(_respawn_seq), m.spawn_point))
+            world.queue_respawn(m)
 
     # Level-up check
     while hero.level < MAX_LEVEL and hero.xp >= xp_to_next_level(hero.level):
@@ -1723,11 +1554,7 @@ while running:
         save_game()
 
     # Respawn system — check if any mobs are ready to respawn
-    while respawn_heap and respawn_heap[0][0] <= game_state.game_time:
-        _, _, sp = heapq.heappop(respawn_heap)
-        m = spawn_single_world_monster(sp)
-        if m:
-            game_state.monsters.append(m)
+    world.process_respawns()
 
     # Quest popup timer
     if quest_popup_timer > 0:
@@ -1738,6 +1565,16 @@ while running:
 
     if not hero.alive:
         game_state.check_hero_death(hero)
+
+    # Turn the simulation's view events into on-screen effects
+    for ev in world.events:
+        if isinstance(ev, FloatText):
+            floating_texts.append(FloatingText(ev.x, ev.y, ev.text, ev.color))
+        elif isinstance(ev, Ring):
+            effects.append(AoeRing(ev.x, ev.y, ev.radius, ev.color))
+        elif isinstance(ev, LevelUp):
+            effects.append(LevelUpEffect(ev.x, ev.y))
+    world.events.clear()
 
     floating_texts = [t for t in floating_texts if t.timer > 0]
     for t in floating_texts: t.update(dt)
