@@ -18,6 +18,7 @@ from game.engine.events import Ring, BindRightSkill, GOLD
 from game.engine.hero_ai import create_hero_ai
 from game.content.heroes import HERO_CLASSES
 from game.engine.pathfinding import astar
+from game.engine.world_map import TILE_SIZE
 
 
 from game.engine.hero_ai import SUPPORT_RANGE   # px: how far away an ally can be for Wall / Renew / Holy Light
@@ -51,6 +52,7 @@ class PlayerState:
         # Queued ability cast (walk to range then fire): (ab_key, ab, target_monster) or None
         self.pending_cast = None
         # Dash animation state (Charge)
+        self.dash_path = []      # Charge waypoints (follows a walking path, not a straight line)
         self.dash_target_x = 0.0
         self.dash_target_y = 0.0
         self.dash_active = False
@@ -107,6 +109,29 @@ class PlayerState:
             hero.y = ny
         else:
             return False
+        return True
+
+    def _start_dash(self, tx, ty, target, damage, stun):
+        """Begin a Charge to (tx, ty) along a walking path (around walls, never through them), however long the
+        detour. Range and line of sight are checked by the caller when the charge is initiated.
+        Returns False — and does nothing — only if there is no walking path at all."""
+        hero = self.hero
+        path = self._path(hero.x, hero.y, tx, ty)
+        if not path:
+            # [] means unreachable — or already on the target's tile (then a short straight hop is fine)
+            same_tile = (int(hero.x // TILE_SIZE), int(hero.y // TILE_SIZE)) == (int(tx // TILE_SIZE), int(ty // TILE_SIZE))
+            if not same_tile:
+                return False
+        if not self.world.is_wall(tx, ty) and (not path or path[-1] != (tx, ty)):
+            path = path + [(tx, ty)]          # finish exactly at the charge point when it is walkable
+        if not path:
+            return False
+        self.dash_path = path
+        self.dash_target_x, self.dash_target_y = path[-1]
+        self.dash_active = True
+        self.dash_stun_target = target
+        self.dash_stun_duration = stun
+        self.dash_damage = damage
         return True
 
     def _friendly(self, eid):
@@ -554,18 +579,16 @@ class PlayerState:
                 if not self.world.check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
                     self.world.float_text(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100))
                     return
-                ab.use()  # Put on cooldown
                 dx = clicked_monster.x - hero.x
                 dy = clicked_monster.y - hero.y
                 d = math.sqrt(dx*dx + dy*dy)
                 if d > 0:
-                    self.dash_target_x = clicked_monster.x - (dx/d) * 50
-                    self.dash_target_y = clicked_monster.y - (dy/d) * 50
-                    self.dash_active = True
-                    self.dash_stun_target = clicked_monster
-                    self.dash_stun_duration = ab.stun_duration
-                    # Store damage to apply on arrival
-                    self.dash_damage = ab.calc_damage(hero.base_damage)
+                    # stop 50 px short of the target; damage is applied on arrival
+                    if not self._start_dash(clicked_monster.x - (dx/d) * 50, clicked_monster.y - (dy/d) * 50,
+                                            clicked_monster, ab.calc_damage(hero.base_damage), ab.stun_duration):
+                        self.world.float_text(hero.x, hero.y - 30, "Can't charge there!", (255, 150, 100))
+                        return
+                ab.use()  # Put on cooldown
                 call_for_help(clicked_monster, gs.monsters, hero)
             else:
                 # Non-dash single target: deal damage immediately
@@ -630,14 +653,21 @@ class PlayerState:
 
         # Dash animation (Charge skill)
         if self.dash_active:
-            dx = self.dash_target_x - hero.x
-            dy = self.dash_target_y - hero.y
+            # Charge follows its path (waypoints) at dash speed
+            path = getattr(self, "dash_path", None) or [(self.dash_target_x, self.dash_target_y)]
+            while len(path) > 1 and math.hypot(path[0][0] - hero.x, path[0][1] - hero.y) < 10:
+                path.pop(0)
+            self.dash_path = path
+            wx, wy = path[0]
+            dx = wx - hero.x
+            dy = wy - hero.y
             dist = math.sqrt(dx*dx + dy*dy)
-            if dist < 10:
+            if dist < 10 and len(path) == 1:
                 # Arrived — deal damage + apply stun
                 self.dash_active = False
-                hero.x = self.dash_target_x
-                hero.y = self.dash_target_y
+                self.dash_path = []
+                if not self.world.is_wall(wx, wy):
+                    hero.x, hero.y = wx, wy
                 if self.dash_stun_target and self.dash_stun_target.alive:
                     dmg = self.dash_stun_target.take_damage(self.dash_damage)
                     self.world.float_text(self.dash_stun_target.x, self.dash_stun_target.y-20, f"{dmg:.0f}", (255, 200, 50))
@@ -648,9 +678,9 @@ class PlayerState:
                 self.dash_damage = 0
             else:
                 spd = self.dash_speed * dt
-                if not self._step_toward(self.dash_target_x, self.dash_target_y, dist, spd):
-                    # Charge hit a wall: stop here (the hit still lands if the target is in reach)
-                    self.dash_target_x, self.dash_target_y = hero.x, hero.y
+                if dist > 0 and not self._step_toward(wx, wy, dist, spd):
+                    # blocked (shouldn't happen on a path): end the charge here
+                    self.dash_path = [(hero.x, hero.y)]
                 hero.facing_left = dx < 0
 
     def run_ai(self, dt):
@@ -691,13 +721,11 @@ class PlayerState:
                 if not self.world.check_los(hero.x, hero.y, target_m.x, target_m.y):
                     # No LOS — pathfind toward target
                     self.move_path = self._path(hero.x, hero.y, target_m.x, target_m.y)
-                else:
+                elif self._start_dash(tx, ty, target_m, dmg, stun):
                     ab.use()
-                    self.dash_target_x, self.dash_target_y = tx, ty
-                    self.dash_active = True
-                    self.dash_stun_target = target_m
-                    self.dash_stun_duration = stun
-                    self.dash_damage = dmg
+                else:
+                    # no walking path at all: walk toward it instead (cooldown kept)
+                    self.move_path = self._path(hero.x, hero.y, target_m.x, target_m.y)
                 call_for_help(target_m, gs.monsters, hero)
 
         elif ai_action["use_ability"]:

@@ -459,6 +459,7 @@ class World:
         player.pending_cast = None
         player.ambush_target = None
         player.dash_active = False
+        player.dash_path = []
         player.dash_stun_target = None
         player.frostbolt_channeling = False
         player.frostbolt_target = None

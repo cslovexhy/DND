@@ -90,6 +90,106 @@ class NeverInsideAWallTest(unittest.TestCase):
                     self.assertFalse(world.is_wall(h.x, h.y), f"{h.name} inside a wall")
 
 
+class ChargeTest(unittest.TestCase):
+    """Fighter Charge follows a walking path (around walls) instead of a straight line that can clip a wall."""
+
+    def fighter(self, seed=1):
+        random.seed(seed)
+        world, p = create_world(MAP, saves.blank_character("vistra", "Fighter"))
+        return world, p
+
+    def test_charges_never_enter_walls_and_always_finish_with_the_hit(self):
+        world, p = self.fighter()
+        h = p.hero
+        sx, sy = world.world_map.get_start_pos()
+        charges = hits = 0
+        for m in sorted(world.game_state.monsters, key=lambda m: h.distance_to(m))[:25]:
+            h.x, h.y = sx, sy
+            # stand 200 px from the monster on some walkable spot, then charge it
+            spot = next(((m.x + dx, m.y + dy) for dx, dy in ((-200, 0), (200, 0), (0, -200), (0, 200),
+                                                               (-140, -140), (140, 140), (-140, 140), (140, -140))
+                         if not world.is_wall(m.x + dx, m.y + dy)), None)
+            if spot is None:
+                continue
+            h.x, h.y = spot
+            h.abilities["R"].remaining = 0
+            h.gcd = 0
+            hp_before = m.hp
+            world.submit(C.Cast("R", m.x, m.y, m.eid), 0)
+            world.step(DT)
+            if not p.dash_active:
+                continue          # refused (no LOS or no reasonable path): fine, nothing happened
+            charges += 1
+            for _ in range(60):
+                world.step(DT)
+                world.events.clear()
+                self.assertFalse(world.is_wall(h.x, h.y), "Fighter inside a wall during Charge")
+                if not p.dash_active:
+                    break
+            self.assertFalse(p.dash_active, "Charge never finished")
+            hits += m.hp < hp_before or not m.alive
+            world.game_state.monsters[:] = [x for x in world.game_state.monsters if x is not m] + [m]
+        self.assertGreater(charges, 5)
+        self.assertGreater(hits, charges * 0.8)
+
+    def test_charge_follows_the_planned_path(self):
+        world, p = self.fighter()
+        h = p.hero
+        m = min(world.game_state.monsters, key=lambda m: h.distance_to(m))
+        tx, ty = m.x - 50, m.y
+        self.assertTrue(p._start_dash(tx, ty, m, 10, 0))
+        expected = p._path(h.x, h.y, tx, ty)
+        self.assertEqual(p.dash_path[:len(expected)], expected)
+
+    def test_charge_to_an_unreachable_point_is_refused(self):
+        world, p = self.fighter()
+        _, _, islands = reachable_and_islands(world.world_map)
+        m = world.game_state.monsters[0]
+        self.assertFalse(p._start_dash(*center(islands[0]), m, 10, 0))
+        self.assertFalse(p.dash_active)
+
+    def test_once_started_a_charge_takes_any_detour(self):
+        """Range/LOS are only checked when the charge starts; after that it follows the path however long."""
+        world, p = self.fighter()
+        h = p.hero
+        world.game_state.monsters.sort(key=lambda m: -h.distance_to(m))
+        far = world.game_state.monsters[0]                       # far across the map: a long walking path
+        self.assertTrue(p._start_dash(far.x - 50, far.y, far, 10, 0))
+        for _ in range(30 * 30):
+            world.step(DT)
+            world.events.clear()
+            self.assertFalse(world.is_wall(h.x, h.y))
+            if not p.dash_active:
+                break
+        self.assertFalse(p.dash_active, "the long charge should finish")
+        self.assertLess(h.distance_to(far), 200)
+
+    def test_autopilot_charges_only_within_range(self):
+        from game.engine import hero_ai
+        world, p = self.fighter(seed=8)
+        p.ai_enabled = True
+        h = p.hero
+        starts = []
+        real = p._start_dash
+        def spy(tx, ty, target, *a, **k):
+            starts.append(h.distance_to(target))
+            return real(tx, ty, target, *a, **k)
+        p._start_dash = spy
+        for _ in range(30 * 60):
+            world.step(DT)
+            world.events.clear()
+        self.assertTrue(starts, "the Fighter should charge at least once in a minute")
+        self.assertLessEqual(max(starts), h.abilities["R"].range + 1)   # never asks to charge from too far
+
+    def test_fighter_autopilot_never_inside_walls(self):
+        random.seed(7)
+        world, p = create_world(MAP, saves.blank_character("vistra", "Fighter"), autopilot=True)
+        for _ in range(30 * 60):
+            world.step(DT)
+            world.events.clear()
+            self.assertFalse(world.is_wall(p.hero.x, p.hero.y))
+
+
 class RespawnTest(unittest.TestCase):
     """No game over: a fallen player respawns at the start point with 10% HP; autopilot rests to 80% first."""
 

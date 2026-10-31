@@ -322,9 +322,10 @@ class FighterAI(HeroAI):
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
             return action
 
-        # 3. Charge (R) if CD ready and LOS — use as gap closer or damage nuke
+        # 3. Charge (R) if CD ready, in range (same 250 px rule as a manual Charge) and LOS — gap closer / nuke
         ab_r = self.hero.abilities.get("R")
-        if ab_r and ab_r.is_ready() and self.target and self.has_los(self.target):
+        if (ab_r and ab_r.is_ready() and self.target and self.hero.distance_to(self.target) <= ab_r.range
+                and self.has_los(self.target)):
             action["use_ability"] = "R"
             action["ability_target_monster"] = self.target
             # Request dash

@@ -799,3 +799,43 @@ Added a themed monster set. These are generic/original creatures given Stranger-
 
 ### New modules
 `game/session.py`, `game/menus.py`, `game/saves.py`, `game/quests.py`, `game/progression.py`; tests in `tests/` (`.venv/bin/python -m unittest discover -s tests -t .`).
+
+---
+
+## Session 14 — Multiplayer re-architecture, co-op on the home network, difficulty
+
+Plan and per-phase status: `design/06_multiplayer_architecture.md`. Diagrams: `docs/diagrams/`.
+How to play together: `docs/playing_together.md`. Testing: `docs/automated_testing.md`.
+
+### Changes
+- **Architecture**: simulation pulled out of `session.py` into `game/engine` (World, PlayerState, commands,
+  events, snapshots, bootstrap). The client only sends commands and draws snapshots; `LocalHost` (solo) and
+  `net.client.RemoteHost` (co-op) share one interface. Authoritative listen-server: `net/server.py` (30 Hz).
+- **Testing**: `--headless` (simulated time, seeded), golden runs, scripted input, command recording + pure-sim
+  replays, architecture-fitness tests, `./test.sh` / `./test.sh fast`. Golden runs limited to northshire + haycock.
+- **Co-op**: up to 4 players. L = host on the home network (one private address, never 0.0.0.0), H = this
+  computer only, J = find games by scanning the local /24 ("Name (Lv N) - Map (Xpp) (LAN ip) · n/4 players").
+  No join approval (owner's choice). The host's own game talks to its server in-process and is always player 0.
+  macOS App Nap disabled while in co-op. Each player saves their own character.
+- **Companions**: driven by the same PlayerState/AI as players; turned off in co-op (to be replaced by
+  AI-driven temporary players).
+- **Difficulty**: map-level 1pp-8pp (Diablo II players): HP x X, damage/poison/XP x (1+X)/2, applied per
+  monster at spawn (respawns keep it). Shown to everyone as "Map (Xpp)".
+- **No game over**: a fallen player respawns at the map's start point with 10% HP; the autopilot rests to 80%.
+- **Fixes**: support heals on allies (Wall/Renew/Holy Light), status effects visible on every screen, golden
+  Wall bubble, fixed 2x zoom, map editor no longer drops NPCs/music, "Out of range!" spam (healer AI only
+  picks allies in reach), heroes walking into walls (A* straight-line fallback), dead co-op heroes still acting,
+  Fighter Charge now follows a walking path instead of a straight line. Range (250 px) and line of sight are
+  checked only when a charge starts — by players and, now also, by the autopilot/companions (they used to charge
+  from any distance with line of sight); once started it takes any detour. No walking path = no charge.
+
+### Notes / Follow-ups
+- **Hero AI doesn't retreat when low in combat (bad at high pp).** Melee classes use the wizard kite only with
+  >1 mob aggroed and never with a single mob; the kite only replaces walking (they attack instead when a skill
+  is ready); nobody backs off at low HP. Resting (<80% HP) is blocked by *any* aggroed monster on the map, even a
+  fight another player is having across the map. Proposed: rest based on monsters after *this* hero (or near it);
+  below ~35% HP with no heal ready, kite like the wizard even vs one mob, toward the start point, so monsters
+  leash (~500 px from their spawn). Caveat: most monsters (75 px/s) outrun melee heroes (60 px/s).
+- Performance: pathfinding is ~half of game time. Skipping far monsters in `count_enemies_in_range` cut ~40%
+  but changed AI decisions via the path-distance cache, so it was dropped; a cache-neutral version is TBD.
+- Not tested yet: a second physical machine, Windows `run.bat`, guest/isolated Wi-Fi.
