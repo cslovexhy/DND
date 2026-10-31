@@ -24,9 +24,12 @@ SUPPORT_RANGE = 300   # px: how far away an ally can be for Wall / Renew / Holy 
 
 
 class PlayerState:
-    def __init__(self, world, hero, ai_enabled=False, potions=3, quests=None, name=None):
+    def __init__(self, world, hero, ai_enabled=False, potions=3, quests=None, name=None, owner=None):
         self.world = world
         self.hero = hero
+        # Companion mode: an AI-driven hero that fights for (and follows) the `owner` player. It uses exactly the
+        # same casting / movement / autopilot code as a player; potions=None means it never runs out.
+        self.owner = owner
         self.player_id = 0               # set by World.add_player
         self.name = name or hero.name
         self.quests = quests if quests is not None else world.quests   # this player's QuestLog for the map
@@ -61,6 +64,24 @@ class PlayerState:
         self.frostbolt_target = None  # Monster being targeted
         # Ambush walk-to state (Tarak): monster to ambush (walk toward, execute when in range)
         self.ambush_target = None
+
+    @property
+    def is_companion(self):
+        return self.owner is not None
+
+    def _bind_right(self, key):
+        """Ask this player's client to switch its right-click skill (companions have no client)."""
+        if not self.is_companion:
+            self.world.events.append(BindRightSkill(key, self.player_id))
+
+    def _potion_ready(self):
+        return self.potions is None or self.potions > 0
+
+    def _use_potion(self):
+        if self.potions is not None:
+            self.potions -= 1
+        heal = self.hero.heal(150)
+        self.world.float_text(self.hero.x, self.hero.y - 30, f"+{heal:.0f}", (100, 255, 100))
 
     # --- commands (the client's only way to act; see engine/commands.py) ---
     def _live_monster(self, eid):
@@ -152,10 +173,8 @@ class PlayerState:
             else:
                 world.float_text(hero.x, hero.y - 30, "Ambush on CD!", (255, 150, 100))
         elif isinstance(cmd, UsePotion):
-            if self.potions > 0 and hero.hp < hero.max_hp:
-                self.potions -= 1
-                heal = hero.heal(150)
-                world.float_text(hero.x, hero.y - 30, f"+{heal:.0f}", (100, 255, 100))
+            if self._potion_ready() and hero.hp < hero.max_hp:
+                self._use_potion()
         elif isinstance(cmd, ToggleAutopilot):
             self.ai_enabled = not self.ai_enabled
         elif isinstance(cmd, ToggleCompanion):
@@ -217,7 +236,7 @@ class PlayerState:
                 hero.stealthed = False
                 self.world.float_text(hero.x, hero.y - 40, "Stealth broken!", (200, 200, 200))
                 # Auto-bind right-click back to Stealth
-                self.world.events.append(BindRightSkill("R", self.player_id))
+                self._bind_right("R")
             dmg_amount = ab.calc_damage(hero.base_damage)
             # Crit roll
             hero.last_crit = random.random() < hero.crit_chance
@@ -242,7 +261,7 @@ class PlayerState:
             hero.stealthed = True
             self.selected_target = None  # Stop auto-attack
             # Auto-bind right-click to Ambush
-            self.world.events.append(BindRightSkill("E", self.player_id))
+            self._bind_right("E")
             # Drop aggro from all monsters targeting hero (except bosses)
             for m in gs.alive_monsters:
                 if hasattr(m, 'aggro_target') and m.aggro_target == hero and not m.is_boss:
@@ -273,7 +292,7 @@ class PlayerState:
             # Break stealth
             hero.stealthed = False
             # Auto-bind right-click back to Stealth
-            self.world.events.append(BindRightSkill("R", self.player_id))
+            self._bind_right("R")
             # Damage: 3x weapon + 20% target max HP
             dmg_amount = ab.calc_damage(hero.base_damage) + clicked_monster.max_hp * 0.2
             dmg = clicked_monster.take_damage(dmg_amount)
@@ -608,82 +627,126 @@ class PlayerState:
                 hero.facing_left = dx < 0
 
     def run_ai(self, dt):
-        """Autopilot: let the hero AI act (potion, dash, abilities, movement) when enabled."""
+        """Autopilot: let the hero AI act (potion, dash, abilities, movement) when enabled.
+        Returns the AI's action dict (None when the autopilot is off or mid-dash)."""
         hero = self.hero
         gs = self.world.game_state
         # === HERO AI (when enabled) ===
-        if self.ai_enabled and not self.dash_active:
-            ai_action = self.hero_ai.update(gs.alive_monsters, dt, self.world.is_wall)
-        
-            # Debug log
-            if self.world.debug and int(gs.game_time * 2) != int((gs.game_time - dt) * 2):  # Log every 0.5s
-                alive_count = len(gs.alive_monsters)
-                target_dist = f" target_dist={hero.distance_to(self.hero_ai.target):.0f}" if self.hero_ai.target and self.hero_ai.target.alive else ""
-                target_hp = f" boss_hp={self.hero_ai.target.hp:.0f}/{self.hero_ai.target.max_hp}" if self.hero_ai.target and self.hero_ai.target.alive else ""
-                action_name = ai_action['use_ability'] or ('DASH' if ai_action.get('dash') else ('MOVE' if ai_action.get('move_to') else ('BASIC_ATK' if ai_action.get('basic_attack') else ('EXPLORE' if not alive_count else 'IDLE'))))
-                target_pos = f" target_pos=({self.hero_ai.target.x:.0f},{self.hero_ai.target.y:.0f})" if self.hero_ai.target and self.hero_ai.target.alive else ""
-                path_len = f" path_len={len(self.move_path)}" if self.move_path else " path_len=0"
-                print(f"[AI t={gs.game_time:.1f}s] monsters={alive_count} hp={hero.hp:.0f}/{hero.max_hp} pos=({hero.x:.0f},{hero.y:.0f}) action={action_name}{target_dist}{target_pos}{target_hp}{path_len}", flush=True)
-                # Log all alive units
-                for m in gs.alive_monsters:
-                    dist_to_hero = hero.distance_to(m)
-                    print(f"  [MOB] {m.name} pos=({m.x:.0f},{m.y:.0f}) hp={m.hp:.0f}/{m.max_hp} dist={dist_to_hero:.0f} aggro={getattr(m, 'aggro_state', '?')}", flush=True)
-                for comp, _ in self.world.companions:
-                    if comp.alive:
-                        print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist_to_hero={hero.distance_to(comp):.0f}", flush=True)
+        if not (self.ai_enabled and not self.dash_active):
+            return None
+        ai_action = self.hero_ai.update(gs.alive_monsters, dt, self.world.is_wall)
 
-            if ai_action["use_potion"] and self.potions > 0 and hero.hp < hero.max_hp:
-                self.potions -= 1
-                heal = hero.heal(150)
-                self.world.float_text(hero.x, hero.y-30, f"+{heal:.0f}", (100,255,100))
+        # Debug log
+        if self.world.debug and int(gs.game_time * 2) != int((gs.game_time - dt) * 2):  # Log every 0.5s
+            alive_count = len(gs.alive_monsters)
+            target_dist = f" target_dist={hero.distance_to(self.hero_ai.target):.0f}" if self.hero_ai.target and self.hero_ai.target.alive else ""
+            target_hp = f" boss_hp={self.hero_ai.target.hp:.0f}/{self.hero_ai.target.max_hp}" if self.hero_ai.target and self.hero_ai.target.alive else ""
+            action_name = ai_action['use_ability'] or ('DASH' if ai_action.get('dash') else ('MOVE' if ai_action.get('move_to') else ('BASIC_ATK' if ai_action.get('basic_attack') else ('EXPLORE' if not alive_count else 'IDLE'))))
+            target_pos = f" target_pos=({self.hero_ai.target.x:.0f},{self.hero_ai.target.y:.0f})" if self.hero_ai.target and self.hero_ai.target.alive else ""
+            path_len = f" path_len={len(self.move_path)}" if self.move_path else " path_len=0"
+            print(f"[AI t={gs.game_time:.1f}s] monsters={alive_count} hp={hero.hp:.0f}/{hero.max_hp} pos=({hero.x:.0f},{hero.y:.0f}) action={action_name}{target_dist}{target_pos}{target_hp}{path_len}", flush=True)
+            # Log all alive units
+            for m in gs.alive_monsters:
+                dist_to_hero = hero.distance_to(m)
+                print(f"  [MOB] {m.name} pos=({m.x:.0f},{m.y:.0f}) hp={m.hp:.0f}/{m.max_hp} dist={dist_to_hero:.0f} aggro={getattr(m, 'aggro_state', '?')}", flush=True)
+            for comp, _ in self.world.companions:
+                if comp.alive:
+                    print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist_to_hero={hero.distance_to(comp):.0f}", flush=True)
 
-            if ai_action["dash"]:
-                # Charge ability
-                tx, ty, target_m, dmg, stun = ai_action["dash"]
-                ab = hero.abilities.get("R")
-                if ab and ab.is_ready():
-                    if not self.world.check_los(hero.x, hero.y, target_m.x, target_m.y):
-                        # No LOS — pathfind toward target
-                        self.move_path = astar(self.world.dungeon, hero.x, hero.y, target_m.x, target_m.y)
-                    else:
-                        ab.use()
-                        self.dash_target_x, self.dash_target_y = tx, ty
-                        self.dash_active = True
-                        self.dash_stun_target = target_m
-                        self.dash_stun_duration = stun
-                        self.dash_damage = dmg
-                    call_for_help(target_m, gs.monsters, hero)
+        if ai_action["use_potion"] and self._potion_ready() and hero.hp < hero.max_hp:
+            self._use_potion()
 
-            elif ai_action["use_ability"]:
-                ab_key = ai_action["use_ability"]
-                ab = hero.abilities.get(ab_key)
-                if ab and ab.is_ready():
-                    target_m = ai_action.get("ability_target_monster")
-                    # Check LOS before casting — if blocked, pathfind toward target to get LOS
-                    if target_m and not self.world.check_los(hero.x, hero.y, target_m.x, target_m.y):
-                        self.move_path = astar(self.world.dungeon, hero.x, hero.y, target_m.x, target_m.y)
-                    else:
-                        # Route through _cast_ability for consistent handling
-                        wx = target_m.x if target_m else hero.x
-                        wy = target_m.y if target_m else hero.y
-                        self.cast_ability(ab_key, ab, wx, wy, target_m, ally=ai_action.get("ability_target_ally"))
+        if ai_action["dash"]:
+            # Charge ability
+            tx, ty, target_m, dmg, stun = ai_action["dash"]
+            ab = hero.abilities.get("R")
+            if ab and ab.is_ready():
+                if not self.world.check_los(hero.x, hero.y, target_m.x, target_m.y):
+                    # No LOS — pathfind toward target
+                    self.move_path = astar(self.world.dungeon, hero.x, hero.y, target_m.x, target_m.y)
+                else:
+                    ab.use()
+                    self.dash_target_x, self.dash_target_y = tx, ty
+                    self.dash_active = True
+                    self.dash_stun_target = target_m
+                    self.dash_stun_duration = stun
+                    self.dash_damage = dmg
+                call_for_help(target_m, gs.monsters, hero)
 
-            elif ai_action["move_to"]:
-                tx, ty = ai_action["move_to"]
-                # Repath every 0.5s or if path empty
-                if not hasattr(hero, '_ai_repath_timer'):
-                    hero._ai_repath_timer = 0
-                    hero._ai_unreachable = set()  # Track unreachable monster IDs
-                hero._ai_repath_timer -= dt
-                if hero._ai_repath_timer <= 0 or not self.move_path:
-                    self.move_path = astar(self.world.dungeon, hero.x, hero.y, tx, ty)
-                    hero._ai_repath_timer = 0.5
-                    # If path is empty and target is nearby, it's unreachable
-                    if not self.move_path and self.hero_ai.target and self.hero_ai.target.alive:
-                        dist_to_target = hero.distance_to(self.hero_ai.target)
-                        if dist_to_target < 300:
-                            hero._ai_unreachable.add(id(self.hero_ai.target))
-                            self.hero_ai.target = None  # Force retarget next frame
+        elif ai_action["use_ability"]:
+            ab_key = ai_action["use_ability"]
+            ab = hero.abilities.get(ab_key)
+            if ab and ab.is_ready():
+                target_m = ai_action.get("ability_target_monster")
+                # Check LOS before casting — if blocked, pathfind toward target to get LOS
+                if target_m and not self.world.check_los(hero.x, hero.y, target_m.x, target_m.y):
+                    self.move_path = astar(self.world.dungeon, hero.x, hero.y, target_m.x, target_m.y)
+                else:
+                    # Route through _cast_ability for consistent handling
+                    wx = target_m.x if target_m else hero.x
+                    wy = target_m.y if target_m else hero.y
+                    self.cast_ability(ab_key, ab, wx, wy, target_m, ally=ai_action.get("ability_target_ally"))
+
+        elif ai_action["move_to"]:
+            tx, ty = ai_action["move_to"]
+            # Repath every 0.5s or if path empty
+            if not hasattr(hero, '_ai_repath_timer'):
+                hero._ai_repath_timer = 0
+                hero._ai_unreachable = set()  # Track unreachable monster IDs
+            hero._ai_repath_timer -= dt
+            if hero._ai_repath_timer <= 0 or not self.move_path:
+                self.move_path = astar(self.world.dungeon, hero.x, hero.y, tx, ty)
+                hero._ai_repath_timer = 0.5
+                # If path is empty and target is nearby, it's unreachable
+                if not self.move_path and self.hero_ai.target and self.hero_ai.target.alive:
+                    dist_to_target = hero.distance_to(self.hero_ai.target)
+                    if dist_to_target < 300:
+                        hero._ai_unreachable.add(id(self.hero_ai.target))
+                        self.hero_ai.target = None  # Force retarget next frame
+        return ai_action
+
+    def follow_owner(self, dt):
+        """Companion with nothing to do: stay near the owner (teleport back if left far behind)."""
+        comp, lead = self.hero, self.owner.hero
+        world = self.world
+        dist_to_lead = comp.distance_to(lead)
+        if dist_to_lead > 600:
+            # Too far — teleport to the owner (walkable position)
+            comp.x, comp.y = world.find_walkable_nearby(lead.x, lead.y, radius=60)
+            self._follow_path = None
+        elif dist_to_lead > 80:
+            self._follow_path = astar(world.dungeon, comp.x, comp.y, lead.x, lead.y)   # owner moves: re-path
+        else:
+            self._follow_path = None
+        path = getattr(self, "_follow_path", None)
+        if path:
+            tx, ty = path[0]
+            d = math.sqrt((tx - comp.x) ** 2 + (ty - comp.y) ** 2)
+            if d < 12:
+                path.pop(0)
+            else:
+                spd = comp.base_speed * dt
+                nx = comp.x + ((tx - comp.x) / d) * min(spd, d)
+                ny = comp.y + ((ty - comp.y) / d) * min(spd, d)
+                if not world.is_wall(nx, ny):
+                    comp.x, comp.y = nx, ny
+                elif not world.is_wall(nx, comp.y):
+                    comp.x = nx
+                elif not world.is_wall(comp.x, ny):
+                    comp.y = ny
+                else:
+                    self._follow_path = None
+                comp.facing_left = (tx - comp.x) < 0
+
+    def update_companion(self, dt):
+        """One frame of an AI companion: the same steps a player hero on autopilot runs, then follow the owner
+        when the AI has nothing to do (no monster to fight, no path to walk)."""
+        self.update(dt)
+        action = self.run_ai(dt)
+        busy = (self.dash_active or self.frostbolt_channeling or self.move_path
+                or (action and (action.get("use_ability") or action.get("move_to") or action.get("dash"))))
+        if not busy:
+            self.follow_owner(dt)
 
     def update_ambush(self):
         """Tarak's walk-to-target Ambush while stealthed (manual play only)."""

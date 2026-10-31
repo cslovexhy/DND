@@ -491,8 +491,16 @@ class PaladinAI(HeroAI):
     - Keep Righteous Seal up (buff uptime)
     - Smite as bread-and-butter (boosted by Seal)
     - Judgement on distant targets or to consume Seal before expiry
-    - Holy Light when below 50% HP
+    - Holy Light on the lowest-HP party member (including self) below 50% HP
     """
+
+    def __init__(self, hero):
+        super().__init__(hero)
+        self.allies = []  # Set externally to list of all hero entities (party)
+
+    def _find_lowest_hp_ally(self):
+        candidates = [h for h in self.allies if h.alive] if self.allies else [self.hero]
+        return min(candidates, key=lambda h: h.hp / h.max_hp) if candidates else self.hero
 
     def pick_target(self, monsters):
         candidates = self.get_engaged_monsters(monsters)
@@ -529,10 +537,12 @@ class PaladinAI(HeroAI):
         dist = self.hero.distance_to(self.target)
         hp_pct = self.hero.hp / self.hero.max_hp
 
-        # 1. Holy Light if below 50% HP
+        # 1. Holy Light on whoever in the party is below 50% HP (lowest first; self if no party)
         ab_f = self.hero.abilities.get("F")
-        if ab_f and ab_f.is_ready() and hp_pct < 0.50:
+        heal_target = self._find_lowest_hp_ally()
+        if ab_f and ab_f.is_ready() and heal_target.hp / heal_target.max_hp < 0.50:
             action["use_ability"] = "F"
+            action["ability_target_ally"] = heal_target
             return action
 
         # 2. Potion if below 30%

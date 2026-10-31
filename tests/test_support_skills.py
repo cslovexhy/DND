@@ -93,6 +93,58 @@ class SupportSkillsTest(unittest.TestCase):
         self.assertTrue("Renew" in ally.hero.buffs or ally.hero.absorb_shield > 0)
 
 
+class CompanionTest(unittest.TestCase):
+    """Companions run the same PlayerState controller as players (companion mode)."""
+
+    def _world_with(self, player_class, comp_class):
+        from game.content.heroes import HERO_CLASSES
+        random.seed(2)
+        world, player = create_world(MAP, saves.blank_character("me", player_class), autopilot=False)
+        comp = world.spawn_companion(next(c for c in HERO_CLASSES if c["class"] == comp_class))
+        return world, player, comp
+
+    def test_companion_uses_the_player_controller(self):
+        from game.engine.player import PlayerState
+        world, player, comp = self._world_with("Fighter", "Rogue")
+        ctl = world.companions[0][1]
+        self.assertIsInstance(ctl, PlayerState)
+        self.assertTrue(ctl.is_companion)
+        self.assertIs(ctl.owner, player)
+        self.assertTrue(ctl.ai_enabled)
+        self.assertNotIn(ctl, world.players.values())   # not a player: no commands, no snapshot of its own
+
+    def test_paladin_companion_holy_lights_its_hurt_owner(self):
+        world, player, comp = self._world_with("Fighter", "Paladin")
+        player.hero.hp = player.hero.max_hp * 0.3
+        landed = False
+        for _ in range(int(6 / DT)):
+            cast = comp.buffs.get("Holy Light Casting")
+            before = player.hero.hp
+            world.step(DT)
+            if cast and "Holy Light Casting" not in comp.buffs and cast.get("target_id") == player.hero.eid:
+                landed = player.hero.hp > before
+                break
+        self.assertTrue(landed, "Paladin companion should finish a Holy Light on the player")
+
+    def test_rogue_companion_never_rebinds_the_players_skills(self):
+        from game.engine.events import BindRightSkill
+        world, player, comp = self._world_with("Wizard", "Rogue")
+        seen = []
+        for _ in range(int(40 / DT)):
+            world.step(DT)
+            seen += [e for e in world.events if isinstance(e, BindRightSkill)]
+            world.events.clear()
+        self.assertEqual(seen, [])
+
+    def test_idle_companion_follows_its_owner(self):
+        world, player, comp = self._world_with("Fighter", "Cleric")
+        world.game_state.monsters.clear()
+        player.hero.x += 300                       # owner walks away
+        for _ in range(int(5 / DT)):
+            world.step(DT)
+        self.assertLess(comp.distance_to(player.hero), 120)
+
+
 class RightClickOnAllyTest(unittest.TestCase):
     def test_right_click_on_companion_sends_ally_and_heals_it(self):
         """Real input path: headless pygame client, Cleric, Renew on the right-click slot, right-click the companion."""

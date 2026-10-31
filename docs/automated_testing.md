@@ -135,3 +135,10 @@ commands in tests/test_replay.py's docstring.
 Everything listens on 127.0.0.1 only. tests/test_net.py covers TCP streaming, rejection of bad/garbage input,
 exact convergence of client views (also through a 150 ms ±60 ms latency proxy, tests/latency_proxy.py),
 two-player sessions, real host + client processes, and reconnect after a host restart.
+
+### Companion benchmark
+
+`.venv/bin/python3 tools/bench_companions.py [--map PATH] [--seeds 6] [--seconds 90] [--only Cleric,Paladin]`
+plays seeded pure-sim sessions (autopilot player + one companion of each class) and prints kills, deaths and how
+often the companion used each ability. Run it before and after AI changes (e.g. in a `git worktree` of the old
+commit) to compare behaviour; golden runs only tell you *that* something changed, this tells you *how*.
