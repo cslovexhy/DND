@@ -1,0 +1,42 @@
+---
+title: Co-op message flow — what goes over the wire (JSON lines over TCP, protocol v2)
+---
+sequenceDiagram
+    autonumber
+    participant B as Joiner client<br/>(process B, main thread)
+    participant S as HostServer<br/>(process A, background thread)
+    participant W as World<br/>(authoritative, 30 ticks/s)
+    participant A as Host's own client<br/>(process A, main thread)
+
+    Note over A,S: Player presses H: HostServer starts, World is built<br/>with the host's character as player 0
+    A->>S: hello {v:2, character}
+    S-->>A: welcome {player_id: 0, map, map_data, map_hash}
+    S-->>A: frame {snap, ents (full), events}
+
+    B->>S: hello {v:2, character: saved progress}
+    S->>S: check version, room (max 4),<br/>sanitize_character()
+    S->>W: join_player(1, character)
+    S-->>B: welcome {player_id: 1, map_data (whole map)}
+    B->>B: validate map_data (untrusted),<br/>build tiles locally
+    S-->>B: frame {snap, ents (full), events}
+
+    loop every tick (33 ms)
+        B->>S: cmd {MoveTo / Cast / SelectTarget / ...}  (when the player acts)
+        A->>S: cmd {...}
+        S->>W: submit(cmd, player_id)
+        S->>W: step(1/30): apply commands, AI, combat, XP, respawns
+        W-->>S: events (FloatText, LevelUp(player 1), ...)
+        S-->>A: frame {snap for player 0, ents = only changed fields, A's events}
+        S-->>B: frame {snap for player 1, ents = only changed fields, B's events}
+        Note over A,B: Each client: apply delta → ClientView → glide between snapshots → draw at 60 fps.<br/>Clients never talk to each other — they see each other as "ally" entities in their snapshot.
+    end
+
+    Note over B: B levels up → LevelUp event (player 1 only)<br/>→ B saves its own character file from snap.you.progress
+
+    alt B quits (ESC)
+        B->>S: bye
+        S->>W: remove_player(1) (hero + companions removed)
+    else connection drops
+        S->>W: remove_player(1)
+        B->>B: save progress, retry hello for 15 s<br/>("reconnecting..."), rejoins as a new player
+    end

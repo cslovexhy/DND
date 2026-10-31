@@ -1,0 +1,70 @@
+---
+title: How the game runs — processes, threads and connections
+---
+flowchart TB
+    subgraph SOLO["① Solo play — Enter on map select  (1 process, no network)"]
+        direction LR
+        subgraph P0["Process: python -m game.main"]
+            direction TB
+            M0["Main thread — pygame loop (60 fps)<br/>━━━━━━━━━━<br/>input → commands<br/>LocalHost.step() → World.step()<br/>snapshot → ClientView → draw"]
+            W0[("World (in memory)<br/>same thread, function calls")]
+            M0 <-->|"submit / step / snapshot"| W0
+        end
+        SAY0["Child process: macOS 'say'<br/>(NPC quest speech)"]
+        SDL0["SDL audio thread (music)"]
+        M0 -.-> SAY0
+        M0 -.-> SDL0
+    end
+
+    subgraph COOP["② Co-op on one computer — H to host, J to join  (star: everyone talks only to the host)"]
+        direction LR
+        subgraph PA["Process A: game.main — the HOST player (pressed H)"]
+            direction TB
+            MA["Main thread — pygame client<br/>━━━━━━━━━━<br/>input → commands<br/>RemoteHost socket<br/>snapshots → ClientView → draw"]
+            subgraph TA["Background thread — HostServer"]
+                direction TB
+                SV["selectors loop<br/>accept / read / write sockets"]
+                WA[("World — authoritative<br/>ticks 30×/s on its own clock<br/>players 0..3")]
+                SV <--> WA
+            end
+            LST{{"listening socket<br/>127.0.0.1:5577<br/>(this machine only)"}}
+            SV --- LST
+        end
+        subgraph PB["Process B: game.main — a JOINER (pressed J)"]
+            MB["Main thread — pygame client<br/>━━━━━━━━━━<br/>no World here<br/>RemoteHost socket<br/>snapshots → ClientView → draw"]
+        end
+        subgraph PC["Process C: another joiner (up to 4 players)"]
+            MC["Main thread — pygame client"]
+        end
+        MA <==>|"TCP over loopback<br/>player 0"| LST
+        MB <==>|"TCP over loopback<br/>player 1"| LST
+        MC <==>|"TCP over loopback<br/>player 2"| LST
+    end
+
+    subgraph DED["③ Standalone host — python -m game.net.server  (tests / tools)"]
+        direction LR
+        subgraph PS["Process: game.net.server (no pygame, no window)"]
+            SVS["Main thread — HostServer + World"]
+        end
+        CL1["game.main --connect 5577"] <==>|"TCP 127.0.0.1"| SVS
+    end
+
+    subgraph LAN["④ Not built yet — other laptops on home Wi-Fi (waiting on your decision)"]
+        direction LR
+        KID1["Kid's laptop<br/>game.main (J)"] -. "TCP over Wi-Fi<br/>needs a LAN listener<br/>+ host approval" .-> HOSTPC["Your Mac<br/>Process A (H)"]
+    end
+
+    SOLO ~~~ COOP
+    COOP ~~~ DED
+    DED ~~~ LAN
+
+    classDef proc fill:#fff3e0,stroke:#e65100,color:#000
+    classDef thread fill:#ff9999,stroke:#cc0000,color:#000
+    classDef sim fill:#99ccff,stroke:#0066cc,color:#000
+    classDef net fill:#e1bee7,stroke:#6a1b9a,color:#000
+    classDef future fill:#eeeeee,stroke:#999,color:#555,stroke-dasharray: 5 5
+    class M0,MA,MB,MC,CL1 thread
+    class W0,WA,SVS sim
+    class SV,LST net
+    class SAY0,SDL0 proc
+    class KID1,HOSTPC future
