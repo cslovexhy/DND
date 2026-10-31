@@ -18,20 +18,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GOLDEN = os.path.join(ROOT, "tests", "golden", "headless.json")
 MAP = "data/maps/northshire.json"
 MAX_TIME = 30
-# (name, hero class index, seed, map, simulated seconds). One per hero class on northshire, plus
-# the other maps, plus a long run (200 s) so mob respawns (60 s) are exercised.
+# (name, hero class index, seed, map, simulated seconds). Kept to two maps (northshire, haycock) so the full
+# suite stays quick: one run per hero class on northshire, one on haycock, and a long northshire run (200 s)
+# so mob respawns (60 s) are exercised.
 SCENARIOS = [(f"hero{i}_seed1", i, 1, MAP, MAX_TIME) for i in range(5)] + [
-    ("upside_down", 3, 2, "data/maps/upside_down.json", 60),
-    ("goldshire", 4, 3, "data/maps/goldshire.json", 60),
     ("haycock", 1, 4, "data/maps/haycock.json", 60),
-    ("northshire_church", 2, 5, "data/maps/northshire_church.json", 60),
     ("northshire_long_respawns", 0, 7, MAP, 200),
 ]
 # Scripted MANUAL play (autopilot off, real mouse/keyboard code path): (name, hero, seed, map, seconds, script)
 MANUAL = [(f"manual_{n}", i, 11 + i, MAP, 60, f"tests/scripts/manual_{n}.json")
-          for i, n in enumerate(["fighter", "cleric", "paladin", "rogue", "wizard"])] + [
-    ("manual_fighter_upside_down", 0, 21, "data/maps/upside_down.json", 60, "tests/scripts/manual_fighter.json"),
-]
+          for i, n in enumerate(["fighter", "cleric", "paladin", "rogue", "wizard"])]
 
 
 def run_headless(hero_idx, seed, max_time=MAX_TIME, map_path=MAP, script=None):

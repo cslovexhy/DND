@@ -68,7 +68,7 @@ def state_digest(game_state):
 
 def format_result(outcome, game_state, hero):
     return (f"RESULT: {outcome} time={game_state.game_time:.1f}s hp={hero.hp:.0f}/{hero.max_hp} "
-            f"kills={hero.kills} digest={state_digest(game_state)}")
+            f"kills={hero.kills} deaths={getattr(hero, 'deaths', 0)} digest={state_digest(game_state)}")
 
 
 def parse_result(line):

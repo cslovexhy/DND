@@ -93,6 +93,50 @@ class SupportSkillsTest(unittest.TestCase):
         self.assertTrue("Renew" in ally.hero.buffs or ally.hero.absorb_shield > 0)
 
 
+class SupportAiRangeTest(unittest.TestCase):
+    """The healer AI must only pick allies it can actually reach (bug: a hurt player across the map made a
+    Cleric spam 'Out of range!' every frame and stop fighting)."""
+
+    def _far_hurt_ally(self, healer_class, hurt=True):
+        from collections import Counter
+        from game.engine.events import FloatText
+        random.seed(3)
+        world, host = create_world(MAP, saves.blank_character("heskan", "Wizard"), autopilot=True)
+        healer = join_player(world, 1, saves.blank_character("healer", healer_class), MAP, autopilot=True)
+        host.hero.x += 1500                       # far away...
+        out_of_range = 0
+        for _ in range(30 * 20):
+            if hurt:
+                host.hero.hp = min(host.hero.hp, host.hero.max_hp * 0.4)   # ...and hurt
+            world.step(DT)
+            out_of_range += sum(1 for e in world.events if isinstance(e, FloatText) and e.text == "Out of range!")
+            world.events.clear()
+        return healer, out_of_range
+
+    def test_cleric_ai_ignores_unreachable_allies_and_keeps_fighting(self):
+        healer, spam = self._far_hurt_ally("Cleric")
+        baseline, _ = self._far_hurt_ally("Cleric", hurt=False)    # same game, nobody needs healing
+        self.assertEqual(spam, 0)
+        self.assertGreaterEqual(healer.hero.kills, baseline.hero.kills)   # fights as if nobody were hurt
+        self.assertGreater(healer.hero.kills, 0)
+
+    def test_paladin_ai_ignores_unreachable_allies(self):
+        healer, spam = self._far_hurt_ally("Paladin")
+        self.assertEqual(spam, 0)
+
+    def test_cleric_ai_still_heals_a_nearby_hurt_ally(self):
+        random.seed(3)
+        world, host = create_world(MAP, saves.blank_character("heskan", "Wizard"))
+        healer = join_player(world, 1, saves.blank_character("healer", "Cleric"), MAP, autopilot=True)
+        host.hero.x, host.hero.y = healer.hero.x + 80, healer.hero.y
+        host.hero.hp = host.hero.max_hp * 0.3
+        for _ in range(60):
+            world.step(DT)
+            if "Renew" in host.hero.buffs or host.hero.absorb_shield > 0:
+                break
+        self.assertTrue("Renew" in host.hero.buffs or host.hero.absorb_shield > 0)
+
+
 class CompanionTest(unittest.TestCase):
     """Companions run the same PlayerState controller as players (companion mode)."""
 

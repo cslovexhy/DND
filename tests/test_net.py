@@ -182,7 +182,7 @@ class NetTest(unittest.TestCase):
             view = ClientView()
             view.apply(host.snapshot())
             host.send(C.ToggleAutopilot())
-            host.send(C.ToggleCompanion("Fighter"))
+            host.send(C.ToggleCompanion("Fighter"))   # refused: no companions in co-op
             deadline = time.monotonic() + 10
             while not host.closed and time.monotonic() < deadline:   # read until the host hangs up
                 snap, _ = host.step()
@@ -196,7 +196,7 @@ class NetTest(unittest.TestCase):
             self.assertEqual(view.tick, expected.tick)
             self.assertEqual(sorted((e.eid, e.x, e.y, e.hp) for e in view.entities.values()),
                              sorted((e.eid, e.x, e.y, e.hp) for e in expected.entities.values()))
-            self.assertEqual(len(view.companions), 1)
+            self.assertEqual(len(view.companions), 0)
             self.assertTrue(view.you.ai_enabled)
         finally:
             host.close()

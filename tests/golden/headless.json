@@ -1,19 +1,14 @@
 {
-  "goldshire": {
-    "digest": "23cf7c3745d4",
-    "hp": "318/318",
+  "haycock": {
+    "deaths": "0",
+    "digest": "f6f1348c016e",
+    "hp": "425/425",
     "kills": "14",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
-  "haycock": {
-    "digest": "39573f92a6de",
-    "hp": "365/400",
-    "kills": "11",
-    "outcome": "TIMEOUT",
-    "time": "60.0s"
-  },
   "hero0_seed1": {
+    "deaths": "0",
     "digest": "012784230d35",
     "hp": "166/400",
     "kills": "9",
@@ -21,6 +16,7 @@
     "time": "30.0s"
   },
   "hero1_seed1": {
+    "deaths": "0",
     "digest": "c793be45501a",
     "hp": "337/400",
     "kills": "7",
@@ -28,6 +24,7 @@
     "time": "30.0s"
   },
   "hero2_seed1": {
+    "deaths": "0",
     "digest": "6d50f5fa727d",
     "hp": "400/400",
     "kills": "7",
@@ -35,6 +32,7 @@
     "time": "30.0s"
   },
   "hero3_seed1": {
+    "deaths": "0",
     "digest": "af1cdf597d98",
     "hp": "400/400",
     "kills": "7",
@@ -42,6 +40,7 @@
     "time": "30.0s"
   },
   "hero4_seed1": {
+    "deaths": "0",
     "digest": "21c23a0704fd",
     "hp": "300/300",
     "kills": "9",
@@ -49,34 +48,31 @@
     "time": "30.0s"
   },
   "manual_cleric": {
-    "digest": "c31c2178336a",
+    "deaths": "0",
+    "digest": "cb194bf54304",
     "hp": "425/425",
     "kills": "19",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_fighter": {
+    "deaths": "0",
     "digest": "586743e5b5ec",
     "hp": "430/430",
     "kills": "19",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
-  "manual_fighter_upside_down": {
-    "digest": "bebba1390971",
-    "hp": "128/400",
-    "kills": "3",
-    "outcome": "TIMEOUT",
-    "time": "60.0s"
-  },
   "manual_paladin": {
-    "digest": "e14d075d3396",
-    "hp": "360/428",
+    "deaths": "0",
+    "digest": "9418f0052bdc",
+    "hp": "363/428",
     "kills": "21",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_rogue": {
+    "deaths": "0",
     "digest": "d9b195e1d687",
     "hp": "420/420",
     "kills": "22",
@@ -84,31 +80,19 @@
     "time": "60.0s"
   },
   "manual_wizard": {
+    "deaths": "0",
     "digest": "4d120f5528ab",
     "hp": "318/318",
     "kills": "16",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
-  "northshire_church": {
-    "digest": "65e9f31a59a7",
-    "hp": "369/428",
-    "kills": "19",
-    "outcome": "TIMEOUT",
-    "time": "60.0s"
-  },
   "northshire_long_respawns": {
-    "digest": "64951a021527",
-    "hp": "421/490",
-    "kills": "62",
+    "deaths": "2",
+    "digest": "efc17de8dadd",
+    "hp": "337/460",
+    "kills": "50",
     "outcome": "TIMEOUT",
     "time": "200.0s"
-  },
-  "upside_down": {
-    "digest": "9362a5ca052a",
-    "hp": "400/400",
-    "kills": "2",
-    "outcome": "TIMEOUT",
-    "time": "60.0s"
   }
 }

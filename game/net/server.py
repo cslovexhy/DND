@@ -66,8 +66,9 @@ class HostServer:
         self.map_path = map_path
         self.max_players = max_players
         char = host_character or saves.blank_character(class_name.lower(), class_name)
-        self.world, self.player = create_world(map_path, char, autopilot=autopilot, auto_companion=auto_companion,
-                                               pp=pp)
+        # Co-op has no AI companions (World.companions_enabled), so auto_companion is ignored here.
+        self.world, self.player = create_world(map_path, char, autopilot=autopilot, auto_companion=False, pp=pp)
+        self.world.companions_enabled = False
         self._next_player_id = 1
         # Joiners get the map itself (custom maps don't need to be copied around by hand)
         self.map_hash = content_hash(self.world.world_map.data)

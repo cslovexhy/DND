@@ -622,6 +622,9 @@ while running:
             # Summon AI companions (F1-F4) — press again to dismiss
             summon_keys = [pygame.K_F1, pygame.K_F2, pygame.K_F3, pygame.K_F4]
             for ki, sk in enumerate(summon_keys):
+                if event.key == sk and NET_MODE:
+                    floating_texts.append(FloatingText(hero.x, hero.y - 30, "Companions are off in co-op", (200, 150, 150)))
+                    break
                 if event.key == sk and ki < len(available_companions):
                     host.send(ToggleCompanion(available_companions[ki]["class"]))
                     break
@@ -1049,7 +1052,8 @@ while running:
     ai_color = (100, 255, 100) if view.you.ai_enabled else (80, 80, 80)
     speed_label = f" {game_speed:.0f}x (+/-)" if game_speed > 1 else ""
     screen.blit(font.render(ai_label + speed_label, True, ai_color), (WIDTH - 160, HEIGHT - 18))
-    screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill (on an ally = heal/shield them)  1/2/3=Switch  F=Pot  F1-F4=Summon", True, (70,70,70)), (10, HEIGHT-18))
+    screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill (on an ally = heal/shield them)  1/2/3=Switch  F=Pot"
+                            + ("" if NET_MODE else "  F1-F4=Summon"), True, (70,70,70)), (10, HEIGHT-18))
     if NET_MODE == "join" and time.monotonic() - _last_snapshot_at > 1.0:
         # No word from the host for a while (host busy, asleep or gone): say so instead of looking frozen
         wait = big_font.render("Waiting for the host...", True, GOLD)

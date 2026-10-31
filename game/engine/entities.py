@@ -352,6 +352,7 @@ class Hero(Entity):
         self.xp = 0
         self.gold = 0
         self.kills = 0
+        self.deaths = 0   # times this hero fell and respawned (no game over)
 
         # Equipment (slot -> item)
         self.equipment: dict[str, dict] = {}

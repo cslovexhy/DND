@@ -17,9 +17,30 @@ import time
 from game.engine.entities import Hero, Monster, Condition
 from game.engine.pathfinding import astar, has_line_of_sight
 
+# How far away an ally can be for Wall / Renew / Holy Light. One constant for the cast rule (player.py) and the
+# AI's target choice, so the AI never picks an ally the cast would refuse.
+SUPPORT_RANGE = 300
+
 
 class HeroAI:
     """Base class for hero AI behaviors."""
+
+    def reachable_allies(self):
+        """Living party members this hero can heal/shield right now: itself, plus allies within SUPPORT_RANGE
+        and line of sight. (Anyone across the map is out of reach — picking them only produced
+        'Out of range!' every frame and stopped the healer from fighting.)"""
+        out = [self.hero] if self.hero.alive else []
+        for h in getattr(self, "allies", None) or ():
+            if h is self.hero or not h.alive:
+                continue
+            if self.hero.distance_to(h) <= SUPPORT_RANGE and self.has_los(h):
+                out.append(h)
+        return out
+
+    def _find_lowest_hp_ally(self):
+        """The reachable party member (including self) with the lowest HP percentage."""
+        candidates = self.reachable_allies() or [self.hero]
+        return min(candidates, key=lambda h: h.hp / h.max_hp)
 
     def __init__(self, hero: Hero):
         self.hero = hero
@@ -352,13 +373,6 @@ class ClericAI(HeroAI):
         super().__init__(hero)
         self.allies = []  # Set externally to list of all hero entities
 
-    def _find_lowest_hp_ally(self):
-        """Find the ally (including self) with lowest HP percentage."""
-        candidates = [h for h in self.allies if h.alive] if self.allies else [self.hero]
-        if not candidates:
-            return self.hero
-        return min(candidates, key=lambda h: h.hp / h.max_hp)
-
     def pick_target(self, monsters):
         candidates = self.get_engaged_monsters(monsters)
         if not candidates:
@@ -497,10 +511,6 @@ class PaladinAI(HeroAI):
     def __init__(self, hero):
         super().__init__(hero)
         self.allies = []  # Set externally to list of all hero entities (party)
-
-    def _find_lowest_hp_ally(self):
-        candidates = [h for h in self.allies if h.alive] if self.allies else [self.hero]
-        return min(candidates, key=lambda h: h.hp / h.max_hp) if candidates else self.hero
 
     def pick_target(self, monsters):
         candidates = self.get_engaged_monsters(monsters)

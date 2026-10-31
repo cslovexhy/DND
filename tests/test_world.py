@@ -182,14 +182,13 @@ class MultiplayerSimTest(unittest.TestCase):
         w.step(1 / 30)
         self.assertEqual(sum(1 for c, _ in w.companions if c.class_name == "Cleric"), 2)
 
-    def test_game_over_only_when_everyone_is_down(self):
+    def test_no_game_over_players_respawn(self):
         w = self.world
         self.p0.hero.take_damage(10 ** 6)
-        w.step(1 / 30)
-        self.assertFalse(w.game_state.adventure_failed)
         self.p1.hero.take_damage(10 ** 6)
         w.step(1 / 30)
-        self.assertTrue(w.game_state.adventure_failed)
+        self.assertFalse(w.game_state.adventure_failed)
+        self.assertTrue(self.p0.hero.alive and self.p1.hero.alive)
 
     def test_remove_player(self):
         from game.engine import commands as C

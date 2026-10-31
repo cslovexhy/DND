@@ -20,7 +20,7 @@ from game.content.heroes import HERO_CLASSES
 from game.engine.pathfinding import astar
 
 
-SUPPORT_RANGE = 300   # px: how far away an ally can be for Wall / Renew / Holy Light
+from game.engine.hero_ai import SUPPORT_RANGE   # px: how far away an ally can be for Wall / Renew / Holy Light
 
 
 class PlayerState:
@@ -88,6 +88,27 @@ class PlayerState:
         m = self.world.entity(eid) if eid is not None else None
         return m if (m is not None and m.alive and m in self.world.game_state.monsters) else None
 
+    def _path(self, ax, ay, bx, by):
+        """Walking path for this hero: searches the whole map, and returns [] (stay put) when the target can't
+        be reached — never a straight line through walls."""
+        return astar(self.world.dungeon, ax, ay, bx, by, max_steps=None, fallback_direct=False)
+
+    def _step_toward(self, tx, ty, dist, spd):
+        """Move up to `spd` px toward (tx, ty), sliding along walls; returns False if completely blocked."""
+        hero, wall = self.hero, self.world.is_wall
+        step = min(spd, dist)
+        nx = hero.x + (tx - hero.x) / dist * step
+        ny = hero.y + (ty - hero.y) / dist * step
+        if not wall(nx, ny):
+            hero.x, hero.y = nx, ny
+        elif not wall(nx, hero.y):
+            hero.x = nx
+        elif not wall(hero.x, ny):
+            hero.y = ny
+        else:
+            return False
+        return True
+
     def _friendly(self, eid):
         """A living friendly hero (any player's hero or companion) by id, or None."""
         e = self.world.entity(eid) if eid is not None else None
@@ -112,15 +133,17 @@ class PlayerState:
         self.hero.conditions = [c for c in self.hero.conditions if c.condition != Condition.IMMOBILIZED]
 
     def handle(self, cmd):
-        """Apply one validated player command."""
+        """Apply one validated player command (ignored while this player's hero is dead)."""
         world = self.world
         hero = self.hero
+        if not hero.alive:
+            return
         gs = world.game_state
         if isinstance(cmd, MoveTo):
             # Click ground = move (cancel channel)
             if self.frostbolt_channeling:
                 self._stop_channel()
-            self.move_path = astar(world.dungeon, hero.x, hero.y, cmd.x, cmd.y)
+            self.move_path = self._path(hero.x, hero.y, cmd.x, cmd.y)
             self.selected_target = None
             self.ambush_target = None
             self.pending_cast = None
@@ -149,7 +172,7 @@ class PlayerState:
                                   ally=self._friendly(cmd.ally_id))
             elif cmd.fallback_move:
                 # Skill on cooldown — just move instead
-                self.move_path = astar(world.dungeon, hero.x, hero.y, cmd.x, cmd.y)
+                self.move_path = self._path(hero.x, hero.y, cmd.x, cmd.y)
                 self.selected_target = None
         elif isinstance(cmd, InteractNpc):
             npc = world.entity(cmd.npc_id)
@@ -159,7 +182,7 @@ class PlayerState:
                 world.interact_with_npc(npc, self)
             else:
                 # Walk to NPC
-                self.move_path = astar(world.dungeon, hero.x, hero.y, npc.x, npc.y)
+                self.move_path = self._path(hero.x, hero.y, npc.x, npc.y)
                 self.selected_target = None
         elif isinstance(cmd, AmbushTarget):
             m = self._live_monster(cmd.target_id)
@@ -178,6 +201,9 @@ class PlayerState:
         elif isinstance(cmd, ToggleAutopilot):
             self.ai_enabled = not self.ai_enabled
         elif isinstance(cmd, ToggleCompanion):
+            if not world.companions_enabled:
+                world.float_text(hero.x, hero.y - 30, "Companions are off in co-op", (200, 150, 150))
+                return
             comp_info = next((c for c in self.available_companions if c["class"] == cmd.class_name), None)
             if comp_info is None:
                 return
@@ -598,8 +624,8 @@ class PlayerState:
                 spd = hero.base_speed * dt
                 if hero.stealthed:
                     spd *= 0.6  # 60% move speed while stealthed
-                hero.x += (dx/dist) * min(spd, dist)
-                hero.y += (dy/dist) * min(spd, dist)
+                if not self._step_toward(tx, ty, dist, spd):   # never into a wall
+                    self.move_path = []
                 hero.facing_left = dx < 0
 
         # Dash animation (Charge skill)
@@ -622,8 +648,9 @@ class PlayerState:
                 self.dash_damage = 0
             else:
                 spd = self.dash_speed * dt
-                hero.x += (dx/dist) * min(spd, dist)
-                hero.y += (dy/dist) * min(spd, dist)
+                if not self._step_toward(self.dash_target_x, self.dash_target_y, dist, spd):
+                    # Charge hit a wall: stop here (the hit still lands if the target is in reach)
+                    self.dash_target_x, self.dash_target_y = hero.x, hero.y
                 hero.facing_left = dx < 0
 
     def run_ai(self, dt):
@@ -663,7 +690,7 @@ class PlayerState:
             if ab and ab.is_ready():
                 if not self.world.check_los(hero.x, hero.y, target_m.x, target_m.y):
                     # No LOS — pathfind toward target
-                    self.move_path = astar(self.world.dungeon, hero.x, hero.y, target_m.x, target_m.y)
+                    self.move_path = self._path(hero.x, hero.y, target_m.x, target_m.y)
                 else:
                     ab.use()
                     self.dash_target_x, self.dash_target_y = tx, ty
@@ -680,7 +707,7 @@ class PlayerState:
                 target_m = ai_action.get("ability_target_monster")
                 # Check LOS before casting — if blocked, pathfind toward target to get LOS
                 if target_m and not self.world.check_los(hero.x, hero.y, target_m.x, target_m.y):
-                    self.move_path = astar(self.world.dungeon, hero.x, hero.y, target_m.x, target_m.y)
+                    self.move_path = self._path(hero.x, hero.y, target_m.x, target_m.y)
                 else:
                     # Route through _cast_ability for consistent handling
                     wx = target_m.x if target_m else hero.x
@@ -695,7 +722,7 @@ class PlayerState:
                 hero._ai_unreachable = set()  # Track unreachable monster IDs
             hero._ai_repath_timer -= dt
             if hero._ai_repath_timer <= 0 or not self.move_path:
-                self.move_path = astar(self.world.dungeon, hero.x, hero.y, tx, ty)
+                self.move_path = self._path(hero.x, hero.y, tx, ty)
                 hero._ai_repath_timer = 0.5
                 # If path is empty and target is nearby, it's unreachable
                 if not self.move_path and self.hero_ai.target and self.hero_ai.target.alive:
@@ -715,7 +742,7 @@ class PlayerState:
             comp.x, comp.y = world.find_walkable_nearby(lead.x, lead.y, radius=60)
             self._follow_path = None
         elif dist_to_lead > 80:
-            self._follow_path = astar(world.dungeon, comp.x, comp.y, lead.x, lead.y)   # owner moves: re-path
+            self._follow_path = self._path(comp.x, comp.y, lead.x, lead.y)   # owner moves: re-path
         else:
             self._follow_path = None
         path = getattr(self, "_follow_path", None)
@@ -771,7 +798,7 @@ class PlayerState:
                 else:
                     # Walk toward target using pathfinding
                     if not self.move_path:
-                        self.move_path = astar(self.world.dungeon, hero.x, hero.y, self.ambush_target.x, self.ambush_target.y)
+                        self.move_path = self._path(hero.x, hero.y, self.ambush_target.x, self.ambush_target.y)
 
     def auto_attack(self):
         """Auto-attack the selected target (walk to range, attack when close) with the left-click skill.
@@ -806,4 +833,4 @@ class PlayerState:
                 elif not hold_position:
                     # Out of range and shift NOT held — pathfind toward target
                     if not self.move_path:
-                        self.move_path = astar(self.world.dungeon, hero.x, hero.y, self.selected_target.x, self.selected_target.y)
+                        self.move_path = self._path(hero.x, hero.y, self.selected_target.x, self.selected_target.y)

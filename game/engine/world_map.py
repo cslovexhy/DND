@@ -89,6 +89,8 @@ class WorldMap:
         # Load music playlist
         m.music = data.get("music", [])
 
+        # Walkability never changes during play: work it out once per tile (pathfinding asks millions of times)
+        m.walk = [[m._compute_walkable(tx, ty) for tx in range(m.width)] for ty in range(m.height)]
         return m
 
     def is_walkable(self, wx, wy) -> bool:
@@ -99,10 +101,13 @@ class WorldMap:
         return self.is_tile_walkable(tx, ty)
 
     def is_tile_walkable(self, tx, ty) -> bool:
-        """Check if a tile coordinate is walkable."""
+        """Check if a tile coordinate is walkable (precomputed grid)."""
         if tx < 0 or tx >= self.width or ty < 0 or ty >= self.height:
             return False
+        return self.walk[ty][tx]
 
+    def _compute_walkable(self, tx, ty) -> bool:
+        """Walkability of one tile from the layers (used once, at load)."""
         # Objects layer overrides ground (e.g. a tree on grass = blocked)
         if self.objects and self.objects[ty][tx] is not None:
             return self.objects[ty][tx].walkable

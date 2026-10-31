@@ -31,7 +31,10 @@ DEMOGORGON_AURA_SLOW = 0.8       # enemies move at 80% speed (20% slow) in aura
 class World:
     def __init__(self, world_map, game_state, hero, quests=None, debug=False, pp=PP_DEFAULT):
         self.debug = debug
-        self.pp = clamp_pp(pp)     # map difficulty: monsters get HP x pp, damage x (1 + pp) / 2
+        self.pp = clamp_pp(pp)
+        # AI companions (F1-F4). Off in co-op (the host turns them off): they were buggy with several players
+        # and are meant to be replaced by AI-driven temporary players.
+        self.companions_enabled = True     # map difficulty: monsters get HP x pp, damage x (1 + pp) / 2
         self.quests = quests       # player 0's QuestLog for this map (each PlayerState has its own)
         self.projectiles = []      # active projectiles (Wanding, Frostbolt, monster arrows)
         self.world_map = world_map
@@ -411,6 +414,8 @@ class World:
         alive = self.begin_frame(dt)
         for pid in sorted(self.players):
             player = self.players[pid]
+            if not player.hero.alive:
+                continue               # a dead player's hero doesn't move, cast or think (co-op: others play on)
             player.update(dt)
             player.run_ai(dt)          # autopilot, when enabled
             player.update_ambush()
@@ -420,15 +425,51 @@ class World:
         self.process_kills()
         self.process_level_ups()
         self.process_respawns()
-        # Game over when every player's hero is down (single player: when the hero dies)
-        if self.players and not any(h.alive for h in self.player_heroes):
-            gs.adventure_failed = True
         self.update_projectiles(dt)
         # Expire Wall shield when buff expires
         for hero in self.player_heroes:
             if "Wall" not in hero.buffs and hero.absorb_shield > 0:
                 hero.absorb_shield = 0
+        # No game over: a fallen player gets up again at the map's start point (solo and co-op)
+        for player in self.player_list:
+            if not player.hero.alive:
+                self.respawn_player(player)
         self.tick += 1
+
+    # --- death and respawn ---
+    RESPAWN_HP_PCT = 0.10   # respawn weak: the autopilot rests until 80% HP, so dying works like a cooldown
+
+    def respawn_player(self, player):
+        """Bring a dead player back at the map's start point with 10% HP and a clean slate."""
+        from game.engine.ai import AggroState
+        hero = player.hero
+        hero.x, hero.y = self.world_map.get_start_pos()
+        hero.alive = True
+        hero.hp = hero.max_hp * self.RESPAWN_HP_PCT
+        hero.conditions = []          # e.g. poison would kill again
+        hero.buffs = {}
+        hero.absorb_shield = 0
+        hero.stealthed = False
+        hero.chill_visual = 0.0
+        hero.in_combat = False
+        hero.deaths = getattr(hero, "deaths", 0) + 1
+        # forget what this player was doing
+        player.move_path = []
+        player.selected_target = None
+        player.pending_cast = None
+        player.ambush_target = None
+        player.dash_active = False
+        player.dash_stun_target = None
+        player.frostbolt_channeling = False
+        player.frostbolt_target = None
+        player.hero_ai.target = None
+        player.hero_ai._path_cache.clear()
+        # monsters that were fighting this hero give up (otherwise it would be "in combat" at 10% HP)
+        for m in self.game_state.monsters:
+            if m.alive and getattr(m, "aggro_target", None) is hero:
+                m.aggro_state = AggroState.RESETTING
+                m.aggro_target = None
+        self.float_text(hero.x, hero.y - 30, "Respawned", (255, 220, 120))
 
     # --- per-frame start ---
     def begin_frame(self, dt):

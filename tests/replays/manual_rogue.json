@@ -2,6 +2,7 @@
  "map": "data/maps/northshire.json",
  "class_name": "Rogue",
  "seed": 14,
+ "pp": 1,
  "max_time": 60.0,
  "commands": [
   {
@@ -42,7 +43,7 @@
     "type": "Cast",
     "ab_key": "Q",
     "x": 854.7182527088116,
-    "y": 1147.0051531612567,
+    "y": 1147.5051531612567,
     "target_id": 19,
     "fallback_move": true,
     "ally_id": null
@@ -55,7 +56,7 @@
     "type": "Cast",
     "ab_key": "R",
     "x": 854.7182530716686,
-    "y": 1147.000770048478,
+    "y": 1147.500770048478,
     "target_id": 19,
     "fallback_move": true,
     "ally_id": null
@@ -119,7 +120,7 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 785.9865613057982,
+    "x": 786.4865613057982,
     "y": 722.1081138668128,
     "target_id": 112,
     "fallback_move": true,
@@ -132,7 +133,7 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 817.8400137413273,
+    "x": 818.3400137413273,
     "y": 736.1709742282991,
     "target_id": 112,
     "fallback_move": true,
@@ -168,7 +169,7 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 1049.613001964376,
+    "x": 1050.113001964376,
     "y": 657.0776841421654,
     "target_id": 37,
     "fallback_move": false,
@@ -206,7 +207,7 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 546.9997292376557,
+    "x": 547.4997292376557,
     "y": 967.9874939941559,
     "target_id": 13,
     "fallback_move": true,
@@ -219,7 +220,7 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 546.9997292376557,
+    "x": 547.4997292376557,
     "y": 967.9874939941559,
     "target_id": 13,
     "fallback_move": true,
@@ -256,7 +257,7 @@
     "type": "Cast",
     "ab_key": "Q",
     "x": 647.9997292376557,
-    "y": 981.9874939941559,
+    "y": 982.4874939941559,
     "target_id": 13,
     "fallback_move": false,
     "ally_id": null
@@ -293,7 +294,7 @@
     "type": "Cast",
     "ab_key": "Q",
     "x": 1020.5490476163681,
-    "y": 547.7937695595336,
+    "y": 548.2937695595336,
     "target_id": 37,
     "fallback_move": true,
     "ally_id": null
@@ -341,8 +342,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 1027.453676752249,
-    "y": 538.0052957016868,
+    "x": 1027.953676752249,
+    "y": 538.5052957016868,
     "target_id": 37,
     "fallback_move": false,
     "ally_id": null
@@ -396,7 +397,7 @@
     "type": "Cast",
     "ab_key": "Q",
     "x": 1050.0074949172044,
-    "y": 655.9423165092994,
+    "y": 656.4423165092994,
     "target_id": 37,
     "fallback_move": true,
     "ally_id": null
@@ -409,7 +410,7 @@
     "type": "Cast",
     "ab_key": "R",
     "x": 1050.0074949172044,
-    "y": 656.9423165092994,
+    "y": 657.4423165092994,
     "target_id": 37,
     "fallback_move": true,
     "ally_id": null
@@ -444,7 +445,7 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 1048.1872302483957,
+    "x": 1048.6872302483957,
     "y": 652.3645969241928,
     "target_id": 37,
     "fallback_move": false,
@@ -474,7 +475,7 @@
     "type": "Cast",
     "ab_key": "Q",
     "x": 1022.7889996994063,
-    "y": 601.912874813165,
+    "y": 602.912874813165,
     "target_id": 37,
     "fallback_move": true,
     "ally_id": null
@@ -486,8 +487,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 1008.7889996994063,
-    "y": 597.912874813165,
+    "x": 1009.2889996994063,
+    "y": 598.412874813165,
     "target_id": 37,
     "fallback_move": true,
     "ally_id": null
@@ -568,8 +569,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 1027.1339746741558,
-    "y": 537.8278094532692,
+    "x": 1027.6339746741558,
+    "y": 538.8278094532692,
     "target_id": 37,
     "fallback_move": true,
     "ally_id": null
@@ -581,8 +582,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 1027.1339746741558,
-    "y": 537.8278094532692,
+    "x": 1027.6339746741558,
+    "y": 538.8278094532692,
     "target_id": 37,
     "fallback_move": true,
     "ally_id": null
@@ -617,7 +618,7 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 1034.163628961663,
+    "x": 1034.663628961663,
     "y": 574.2730321814544,
     "target_id": 37,
     "fallback_move": false,
@@ -646,8 +647,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 1046.0513826104425,
-    "y": 646.1403456213343,
+    "x": 1046.5513826104425,
+    "y": 646.6403456213343,
     "target_id": 37,
     "fallback_move": true,
     "ally_id": null
@@ -659,7 +660,7 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 1046.3203539110482,
+    "x": 1046.8203539110482,
     "y": 646.7226946704438,
     "target_id": 37,
     "fallback_move": true,
@@ -695,7 +696,7 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 1034.3203539110482,
+    "x": 1034.8203539110482,
     "y": 608.7226946704438,
     "target_id": 37,
     "fallback_move": false,
@@ -746,7 +747,7 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 987.3326432365161,
+    "x": 987.8326432365161,
     "y": 590.5372329124813,
     "target_id": 37,
     "fallback_move": true,
@@ -782,8 +783,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 981.2275603983228,
-    "y": 551.1110408687204,
+    "x": 981.7275603983228,
+    "y": 551.6110408687204,
     "target_id": 25,
     "fallback_move": false,
     "ally_id": null
