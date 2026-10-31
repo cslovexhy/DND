@@ -4,7 +4,7 @@ Headless mode support (no window, no audio, simulated time) for automated testin
 Pure Python: must NOT import pygame (enforced by tests/test_architecture.py), so it can be
 imported before pygame.init() to configure the SDL environment.
 
-  python3 -m game.main --headless [--seed N] [--max-time SECONDS] [--hero IDX] [--map PATH]
+  python3 -m game.main --headless [--seed N] [--max-time SECONDS] [--hero IDX] [--map PATH] [--pp 1..8]
                        [--input-script FILE.json]   (scripted manual input; use a TAB event to turn the autopilot off)
 
 Headless implies --auto (throwaway hero, AI on, never touches real saves). Time is simulated:

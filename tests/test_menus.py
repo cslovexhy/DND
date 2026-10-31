@@ -17,25 +17,41 @@ from game.menus import MenuContext, map_select
 ctx = MenuContext(clock=pygame.time.Clock(), font=pygame.font.Font(None, 20), big_font=pygame.font.Font(None, 32),
                   title_font=pygame.font.Font(None, 48), hero_sprites={})
 char = {"name": "t", "level": 1, "class_name": "Fighter"}
+from game.menus import _pp_dropdown_rects
+W = pygame.display.get_surface().get_width()
+button, options = _pp_dropdown_rects(W)
+def key(k):
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=getattr(pygame, "K_" + k)))
+def click(pos):
+    pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pos, button=1))
 out = {}
-for key in ("RETURN", "h", "j", "ESCAPE"):
-    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=getattr(pygame, "K_" + key)))
-    out[key] = map_select(ctx, char)
+key("RETURN"); out["solo"] = map_select(ctx, char)
+key("EQUALS"); key("EQUALS"); key("h"); out["host_plus2"] = map_select(ctx, char)
+click(button.center); click(options[7].center); key("RETURN"); out["dropdown_8"] = map_select(ctx, char)
+for _ in range(20): key("EQUALS")
+key("RETURN"); out["capped"] = map_select(ctx, char)
+key("MINUS"); key("RETURN"); out["floor"] = map_select(ctx, char)
+key("j"); out["join"] = map_select(ctx, char)
+key("ESCAPE"); out["back"] = map_select(ctx, char)
 print(json.dumps(out))
 '''
 
 
 class MenuTest(unittest.TestCase):
-    def test_map_select_solo_host_join_back(self):
+    def test_map_select_solo_host_join_back_and_pp_dropdown(self):
         p = subprocess.run([sys.executable, "-c", SCRIPT], cwd=ROOT, capture_output=True, text=True, timeout=60)
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         import json
         out = json.loads(p.stdout.strip().splitlines()[-1])
-        self.assertTrue(out["RETURN"].endswith(".json"))
-        self.assertEqual(set(out["h"]), {"host"})
-        self.assertTrue(out["h"]["host"].endswith(".json"))
-        self.assertEqual(out["j"], {"join": True})
-        self.assertIsNone(out["ESCAPE"])
+        self.assertTrue(out["solo"]["map"].endswith(".json"))
+        self.assertEqual(out["solo"]["pp"], 1)                       # default 1pp
+        self.assertEqual(set(out["host_plus2"]), {"host", "pp"})
+        self.assertEqual(out["host_plus2"]["pp"], 3)                 # + twice
+        self.assertEqual(out["dropdown_8"]["pp"], 8)                 # dropdown: open, pick 8pp
+        self.assertEqual(out["capped"]["pp"], 8)                     # never above 8
+        self.assertEqual(out["floor"]["pp"], 1)                      # never below 1
+        self.assertEqual(out["join"], {"join": True})
+        self.assertIsNone(out["back"])
 
 
 if __name__ == "__main__":

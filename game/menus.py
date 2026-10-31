@@ -14,6 +14,8 @@ import pygame
 
 from game import saves
 from game.content.heroes import HERO_CLASSES, HERO_CLASS_BY_NAME
+from game.content.difficulty import (PP_MIN, PP_MAX, PP_DEFAULT, map_title, hp_multiplier,
+                                     damage_multiplier)
 
 CARD_W, CARD_H, CARD_GAP = 160, 300, 20
 GOLD = (255, 215, 0)
@@ -323,38 +325,69 @@ def available_maps():
     return maps
 
 
-def map_select(ctx, char):
-    """Returns the chosen map path (solo), {"host": path} (H: host a co-op game on that map),
-    {"join": True} (J: join a co-op game hosted on this computer), None to go back, or 'quit'."""
+MAP_LIST_TOP = 182   # map rows start below the difficulty row
+
+
+def _pp_dropdown_rects(W):
+    """(button, [option rects 1..8]) for the difficulty dropdown on the map-select screen (plain ASCII arrows:
+    the default pygame font has no triangle glyphs)."""
+    button = pygame.Rect(W // 2 + 10, 142, 110, 26)
+    options = [pygame.Rect(button.x, button.bottom + 2 + i * 24, 230, 22) for i in range(PP_MAX - PP_MIN + 1)]
+    return button, options
+
+
+def map_select(ctx, char, pp=PP_DEFAULT):
+    """Returns {"map": path, "pp": n} (Enter: solo), {"host": path, "pp": n} (H: host a co-op game on that map),
+    {"join": True} (J: join a co-op game hosted on this computer), None to go back, or 'quit'.
+    The "Difficulty" dropdown (click it, or +/- keys) picks the map's pp: 1pp normal ... 8pp = monsters have
+    8x HP and deal 4.5x damage for 4.5x XP (Diablo II /players)."""
     maps = available_maps()
     if not maps:
         return None
     sel = 0
+    dropdown_open = False
     while True:
         screen = _screen()
         W, H = screen.get_size()
+        button, options = _pp_dropdown_rects(W)
         for event in pygame.event.get():
             if _handle_common(event) == "quit":
                 return "quit"
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    if dropdown_open:
+                        dropdown_open = False
+                        continue
                     return None
                 if event.key in (pygame.K_UP, pygame.K_w):
                     sel = (sel - 1) % len(maps)
                 if event.key in (pygame.K_DOWN, pygame.K_s):
                     sel = (sel + 1) % len(maps)
+                if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS, pygame.K_RIGHT):
+                    pp = min(PP_MAX, pp + 1)
+                if event.key in (pygame.K_MINUS, pygame.K_KP_MINUS, pygame.K_LEFT):
+                    pp = max(PP_MIN, pp - 1)
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                    return maps[sel]["path"]
+                    return {"map": maps[sel]["path"], "pp": pp}
                 if event.key == pygame.K_h:
-                    return {"host": maps[sel]["path"]}
+                    return {"host": maps[sel]["path"], "pp": pp}
                 if event.key == pygame.K_j:
                     return {"join": True}
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if dropdown_open:
+                    for i, r in enumerate(options):
+                        if r.collidepoint(event.pos):
+                            pp = PP_MIN + i
+                    dropdown_open = False      # any click closes the list
+                    continue
+                if button.collidepoint(event.pos):
+                    dropdown_open = True
+                    continue
                 for i in range(len(maps)):
-                    rect = pygame.Rect(W // 2 - 250, 150 + i * 60, 500, 50)
+                    rect = pygame.Rect(W // 2 - 250, MAP_LIST_TOP + i * 60, 500, 50)
                     if rect.collidepoint(event.pos):
                         if sel == i:
-                            return maps[i]["path"]
+                            return {"map": maps[i]["path"], "pp": pp}
                         sel = i
 
         screen.fill(BG)
@@ -370,7 +403,7 @@ def map_select(ctx, char):
         screen.blit(coop, (W // 2 - coop.get_width() // 2, H - 40))
 
         for i, m in enumerate(maps):
-            rect = pygame.Rect(W // 2 - 250, 150 + i * 60, 500, 50)
+            rect = pygame.Rect(W // 2 - 250, MAP_LIST_TOP + i * 60, 500, 50)
             if i == sel:
                 pygame.draw.rect(screen, (40, 80, 40), rect, border_radius=6)
                 pygame.draw.rect(screen, GOLD, rect, 2, border_radius=6)
@@ -378,8 +411,26 @@ def map_select(ctx, char):
                 hovered = rect.collidepoint(pygame.mouse.get_pos())
                 pygame.draw.rect(screen, (40, 40, 60) if hovered else (30, 30, 40), rect, border_radius=6)
                 pygame.draw.rect(screen, GRAY, rect, 1, border_radius=6)
-            screen.blit(ctx.big_font.render(m["name"], True, WHITE), (rect.x + 15, rect.y + 8))
+            name = map_title(m["name"], pp) if i == sel else m["name"]
+            screen.blit(ctx.big_font.render(name, True, WHITE), (rect.x + 15, rect.y + 8))
             screen.blit(ctx.font.render(m["desc"], True, GRAY), (rect.x + 15, rect.y + 32))
+
+        # Difficulty dropdown (drawn last so the open list covers the map rows)
+        label = ctx.font.render("Difficulty (+/- or click):", True, LIGHT_GRAY)
+        screen.blit(label, (button.x - label.get_width() - 10, button.y + 6))
+        pygame.draw.rect(screen, (40, 40, 70), button, border_radius=4)
+        pygame.draw.rect(screen, GOLD, button, 1, border_radius=4)
+        screen.blit(ctx.font.render(f"{pp}pp   v" if not dropdown_open else f"{pp}pp   ^", True, WHITE),
+                    (button.x + 10, button.y + 6))
+        if dropdown_open:
+            for i, r in enumerate(options):
+                v = PP_MIN + i
+                hovered = r.collidepoint(pygame.mouse.get_pos())
+                pygame.draw.rect(screen, (70, 70, 110) if hovered or v == pp else (30, 30, 50), r)
+                pygame.draw.rect(screen, GRAY, r, 1)
+                txt = f"{v}pp" + ("  (normal)" if v == 1 else
+                                  f"  HP x{hp_multiplier(v)}  dmg/XP x{damage_multiplier(v):g}")
+                screen.blit(ctx.font.render(txt, True, WHITE), (r.x + 8, r.y + 4))
 
         pygame.display.flip()
         ctx.clock.tick(30)
@@ -388,8 +439,8 @@ def map_select(ctx, char):
 # ---------------------------------------------------------------- flow
 
 def run_menus(ctx, preset_map=None):
-    """Character select -> map select. Returns (char_data, choice) where choice is a map path (solo),
-    {"host": map_path} or {"join": True}; or None to quit the game.
+    """Character select -> map select. Returns (char_data, choice) where choice is {"map": path, "pp": n} (solo),
+    {"host": path, "pp": n} or {"join": True} — or a plain path if preset_map was given; None to quit the game.
     If preset_map is given (--map on the command line) the map screen is skipped."""
     while True:
         action, char = character_select(ctx)

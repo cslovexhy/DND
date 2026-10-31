@@ -94,6 +94,7 @@ def make_snapshot(world, player_id=0):
         "tick": world.tick,
         "game_time": gs.game_time,
         "objective_text": gs.objective_text,
+        "pp": world.pp,                     # map difficulty, shown to everyone as "Map (Npp)"
         "adventure_failed": gs.adventure_failed,
         "entities": entities,
         "projectiles": projectiles,

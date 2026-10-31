@@ -68,7 +68,7 @@ def sanitize_character(data):
             "quests": quests}
 
 
-def create_world(map_path, char_data, debug=False, autopilot=False, auto_companion=False, hooks=None):
+def create_world(map_path, char_data, debug=False, autopilot=False, auto_companion=False, hooks=None, pp=1):
     """Create world + local player (id 0) and spawn the map's monsters and NPCs.
 
     hooks: optional client callbacks that decorate new entities with art (the sim never draws):
@@ -87,7 +87,7 @@ def create_world(map_path, char_data, debug=False, autopilot=False, auto_compani
     game_state.heroes.append(hero)
     game_state.objective_text = f"Explore {map_id.replace('_', ' ').title()} and clear the area of monsters!"
 
-    world = World(world_map, game_state, hero, quests=quests, debug=debug)
+    world = World(world_map, game_state, hero, quests=quests, debug=debug, pp=pp)   # pp: map difficulty 1..8
     world.on_monster_spawned = hooks.get("monster")
     world.on_companion_spawned = hooks.get("companion")
     world.on_npc_spawned = hooks.get("npc")

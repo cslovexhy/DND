@@ -31,7 +31,7 @@ def run_recording(rec):
     random.seed(rec["seed"])
     cls = rec["class_name"]
     char = saves.blank_character(cls.lower(), cls)
-    world, _player = create_world(rec["map"], char, autopilot=True, auto_companion=True)
+    world, _player = create_world(rec["map"], char, autopilot=True, auto_companion=True, pp=rec.get("pp", 1))
     by_tick = {}
     for c in rec["commands"]:
         by_tick.setdefault(c["tick"], []).append((c["player"], commands.from_dict(c["cmd"])))

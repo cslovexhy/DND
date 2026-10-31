@@ -49,12 +49,13 @@ class HostServer:
     MAX_COMMANDS_PER_TICK = 30   # per player; extra commands are dropped (flood protection)
 
     def __init__(self, map_path, class_name="Fighter", seed=1, port=DEFAULT_PORT, tick_rate=30,
-                 autopilot=False, auto_companion=False, host_character=None, max_players=4):
+                 autopilot=False, auto_companion=False, host_character=None, max_players=4, pp=1):
         random.seed(seed)
         self.map_path = map_path
         self.max_players = max_players
         char = host_character or saves.blank_character(class_name.lower(), class_name)
-        self.world, self.player = create_world(map_path, char, autopilot=autopilot, auto_companion=auto_companion)
+        self.world, self.player = create_world(map_path, char, autopilot=autopilot, auto_companion=auto_companion,
+                                               pp=pp)
         self._next_player_id = 1
         # Joiners get the map itself (custom maps don't need to be copied around by hand)
         self.map_hash = content_hash(self.world.world_map.data)
@@ -172,7 +173,7 @@ class HostServer:
     def _admit(self, c, pid):
         c.player_id = pid
         self._send(c, {"t": "welcome", "v": PROTOCOL_VERSION, "player_id": pid, "map": self.map_path,
-                       "map_data": self.world.world_map.data, "map_hash": self.map_hash,
+                       "map_data": self.world.world_map.data, "map_hash": self.map_hash, "pp": self.world.pp,
                        "tick_rate": self.tick_rate})
         c.out += self._frame(c)
         self._flush(c)
@@ -237,8 +238,10 @@ def main(argv):
     hero_idx = _arg_value(argv, "--hero", int, 0)
     srv = HostServer(map_path, HERO_CLASSES[hero_idx]["class"], seed=_arg_value(argv, "--seed", int, 1),
                      port=_arg_value(argv, "--port", int, DEFAULT_PORT),
-                     autopilot="--auto" in argv, auto_companion="--auto" in argv)
-    print(f"[HOST] {map_path} on {LOOPBACK}:{srv.port} (this machine only). Ctrl+C to stop.", flush=True)
+                     autopilot="--auto" in argv, auto_companion="--auto" in argv,
+                     pp=_arg_value(argv, "--pp", int, 1))
+    print(f"[HOST] {map_path} ({srv.world.pp}pp) on {LOOPBACK}:{srv.port} (this machine only). Ctrl+C to stop.",
+          flush=True)
     try:
         srv.serve_forever(max_ticks=_arg_value(argv, "--max-ticks", int, None))
     except KeyboardInterrupt:

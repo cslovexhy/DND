@@ -70,6 +70,7 @@ class ClientView:
         self.game_time = 0.0
         self.objective_text = ""
         self.adventure_failed = False
+        self.pp = 1
 
     def apply(self, snap):
         seen = set()
@@ -122,6 +123,7 @@ class ClientView:
         self.tick = snap["tick"]
         self.game_time = snap["game_time"]
         self.objective_text = snap["objective_text"]
+        self.pp = snap.get("pp", 1)
         self.adventure_failed = snap["adventure_failed"]
 
     def advance(self, dt):

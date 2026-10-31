@@ -27,6 +27,7 @@ from game.quests import load_quest_log
 from game import saves
 from game.menus import MenuContext, run_menus
 from game.client import SessionAbort
+from game.content.difficulty import clamp_pp
 import game.engine.entities as _entities
 from game import headless as _headless
 
@@ -247,6 +248,11 @@ for i, arg in enumerate(sys.argv):
     if arg == "--port" and i + 1 < len(sys.argv):
         NET_PORT = int(sys.argv[i + 1])
 CLI_NET_MODE = "join" if CONNECT_PORT else ("host" if "--host-game" in sys.argv else None)
+# --pp N (1..8): map difficulty for --map / --auto / --headless / --host-game runs (menus have a dropdown)
+CLI_PP = 1
+for i, arg in enumerate(sys.argv):
+    if arg == "--pp" and i + 1 < len(sys.argv):
+        CLI_PP = clamp_pp(int(sys.argv[i + 1]))
 if CONNECT_PORT:
     auto_mode = True   # skip the menus; behave like a throwaway session
 SAVING = not auto_mode
@@ -273,12 +279,14 @@ def run():
                 break
             char_data, map_path = result
         net_mode = CLI_NET_MODE               # None = solo; "host" / "join" = co-op over the network
-        if isinstance(map_path, dict):
-            net_mode = "host" if "host" in map_path else "join"
-            map_path = map_path.get("host")
+        pp = CLI_PP                           # map difficulty (1..8 "players")
+        if isinstance(map_path, dict):        # from map select: {"map"|"host": path, "pp": n} or {"join": True}
+            pp = map_path.get("pp", pp)
+            net_mode = "host" if "host" in map_path else ("join" if "join" in map_path else None)
+            map_path = map_path.get("host") or map_path.get("map")
         surface = pygame.display.get_surface()  # menus may have resized the window
         session_globals = {k: v for k, v in globals().items() if not (k.startswith("__") and k.endswith("__"))}
-        session_globals.update(char_data=char_data, USE_MAP=map_path, screen=surface, NET_MODE=net_mode,
+        session_globals.update(char_data=char_data, USE_MAP=map_path, screen=surface, NET_MODE=net_mode, PP=pp,
                                WIDTH=surface.get_width(), HEIGHT=surface.get_height())
         try:
             result_ns = runpy.run_module("game.session", init_globals=session_globals, run_name="game.session")

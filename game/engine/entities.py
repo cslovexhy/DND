@@ -11,6 +11,8 @@ from typing import Optional
 # === SCALING CONSTANTS ===
 # Board game HP 1-12 → ARPG HP (×50 for granularity)
 HP_SCALE = 50
+# Poison applied by monster hits: damage per second (scaled by the map's pp, see World._apply_pp)
+POISON_DPS = 10.0
 # Character scale: 1.0 = same size as map tile, 0.5 = half size. Gameplay constant (not just art):
 # movement speed scales with it so the map feels bigger. The client sizes sprites from it too.
 CHAR_SCALE = 0.5

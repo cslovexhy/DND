@@ -18,6 +18,8 @@ from game.engine.snapshot import quest_info
 from game.engine.pathfinding import has_line_of_sight
 from game.engine.world_map import TILE_SIZE
 from game.content.monsters import SPAWN_STATS, respawn_delay
+from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_multiplier, scaled_xp
+from game.engine.entities import POISON_DPS
 from game.progression import (MAX_LEVEL, xp_to_next_level, apply_level_growth, set_hero_level, growth_for)
 
 # --- Demogorgon special skills ---
@@ -27,8 +29,9 @@ DEMOGORGON_AURA_SLOW = 0.8       # enemies move at 80% speed (20% slow) in aura
 
 
 class World:
-    def __init__(self, world_map, game_state, hero, quests=None, debug=False):
+    def __init__(self, world_map, game_state, hero, quests=None, debug=False, pp=PP_DEFAULT):
         self.debug = debug
+        self.pp = clamp_pp(pp)     # map difficulty: monsters get HP x pp, damage x (1 + pp) / 2
         self.quests = quests       # player 0's QuestLog for this map (each PlayerState has its own)
         self.projectiles = []      # active projectiles (Wanding, Frostbolt, monster arrows)
         self.world_map = world_map
@@ -182,6 +185,7 @@ class World:
         m.unique = mt.get("unique", False)  # one-of-a-kind minion: name shown, but respawns/leashes like a normal mob
         if mt.get("condition"):
             m.on_hit_condition = mt["condition"]
+        self._apply_pp(m)
         if mt.get("ranged"):
             m.ranged_attack_range = 250
             m.ranged_attack_damage = m.base_damage
@@ -196,6 +200,16 @@ class World:
         generate_patrol_route(m, patrol_radius=100, collision_fn=self.is_wall)
         self.register(m)
         return m
+
+    def _apply_pp(self, m):
+        """Scale a freshly spawned monster for the map's pp (no-op at 1pp): HP x pp, damage and XP x (1+pp)/2."""
+        m.max_hp = m.max_hp * hp_multiplier(self.pp)
+        m.hp = m.max_hp
+        dm = damage_multiplier(self.pp)
+        m.base_damage = m.base_damage * dm
+        m.poison_dps = POISON_DPS * dm
+        m.base_experience = m.experience            # gold rolls stay on the base value
+        m.experience = scaled_xp(m.experience, self.pp)
 
     def spawn_world_map_monsters(self):
         """Spawn all monsters from world map spawn data."""
@@ -332,7 +346,7 @@ class World:
                 for player in self.player_list:
                     hero = player.hero
                     hero.xp += m.experience
-                    hero.gold += random.randint(10, 30) * m.experience
+                    hero.gold += random.randint(10, 30) * getattr(m, "base_experience", m.experience)
                     hero.kills += 1
                     if player.player_id == 0 or len(self.players) == 1:
                         self.float_text(m.x, m.y + 10, f"+{m.experience}xp", GOLD)
@@ -386,7 +400,8 @@ class World:
                     if on_hit and hit_target.alive:
                         cond, dur = on_hit
                         hit_target.apply_condition(cond, dur,
-                                                   tick_damage=10.0 if cond == Condition.POISONED else 0)
+                                                   tick_damage=getattr(proj.source, "poison_dps", POISON_DPS)
+                                                   if cond == Condition.POISONED else 0)
         self.projectiles[:] = [p for p in self.projectiles if p.alive]
 
     # --- one simulation step ---

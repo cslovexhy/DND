@@ -22,7 +22,7 @@ Patrol:
 import math
 import random
 from typing import Optional
-from .entities import Monster, Hero, Entity, Condition
+from .entities import Monster, Hero, Entity, Condition, POISON_DPS
 from .pathfinding import astar, has_line_of_sight
 
 
@@ -310,7 +310,7 @@ def ai_melee(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None)
             if monster.on_hit_condition:
                 cond, dur = monster.on_hit_condition
                 target.apply_condition(cond, dur,
-                                       tick_damage=10.0 if cond == Condition.POISONED else 0)
+                                       tick_damage=getattr(monster, 'poison_dps', POISON_DPS) if cond == Condition.POISONED else 0)
             return ("attack", target, dmg)
     return ("move", target, 0)
 
@@ -387,7 +387,7 @@ def ai_boss(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None):
             if monster.on_hit_condition:
                 cond, dur = monster.on_hit_condition
                 target.apply_condition(cond, dur,
-                                       tick_damage=10.0 if cond == Condition.POISONED else 0)
+                                       tick_damage=getattr(monster, 'poison_dps', POISON_DPS) if cond == Condition.POISONED else 0)
             return ("attack", target, dmg)
     return ("move", target, 0)
 

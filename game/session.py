@@ -31,6 +31,7 @@ from game.engine.bootstrap import create_world, map_id_for
 from game.client.local_host import LocalHost
 from game.client.view import ClientView
 from game.client.status_visuals import status_visuals
+from game.content.difficulty import map_title
 from game.client import SessionAbort
 from game.engine.map_schema import MapError
 from game.net.client import RemoteHost
@@ -131,6 +132,7 @@ def drain_events(events):
 # === GAME SETUP ===
 # The simulation is built by engine/bootstrap.py (shared with pygame-free tools). Art is attached through hooks.
 NET_MODE = globals().get("NET_MODE")
+PP = globals().get("PP", 1)   # map difficulty chosen in map select (hosts and solo); joiners get the host's
 _host_server = None   # co-op host: the authoritative World runs in a background thread of this process
 if NET_MODE:
     # Co-op: this client only sees snapshots + events from a host (ours, or another game's on this machine).
@@ -139,7 +141,7 @@ if NET_MODE:
     _port = NET_PORT or DEFAULT_PORT
     try:
         if NET_MODE == "host":
-            _host_server = HostServer(USE_MAP, host_character=char_data, port=_port).start()
+            _host_server = HostServer(USE_MAP, host_character=char_data, port=_port, pp=PP).start()
             print(f"[HOST] Hosting {USE_MAP} on 127.0.0.1:{_host_server.port}", flush=True)
         host = RemoteHost("127.0.0.1", _port, name=char_data["name"], class_name=char_data["class_name"],
                           character=None if auto_mode else char_data)
@@ -166,7 +168,7 @@ if NET_MODE:
 else:
     try:
         world, player = create_world(USE_MAP, char_data, debug=DEBUG, autopilot=auto_mode,
-                                     auto_companion=auto_mode and "--no-companion" not in sys.argv)
+                                     auto_companion=auto_mode and "--no-companion" not in sys.argv, pp=PP)
     except ValueError as e:   # includes map_schema.MapError
         print(f"ERROR: Map '{USE_MAP}' can't be played: {e}")
         print("Please open the map in the map editor and fix it (e.g. place a 'Hero Start' marker).")
@@ -194,6 +196,8 @@ view = ClientView(on_new_entity=_attach_sprite, interpolate=world is None,
                   tick_rate=host.welcome["tick_rate"] if world is None else 30)
 view.apply(host.snapshot())
 hero = view.hero          # the local player's hero, as seen by the client
+MAP_NAME = MAP_ID.replace("_", " ").title()
+MAP_TITLE = map_title(MAP_NAME, view.pp)   # e.g. "Northshire (8pp)"; the pp comes from the host
 # F1-F4 summon one AI companion per class other than the player's own
 available_companions = [c for c in HERO_CLASSES if c["class"] != hero.class_name]
 if _audio_available:
@@ -684,6 +688,7 @@ while running:
     snap, events = host.step(dt)   # the client only sees snapshots + events from the host
     if snap is not None:           # a remote host may not have sent a new frame yet
         view.apply(snap)
+        MAP_TITLE = map_title(MAP_NAME, view.pp)   # e.g. "Northshire (8pp)" — the host's pp, same for everyone
     view.advance(dt)               # remote play: glide between snapshots
     if NET_MODE == "join" and host.closed and (not auto_mode or "--reconnect" in sys.argv):
         if not _reconnect():
@@ -979,7 +984,7 @@ while running:
     screen.blit(font.render(f"R: {right_ab.name}", True, WHITE), (WIDTH//2 + 25, bar_y + 8))
 
     screen.blit(font.render(f"Kills: {hero.kills}  Gold: {hero.gold}", True, GOLD), (WIDTH-160, 20))
-    screen.blit(font.render(MAP_ID.replace("_", " ").title(), True, BLUE), (WIDTH-160, 40))
+    screen.blit(font.render(MAP_TITLE, True, BLUE), (WIDTH-160, 40))
 
     # Quest HUD (top center)
     quest_hud_y = 10
@@ -1002,7 +1007,7 @@ while running:
     elif vq.any_available:
         screen.blit(font.render("Visit an NPC for a new quest", True, (200, 200, 150)), (WIDTH//2 - 120, quest_hud_y))
     elif vq.has_quests:
-        screen.blit(font.render(f"All quests completed! {MAP_ID.replace('_', ' ').title()} is safe.", True, (100, 255, 100)), (WIDTH//2 - 160, quest_hud_y))
+        screen.blit(font.render(f"All quests completed! {MAP_TITLE} is safe.", True, (100, 255, 100)), (WIDTH//2 - 160, quest_hud_y))
     else:
         screen.blit(font.render(view.objective_text, True, (200,200,150)), (WIDTH//2-180, 10))
 
@@ -1033,7 +1038,7 @@ while running:
 if world is not None and world.record_commands:
     from game.engine.replay import save_recording
     save_recording(HEADLESS.record_commands,
-                   {"map": USE_MAP, "class_name": hero.class_name, "seed": HEADLESS.seed,
+                   {"map": USE_MAP, "class_name": hero.class_name, "seed": HEADLESS.seed, "pp": world.pp,
                     "max_time": HEADLESS.max_time}, world)
 
 save_game()
