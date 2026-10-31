@@ -337,8 +337,9 @@ def _pp_dropdown_rects(W):
 
 
 def map_select(ctx, char, pp=PP_DEFAULT):
-    """Returns {"map": path, "pp": n} (Enter: solo), {"host": path, "pp": n} (H: host a co-op game on that map),
-    {"join": True} (J: join a co-op game hosted on this computer), None to go back, or 'quit'.
+    """Returns {"map": path, "pp": n} (Enter: solo), {"host": path, "pp": n} (H: host on this computer only),
+    {"host": path, "pp": n, "lan": True} (L: host on the home network), {"join": True, "address": ip}
+    (J: pick a game on the Join screen), None to go back, or 'quit'.
     The "Difficulty" dropdown (click it, or +/- keys) picks the map's pp: 1pp normal ... 8pp = monsters have
     8x HP and deal 4.5x damage for 4.5x XP (Diablo II /players)."""
     maps = available_maps()
@@ -371,8 +372,14 @@ def map_select(ctx, char, pp=PP_DEFAULT):
                     return {"map": maps[sel]["path"], "pp": pp}
                 if event.key == pygame.K_h:
                     return {"host": maps[sel]["path"], "pp": pp}
+                if event.key == pygame.K_l:
+                    return {"host": maps[sel]["path"], "pp": pp, "lan": True}
                 if event.key == pygame.K_j:
-                    return {"join": True}
+                    choice = join_select(ctx)
+                    if choice == "quit":
+                        return "quit"
+                    if choice:
+                        return choice
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if dropdown_open:
                     for i, r in enumerate(options):
@@ -398,7 +405,7 @@ def map_select(ctx, char, pp=PP_DEFAULT):
         screen.blit(who, (W // 2 - who.get_width() // 2, 100))
         hint = ctx.font.render("Arrow keys / click to select, Enter = play solo, ESC = back", True, GRAY)
         screen.blit(hint, (W // 2 - hint.get_width() // 2, 120))
-        coop = ctx.font.render("Co-op (this computer only for now):  H = host the selected map    J = join a hosted game",
+        coop = ctx.font.render("Co-op:  L = host on home network    H = host on this computer only    J = join a game",
                                True, (150, 180, 255))
         screen.blit(coop, (W // 2 - coop.get_width() // 2, H - 40))
 
@@ -436,11 +443,123 @@ def map_select(ctx, char, pp=PP_DEFAULT):
         ctx.clock.tick(30)
 
 
+# ---------------------------------------------------------------- join (find games on the home network)
+
+def _scan_in_background(port):
+    """Start a scan in a thread; returns a dict that gets {"done": True, "games": [...]} when finished."""
+    import threading
+    from game.net.discovery import scan
+    state = {"done": False, "games": []}
+
+    def work():
+        try:
+            state["games"] = scan(port)
+        finally:
+            state["done"] = True
+    threading.Thread(target=work, daemon=True).start()
+    return state
+
+
+def join_select(ctx, port=None):
+    """Find co-op games (this computer + home network) and pick one. Returns {"join": True, "address": ip},
+    None to go back, or 'quit'. R = search again, T = type an address (if a game isn't found)."""
+    from game.net.discovery import describe, lan_address
+    from game.net.server import DEFAULT_PORT
+    port = port or DEFAULT_PORT
+    state = _scan_in_background(port)
+    sel = 0
+    typing, typed, msg = False, "", ""
+    mine = lan_address()
+    while True:
+        screen = _screen()
+        W, H = screen.get_size()
+        games = state["games"]
+        sel = min(sel, max(0, len(games) - 1))
+        for event in pygame.event.get():
+            if _handle_common(event) == "quit":
+                return "quit"
+            if event.type != pygame.KEYDOWN:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not typing:
+                    for i in range(len(games)):
+                        if pygame.Rect(W // 2 - 330, 170 + i * 50, 660, 42).collidepoint(event.pos):
+                            if sel == i and games[i]["compatible"]:
+                                return {"join": True, "address": games[i]["address"]}
+                            sel = i
+                continue
+            if typing:
+                if event.key == pygame.K_ESCAPE:
+                    typing = False
+                elif event.key == pygame.K_RETURN:
+                    addr = typed.strip()
+                    if _valid_ipv4(addr):
+                        return {"join": True, "address": addr}
+                    msg = f"'{addr}' is not an address like 192.168.1.23"
+                elif event.key == pygame.K_BACKSPACE:
+                    typed = typed[:-1]
+                elif event.unicode and event.unicode in "0123456789." and len(typed) < 15:
+                    typed += event.unicode
+                continue
+            if event.key == pygame.K_ESCAPE:
+                return None
+            if event.key in (pygame.K_UP, pygame.K_w) and games:
+                sel = (sel - 1) % len(games)
+            if event.key in (pygame.K_DOWN, pygame.K_s) and games:
+                sel = (sel + 1) % len(games)
+            if event.key == pygame.K_r and state["done"]:
+                state, msg = _scan_in_background(port), ""
+            if event.key == pygame.K_t:
+                typing, typed, msg = True, "", ""
+            if event.key in (pygame.K_RETURN, pygame.K_SPACE) and games:
+                if games[sel]["compatible"]:
+                    return {"join": True, "address": games[sel]["address"]}
+                msg = "That game runs a different version — both computers need the same copy of the game."
+
+        screen.fill(BG)
+        t = ctx.title_font.render("JOIN A GAME", True, GOLD)
+        screen.blit(t, (W // 2 - t.get_width() // 2, 50))
+        net = f"Your computer: LAN {mine}" if mine else "This computer isn't on a home network"
+        screen.blit(ctx.font.render(net, True, LIGHT_GRAY), (W // 2 - 330, 110))
+        status = "Searching this computer and your home network..." if not state["done"] else \
+            (f"Found {len(games)} game(s)." if games else "No games found. Is the host on the same Wi-Fi? (R = search again)")
+        screen.blit(ctx.font.render(status, True, LIGHT_GRAY), (W // 2 - 330, 135))
+        for i, g in enumerate(games):
+            rect = pygame.Rect(W // 2 - 330, 170 + i * 50, 660, 42)
+            pygame.draw.rect(screen, (40, 80, 40) if i == sel else (30, 30, 40), rect, border_radius=6)
+            pygame.draw.rect(screen, GOLD if i == sel else GRAY, rect, 2 if i == sel else 1, border_radius=6)
+            color = WHITE if g["compatible"] else RED
+            label = describe(g) + ("" if g["compatible"] else "  (different game version)")
+            screen.blit(ctx.font.render(label, True, color), (rect.x + 12, rect.y + 13))
+        if typing:
+            box = pygame.Rect(W // 2 - 330, H - 120, 660, 36)
+            pygame.draw.rect(screen, (30, 30, 50), box)
+            pygame.draw.rect(screen, GOLD, box, 2)
+            screen.blit(ctx.big_font.render(f"Address: {typed}_", True, WHITE), (box.x + 10, box.y + 6))
+        if msg:
+            m = ctx.font.render(msg, True, RED)
+            screen.blit(m, (W // 2 - m.get_width() // 2, H - 75))
+        hint = ("Type the host's address, Enter = join, ESC = cancel" if typing else
+                "Up/Down + Enter = join    R = search again    T = type an address    ESC = back")
+        h = ctx.font.render(hint, True, GRAY)
+        screen.blit(h, (W // 2 - h.get_width() // 2, H - 40))
+        pygame.display.flip()
+        ctx.clock.tick(30)
+
+
+def _valid_ipv4(addr):
+    import ipaddress
+    try:
+        ipaddress.IPv4Address(addr)
+        return True
+    except ValueError:
+        return False
+
+
 # ---------------------------------------------------------------- flow
 
 def run_menus(ctx, preset_map=None):
     """Character select -> map select. Returns (char_data, choice) where choice is {"map": path, "pp": n} (solo),
-    {"host": path, "pp": n} or {"join": True} — or a plain path if preset_map was given; None to quit the game.
+    {"host": path, "pp": n[, "lan": True]} or {"join": True, "address": ip} — or a plain path if preset_map was
+    given; None to quit the game.
     If preset_map is given (--map on the command line) the map screen is skipped."""
     while True:
         action, char = character_select(ctx)

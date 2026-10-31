@@ -103,10 +103,16 @@ bot soak tests (hero_ai as clients), network chaos tests, one command (`./test.s
   the host's full authoritative state (deltas are exact, TCP is ordered). Own-movement prediction deferred: on a
   home LAN the delay is ~1 snapshot (33 ms).
 
-## Open decision: playing across machines
+## Playing across machines (home network) — done
 
-Everything above works between game windows on one computer (127.0.0.1). Kids on other laptops need the host to
-accept connections from the home network, which means anyone on that Wi-Fi could reach the host's game port.
-Options: (a) keep loopback and use an SSH tunnel per joiner (private, but fiddly); (b) an opt-in "host on home
-network" switch that binds the LAN address only while hosting, with the host approving each join request on screen.
-Needs an explicit go-ahead before implementing.
+Decided with the owner: hosting on the home network is opt-in per session (L in map select; H stays
+this-computer-only); anyone on the home network who finds the game may join without approval (family play),
+up to 4 players; nothing is exposed to the internet (no router/UPnP changes).
+
+- The host binds exactly one interface: 127.0.0.1 (H) or this computer's private home-network IPv4 (L) — never
+  0.0.0.0. Only a connection from the host machine itself can take player 0 (the host's own hero).
+- Discovery without broadcasting: the joiner scans its own /24 block on the game port and asks `{"t": "info"}`;
+  hosts answer with "Name (Lv N) - Map (Xpp) (LAN ip) · players" and close. Typing an address is the fallback.
+- Same version everywhere: protocol version in hello/info; pygame-ce pinned to 2.5.7 in run.sh and run.bat, and
+  run.sh now sets up .venv on a fresh download like run.bat. How-to: docs/playing_together.md.
+- Not tested here: a second physical machine, Windows (run.bat path), guest/isolated Wi-Fi networks.

@@ -10,7 +10,8 @@ if not exist ".venv\Scripts\python.exe" (
         exit /b 1
     )
     echo Installing dependencies...
-    .venv\Scripts\pip install pygame-ce
+    rem keep in sync with run.sh: every computer in a co-op game runs the same version
+    .venv\Scripts\pip install pygame-ce==2.5.7
     if errorlevel 1 (
         echo ERROR: Failed to install dependencies.
         pause

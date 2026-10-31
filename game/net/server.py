@@ -2,15 +2,20 @@
 
     python3 -m game.net.server --map data/maps/northshire.json --hero 4 [--port 5577] [--seed N]
 
-Security: binds to 127.0.0.1 (this machine only) — there is deliberately no option to listen on other
-interfaces yet. Playing across machines needs an explicit decision about exposure and authentication
-first (design/06, phase 5).
+Where it listens (never on all interfaces):
+  lan=False (default, "H" in map select): 127.0.0.1 — this computer only.
+  lan=True  ("L" in map select): this computer's home-network address only (e.g. 192.168.1.23), so devices
+            on the same home network can join. Decided with the owner: anyone on the home network who finds
+            the game may join without approval (co-op with family); not reachable from the internet (no router
+            or UPnP changes). Joiners are limited by max_players, sanitized characters and the message caps.
 
-Players: the world is created with the host player's character as player 0; the first client to say
-hello controls it (normally the host's own game, connected over loopback). Every later client brings its
-own character (validated) and joins as a new player, up to max_players. A joiner who leaves is removed;
-player 0's slot stays reserved so the host can reconnect.
+Players: the world is created with the host player's character as player 0. Only a connection from this
+machine itself can take player 0 (your own hero); every other client brings its own character (validated)
+and joins as a new player, up to max_players. A joiner who leaves is removed; player 0's slot stays
+reserved so the host can reconnect. Before saying hello, anyone may ask {"t": "info"} for the one-line game
+description used by the Join screen.
 """
+import os
 import random
 import selectors
 import socket
@@ -27,6 +32,7 @@ from game.engine.map_schema import content_hash
 from game.headless import FIXED_DT
 from game.net.protocol import PROTOCOL_VERSION, LineBuffer, encode
 from game.net.delta import DeltaEncoder
+from game.net.discovery import lan_address
 
 LOOPBACK = "127.0.0.1"
 DEFAULT_PORT = 5577
@@ -49,7 +55,7 @@ class HostServer:
     MAX_COMMANDS_PER_TICK = 30   # per player; extra commands are dropped (flood protection)
 
     def __init__(self, map_path, class_name="Fighter", seed=1, port=DEFAULT_PORT, tick_rate=30,
-                 autopilot=False, auto_companion=False, host_character=None, max_players=4, pp=1):
+                 autopilot=False, auto_companion=False, host_character=None, max_players=4, pp=1, lan=False):
         random.seed(seed)
         self.map_path = map_path
         self.max_players = max_players
@@ -65,7 +71,14 @@ class HostServer:
         self.sel = selectors.DefaultSelector()
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.listener.bind((LOOPBACK, port))   # this machine only
+        if lan:
+            self.address = lan_address()
+            if self.address is None:
+                raise OSError("this computer isn't on a home network (no private IPv4 address)")
+        else:
+            self.address = LOOPBACK
+        self.listener.bind((self.address, port))   # one interface only — never 0.0.0.0
+        self.local_addresses = {LOOPBACK, self.address}   # connections from this machine itself
         self.listener.listen()
         self.listener.setblocking(False)
         self.port = self.listener.getsockname()[1]
@@ -141,14 +154,18 @@ class HostServer:
 
     def _handle(self, c, msg):
         t = msg["t"]
-        if t == "hello":
+        if t == "info":
+            self._send(c, {"t": "info", "v": PROTOCOL_VERSION, **self.info()})
+            self._close(c)
+        elif t == "hello":
             if msg.get("v") != PROTOCOL_VERSION:
                 self._send(c, {"t": "reject", "reason": f"protocol version {msg.get('v')} != {PROTOCOL_VERSION}"})
                 self._close(c)
             elif c.player_id is not None:
                 return   # duplicate hello: ignore
-            elif not any(o.player_id == 0 for o in self.conns if o is not c):
-                self._admit(c, 0)                    # the host player's slot
+            elif (c.addr[0] in self.local_addresses
+                  and not any(o.player_id == 0 for o in self.conns if o is not c)):
+                self._admit(c, 0)                    # the host player's own hero: only from this machine
             elif sum(1 for o in self.conns if o.player_id is not None) >= self.max_players:
                 self._send(c, {"t": "reject", "reason": f"game is full ({self.max_players} players)"})
                 self._close(c)
@@ -169,6 +186,14 @@ class HostServer:
                 self.world.submit(commands.from_dict(msg["cmd"]), c.player_id)   # unknown types raise -> reject
         elif t == "bye":
             self._close(c)
+
+    def info(self):
+        """Description for the Join screen: host's character, map and pp, player count."""
+        host = self.world.players.get(0)
+        hero = host.hero if host else self.world.hero
+        name = os.path.splitext(os.path.basename(self.map_path))[0].replace("_", " ").title()
+        return {"host_name": hero.name, "host_level": hero.level, "map_name": name, "pp": self.world.pp,
+                "players": sum(1 for o in self.conns if o.player_id is not None), "max_players": self.max_players}
 
     def _admit(self, c, pid):
         c.player_id = pid
@@ -240,7 +265,7 @@ def main(argv):
                      port=_arg_value(argv, "--port", int, DEFAULT_PORT),
                      autopilot="--auto" in argv, auto_companion="--auto" in argv,
                      pp=_arg_value(argv, "--pp", int, 1))
-    print(f"[HOST] {map_path} ({srv.world.pp}pp) on {LOOPBACK}:{srv.port} (this machine only). Ctrl+C to stop.",
+    print(f"[HOST] {map_path} ({srv.world.pp}pp) on {srv.address}:{srv.port} (this machine only). Ctrl+C to stop.",
           flush=True)
     try:
         srv.serve_forever(max_ticks=_arg_value(argv, "--max-ticks", int, None))

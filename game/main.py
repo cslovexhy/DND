@@ -237,14 +237,20 @@ if auto_mode:
             auto_hero_idx = int(sys.argv[i + 1])
     if USE_MAP is None:
         USE_MAP = "data/maps/northshire.json"
-# --connect PORT: join a host running on this machine (python3 -m game.net.server ...) instead of
-# running the simulation here. The host owns the character for now, so nothing is saved locally.
-# --host-game [--port P]: host a co-op game of --map (with --auto/--headless) — mainly for tests.
+# --connect [ADDRESS:]PORT: join a co-op host (default address 127.0.0.1) instead of running the
+# simulation here; throwaway session, nothing saved locally.
+# --host-game [--lan] [--port P]: host a co-op game of --map (with --auto/--headless) — mainly for tests;
+# --lan listens on this computer's home-network address instead of this-computer-only.
 CONNECT_PORT = None
 NET_PORT = None
+NET_ADDRESS = "127.0.0.1"
+NET_LAN = "--lan" in sys.argv
 for i, arg in enumerate(sys.argv):
     if arg == "--connect" and i + 1 < len(sys.argv):
-        CONNECT_PORT = NET_PORT = int(sys.argv[i + 1])
+        _target = sys.argv[i + 1]
+        if ":" in _target:
+            NET_ADDRESS, _target = _target.rsplit(":", 1)
+        CONNECT_PORT = NET_PORT = int(_target)
     if arg == "--port" and i + 1 < len(sys.argv):
         NET_PORT = int(sys.argv[i + 1])
 CLI_NET_MODE = "join" if CONNECT_PORT else ("host" if "--host-game" in sys.argv else None)
@@ -280,13 +286,17 @@ def run():
             char_data, map_path = result
         net_mode = CLI_NET_MODE               # None = solo; "host" / "join" = co-op over the network
         pp = CLI_PP                           # map difficulty (1..8 "players")
-        if isinstance(map_path, dict):        # from map select: {"map"|"host": path, "pp": n} or {"join": True}
-            pp = map_path.get("pp", pp)
+        net_lan, net_address = NET_LAN, NET_ADDRESS
+        if isinstance(map_path, dict):        # from map select: {"map"|"host": path, "pp": n, "lan": bool}
+            pp = map_path.get("pp", pp)       #   or {"join": True, "address": "192.168.1.23"}
             net_mode = "host" if "host" in map_path else ("join" if "join" in map_path else None)
+            net_lan = map_path.get("lan", False)
+            net_address = map_path.get("address", NET_ADDRESS)
             map_path = map_path.get("host") or map_path.get("map")
         surface = pygame.display.get_surface()  # menus may have resized the window
         session_globals = {k: v for k, v in globals().items() if not (k.startswith("__") and k.endswith("__"))}
         session_globals.update(char_data=char_data, USE_MAP=map_path, screen=surface, NET_MODE=net_mode, PP=pp,
+                               NET_LAN=net_lan, NET_ADDRESS=net_address,
                                WIDTH=surface.get_width(), HEIGHT=surface.get_height())
         try:
             result_ns = runpy.run_module("game.session", init_globals=session_globals, run_name="game.session")

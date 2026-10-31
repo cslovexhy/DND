@@ -133,6 +133,8 @@ def drain_events(events):
 # The simulation is built by engine/bootstrap.py (shared with pygame-free tools). Art is attached through hooks.
 NET_MODE = globals().get("NET_MODE")
 PP = globals().get("PP", 1)   # map difficulty chosen in map select (hosts and solo); joiners get the host's
+NET_LAN = globals().get("NET_LAN", False)               # host on the home network instead of this computer only
+NET_ADDRESS = globals().get("NET_ADDRESS", "127.0.0.1")  # where to join (or, when hosting, where we listen)
 _host_server = None   # co-op host: the authoritative World runs in a background thread of this process
 if NET_MODE:
     # Co-op: this client only sees snapshots + events from a host (ours, or another game's on this machine).
@@ -141,9 +143,11 @@ if NET_MODE:
     _port = NET_PORT or DEFAULT_PORT
     try:
         if NET_MODE == "host":
-            _host_server = HostServer(USE_MAP, host_character=char_data, port=_port, pp=PP).start()
-            print(f"[HOST] Hosting {USE_MAP} on 127.0.0.1:{_host_server.port}", flush=True)
-        host = RemoteHost("127.0.0.1", _port, name=char_data["name"], class_name=char_data["class_name"],
+            _host_server = HostServer(USE_MAP, host_character=char_data, port=_port, pp=PP, lan=NET_LAN).start()
+            NET_ADDRESS = _host_server.address   # our own client connects to wherever the server listens
+            print(f"[HOST] Hosting {USE_MAP} on {NET_ADDRESS}:{_host_server.port}"
+                  f" ({'home network' if NET_LAN else 'this computer only'})", flush=True)
+        host = RemoteHost(NET_ADDRESS, _port, name=char_data["name"], class_name=char_data["class_name"],
                           character=None if auto_mode else char_data)
     except (OSError, ConnectionRejected) as e:
         print(f"[NET] Could not {'host' if NET_MODE == 'host' else 'join'} a game on port {_port}: {e}", flush=True)
@@ -241,7 +245,7 @@ def _reconnect(timeout=15.0):
         screen.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2))
         pygame.display.flip()
         try:
-            new_host = RemoteHost("127.0.0.1", _port, name=char_data["name"],
+            new_host = RemoteHost(NET_ADDRESS, _port, name=char_data["name"],
                                   class_name=char_data["class_name"], character=char_data, timeout=2)
         except (OSError, ConnectionRejected):
             pygame.time.wait(1000)
@@ -985,6 +989,10 @@ while running:
 
     screen.blit(font.render(f"Kills: {hero.kills}  Gold: {hero.gold}", True, GOLD), (WIDTH-160, 20))
     screen.blit(font.render(MAP_TITLE, True, BLUE), (WIDTH-160, 40))
+    if _host_server is not None:
+        where = f"Hosting on LAN {NET_ADDRESS}" if NET_LAN else "Hosting (this computer only)"
+        screen.blit(font.render(f"{where} · {len(view.allies) + 1}/{_host_server.max_players}", True, BLUE),
+                    (WIDTH-260, 58))
 
     # Quest HUD (top center)
     quest_hud_y = 10
