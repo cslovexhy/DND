@@ -509,16 +509,16 @@ def draw_status_effects(e, sx, sy, sw, sh):
         pygame.draw.circle(poison_surf, (50, 200, 50, pulse_p), (sw//2 + 3, sh//2 + 3), sw//2 + 3, 2)
         screen.blit(poison_surf, (sx - 3, sy - 3))
 
-    # Wall bubble shield visual
+    # Wall shield visual: golden bubble (Cleric "Wall" absorb shield), clearly visible on grass
     if fx.get("shield"):
         bubble_r = sw // 2 + 8
         bubble_cx = sx + sw // 2
         bubble_cy = sy + sh // 2
         # Pulsing alpha
-        pulse = int(80 + 40 * math.sin(view.game_time * 4))
+        pulse = int(170 + 60 * math.sin(view.game_time * 4))
         bubble_surf = pygame.Surface((bubble_r * 2 + 4, bubble_r * 2 + 4), pygame.SRCALPHA)
-        pygame.draw.circle(bubble_surf, (100, 180, 255, pulse), (bubble_r + 2, bubble_r + 2), bubble_r, 3)
-        pygame.draw.circle(bubble_surf, (100, 180, 255, pulse // 3), (bubble_r + 2, bubble_r + 2), bubble_r)
+        pygame.draw.circle(bubble_surf, (255, 220, 80, pulse // 3), (bubble_r + 2, bubble_r + 2), bubble_r)
+        pygame.draw.circle(bubble_surf, (255, 215, 60, pulse), (bubble_r + 2, bubble_r + 2), bubble_r, 3)
         screen.blit(bubble_surf, (bubble_cx - bubble_r - 2, bubble_cy - bubble_r - 2))
 
     # Renew visual (green sparkle indicator)

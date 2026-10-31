@@ -401,7 +401,7 @@ class PlayerState:
             shield_amount = hero.surge_value  # Same as potion amount (200)
             target.absorb_shield = shield_amount
             target.buffs["Wall"] = {"remaining": 15.0}
-            self.world.float_text(target.x, target.y - 30, f"Wall +{shield_amount:.0f}!", (100, 200, 255))
+            self.world.float_text(target.x, target.y - 30, f"Wall +{shield_amount:.0f}!", (255, 215, 60))
             hero.gcd = hero.GCD_DURATION
             self.move_path = []
             return
