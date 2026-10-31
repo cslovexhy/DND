@@ -14,6 +14,8 @@ import pygame
 pygame.init()
 pygame.display.set_mode((1024, 768))
 from game.menus import MenuContext, map_select
+import game.menus as menus
+menus.join_select = lambda ctx: {"join": True, "address": "192.168.1.23"}   # Join screen tested in test_lan
 ctx = MenuContext(clock=pygame.time.Clock(), font=pygame.font.Font(None, 20), big_font=pygame.font.Font(None, 32),
                   title_font=pygame.font.Font(None, 48), hero_sprites={})
 char = {"name": "t", "level": 1, "class_name": "Fighter"}
@@ -32,6 +34,7 @@ for _ in range(20): key("EQUALS")
 key("RETURN"); out["capped"] = map_select(ctx, char)
 key("MINUS"); key("RETURN"); out["floor"] = map_select(ctx, char)
 key("j"); out["join"] = map_select(ctx, char)
+key("l"); out["lan_host"] = map_select(ctx, char)
 key("ESCAPE"); out["back"] = map_select(ctx, char)
 print(json.dumps(out))
 '''
@@ -50,7 +53,9 @@ class MenuTest(unittest.TestCase):
         self.assertEqual(out["dropdown_8"]["pp"], 8)                 # dropdown: open, pick 8pp
         self.assertEqual(out["capped"]["pp"], 8)                     # never above 8
         self.assertEqual(out["floor"]["pp"], 1)                      # never below 1
-        self.assertEqual(out["join"], {"join": True})
+        self.assertEqual(out["join"], {"join": True, "address": "192.168.1.23"})
+        self.assertEqual(out["lan_host"]["lan"], True)               # L = host on the home network
+        self.assertNotIn("lan", out["host_plus2"])                   # H = this computer only
         self.assertIsNone(out["back"])
 
 
