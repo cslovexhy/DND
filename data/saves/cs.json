@@ -1,10 +1,10 @@
 {
   "name": "cs",
   "class_name": "Paladin",
-  "level": 10,
-  "xp": 262,
-  "gold": 18965,
-  "kills": 126,
+  "level": 11,
+  "xp": 152,
+  "gold": 37500,
+  "kills": 274,
   "quests": {
     "northshire": {
       "completed": [
@@ -21,6 +21,11 @@
       "progress": {}
     },
     "haycock": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    },
+    "goldshire": {
       "completed": [],
       "active": [],
       "progress": {}

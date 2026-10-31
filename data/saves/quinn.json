@@ -1,15 +1,28 @@
 {
   "name": "quinn",
   "class_name": "Cleric",
-  "level": 7,
-  "xp": 131,
-  "gold": 28325,
-  "kills": 142,
+  "level": 12,
+  "xp": 408,
+  "gold": 70960,
+  "kills": 426,
   "quests": {
     "northshire": {
-      "completed": [],
-      "active": [],
-      "progress": {}
+      "completed": [
+        "a_threat_within",
+        "wolves_across_the_border",
+        "kobold_camp_cleanup",
+        "investigate_echo_ridge",
+        "brotherhood_of_thieves",
+        "skirmish_at_echo_ridge"
+      ],
+      "active": [
+        "bounty_on_garrick_padfoot",
+        "millys_harvest"
+      ],
+      "progress": {
+        "bounty_on_garrick_padfoot": {},
+        "millys_harvest": {}
+      }
     },
     "haycock": {
       "completed": [],
