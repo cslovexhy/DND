@@ -13,7 +13,7 @@ def _conditions(e):
     return [c.condition.name for c in getattr(e, "conditions", [])]
 
 
-def _entity(e, kind):
+def _entity(e, kind, ctl=None):
     d = {
         "id": e.eid, "kind": kind, "name": e.name,
         "x": e.x, "y": e.y, "hp": e.hp, "max_hp": e.max_hp, "alive": e.alive,
@@ -31,6 +31,9 @@ def _entity(e, kind):
         d["chill_visual"] = getattr(e, "chill_visual", 0.0)
         d["weapon_speed"] = e.weapon_speed
         d["xp"], d["gold"], d["kills"] = e.xp, e.gold, e.kills
+        # channel-bar progress (0..1) while channelling Frostbolt — everyone sees everyone's cast bar
+        d["channel"] = (1.0 - ctl.frostbolt_channel_timer / e.weapon_speed
+                        if ctl is not None and ctl.frostbolt_channeling else None)
     return d
 
 
@@ -54,13 +57,13 @@ def make_snapshot(world, player_id=0):
     player = world.players[player_id]
     hero = player.hero
     gs = world.game_state
-    entities = [_entity(hero, "hero")]
+    entities = [_entity(hero, "hero", player)]
     for other in world.player_list:          # other players' heroes
         if other is not player:
-            d = _entity(other.hero, "ally")
+            d = _entity(other.hero, "ally", other)
             d["player_name"] = other.name
             entities.append(d)
-    entities += [_entity(c, "companion") for c, _ in world.companions]
+    entities += [_entity(c, "companion", ctl) for c, ctl in world.companions]
     entities += [_entity(m, "monster") for m in gs.monsters]
     for n in world.npcs:
         d = _entity(n, "npc")

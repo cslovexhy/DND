@@ -13,7 +13,7 @@ PURE = (
     glob.glob(os.path.join(ROOT, "game", "engine", "*.py"))
     + [os.path.join(ROOT, "game", n) for n in ("headless.py", "progression.py", "saves.py", "quests.py")]
     + glob.glob(os.path.join(ROOT, "game", "content", "*.py"))
-    + [os.path.join(ROOT, "game", "client", n) for n in ("view.py", "local_host.py")]
+    + [os.path.join(ROOT, "game", "client", n) for n in ("view.py", "local_host.py", "status_visuals.py")]
 )
 
 
@@ -57,6 +57,17 @@ class ClientReadsOnlySnapshotsTest(unittest.TestCase):
         for bad in (r"(?<![\w.])world\.", r"(?<![\w.])game_state\.", r"(?<![\w.])player\.",
                     r"(?<![\w.])quests\.", r"(?<![\w.])projectiles\b", r"(?<![\w.])companions\b"):
             self.assertIsNone(re.search(bad, code), f"render code uses {bad}")
+
+
+class SameEffectsForEveryHeroTest(unittest.TestCase):
+    def test_every_hero_kind_is_drawn_with_the_shared_status_effects(self):
+        """Your hero, other players and companions must all go through status_tint + draw_status_effects,
+        so a buff looks the same on every player's screen."""
+        with open(os.path.join(ROOT, "game", "session.py"), encoding="utf-8") as f:
+            src = f.read()
+        for who in ("hero", "comp", "ally"):
+            self.assertIn(f"status_tint({who},", src)
+            self.assertIn(f"draw_status_effects({who},", src)
 
 
 if __name__ == "__main__":

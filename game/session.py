@@ -30,6 +30,7 @@ from game.engine.world import World
 from game.engine.bootstrap import create_world, map_id_for
 from game.client.local_host import LocalHost
 from game.client.view import ClientView
+from game.client.status_visuals import status_visuals
 from game.client import SessionAbort
 from game.engine.map_schema import MapError
 from game.net.client import RemoteHost
@@ -475,6 +476,73 @@ def get_npc_at_screen(sx, sy):
     return None
 
 
+def status_tint(e, s):
+    """Sprite tint for a hero's status (same for every hero, on every screen)."""
+    fx = status_visuals(e)
+    if fx.get("stealth"):
+        s = s.copy()
+        s.set_alpha(100)  # Semi-transparent when stealthed
+    elif fx.get("poison"):
+        s = s.copy()
+        s.fill((0, 80, 0, 0), special_flags=pygame.BLEND_RGBA_ADD)  # Green tint
+    elif fx.get("chill"):
+        s = s.copy()
+        s.fill((100, 150, 255, 0), special_flags=pygame.BLEND_RGBA_ADD)  # Blue chill tint
+    return s
+
+
+def draw_status_effects(e, sx, sy, sw, sh):
+    """Rings, shield bubble and cast bar around a hero drawn at (sx, sy, sw, sh) — used for your hero, other
+    players and companions alike, so everyone sees the same effects (status_visuals decides which)."""
+    fx = status_visuals(e)
+    # Demogorgon chill aura visual (blue ring) — visual only, player is slowed not frozen
+    if fx.get("chill"):
+        pulse_c = int(70 + 30 * math.sin(view.game_time * 6))
+        chill_surf = pygame.Surface((sw + 8, sh + 8), pygame.SRCALPHA)
+        pygame.draw.circle(chill_surf, (150, 200, 255, pulse_c), (sw//2 + 4, sh//2 + 4), sw//2 + 4, 2)
+        screen.blit(chill_surf, (sx - 4, sy - 4))
+
+    # Poison drip visual
+    if fx.get("poison"):
+        pulse_p = int(60 + 30 * math.sin(view.game_time * 5))
+        poison_surf = pygame.Surface((sw + 6, sh + 6), pygame.SRCALPHA)
+        pygame.draw.circle(poison_surf, (50, 200, 50, pulse_p), (sw//2 + 3, sh//2 + 3), sw//2 + 3, 2)
+        screen.blit(poison_surf, (sx - 3, sy - 3))
+
+    # Wall bubble shield visual
+    if fx.get("shield"):
+        bubble_r = sw // 2 + 8
+        bubble_cx = sx + sw // 2
+        bubble_cy = sy + sh // 2
+        # Pulsing alpha
+        pulse = int(80 + 40 * math.sin(view.game_time * 4))
+        bubble_surf = pygame.Surface((bubble_r * 2 + 4, bubble_r * 2 + 4), pygame.SRCALPHA)
+        pygame.draw.circle(bubble_surf, (100, 180, 255, pulse), (bubble_r + 2, bubble_r + 2), bubble_r, 3)
+        pygame.draw.circle(bubble_surf, (100, 180, 255, pulse // 3), (bubble_r + 2, bubble_r + 2), bubble_r)
+        screen.blit(bubble_surf, (bubble_cx - bubble_r - 2, bubble_cy - bubble_r - 2))
+
+    # Renew visual (green sparkle indicator)
+    if fx.get("renew"):
+        renew_r = sw // 2 + 4
+        renew_cx = sx + sw // 2
+        renew_cy = sy + sh // 2
+        pulse_g = int(60 + 30 * math.sin(view.game_time * 6))
+        renew_surf = pygame.Surface((renew_r * 2 + 4, renew_r * 2 + 4), pygame.SRCALPHA)
+        pygame.draw.circle(renew_surf, (80, 255, 120, pulse_g), (renew_r + 2, renew_r + 2), renew_r, 2)
+        screen.blit(renew_surf, (renew_cx - renew_r - 2, renew_cy - renew_r - 2))
+
+    # Frostbolt channeling bar
+    if fx.get("channel") is not None:
+        bar_w = 40
+        bar_h = 5
+        bar_x = sx + sw // 2 - bar_w // 2
+        bar_y = sy - 14
+        progress = fx["channel"]
+        pygame.draw.rect(screen, (30, 30, 60), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
+        pygame.draw.rect(screen, (60, 60, 80), (bar_x, bar_y, bar_w, bar_h))
+        pygame.draw.rect(screen, (150, 200, 255), (bar_x, bar_y, int(bar_w * progress), bar_h))
+
+
 # === MAIN GAME LOOP ===
 # Scripted input (headless regression tests): posts real pygame events on given ticks and fakes held modifiers.
 _input_script = InputScript(HEADLESS.input_script) if HEADLESS.enabled and HEADLESS.input_script else None
@@ -736,14 +804,13 @@ while running:
             continue
         cs = pygame.transform.flip(cspr, True, False) if comp.facing_left else cspr
         cs = pygame.transform.scale(cs, (csw, csh))
-        if comp.stealthed:
-            cs = cs.copy()
-            cs.set_alpha(100)
+        cs = status_tint(comp, cs)
         if comp.flash_timer > 0:
             f = cs.copy(); f.fill((200,50,50,100), special_flags=pygame.BLEND_RGBA_ADD)
             screen.blit(f, (csx, csy))
         else:
             screen.blit(cs, (csx, csy))
+        draw_status_effects(comp, csx, csy, csw, csh)
         # HP bar for companions
         if comp.hp < comp.max_hp:
             pygame.draw.rect(screen, HP_BG, (csx-1, csy-9, csw+2, 6))
@@ -764,10 +831,9 @@ while running:
             continue
         a_s = pygame.transform.flip(ally.sprite, True, False) if ally.facing_left else ally.sprite
         a_s = pygame.transform.scale(a_s, (asw, ash))
-        if ally.stealthed:
-            a_s = a_s.copy()
-            a_s.set_alpha(100)
+        a_s = status_tint(ally, a_s)
         screen.blit(a_s, (asx, asy))
+        draw_status_effects(ally, asx, asy, asw, ash)
         pygame.draw.rect(screen, HP_BG, (asx-1, asy-9, asw+2, 6))
         pygame.draw.rect(screen, HP_RED, (asx, asy-8, asw, 4))
         pygame.draw.rect(screen, HP_GREEN, (asx, asy-8, int(asw*ally.hp/ally.max_hp), 4))
@@ -813,63 +879,9 @@ while running:
     sy = int((hero.y - cy) * cam_zoom + HEIGHT//2 - sh//2)
     s = pygame.transform.flip(spr, True, False) if hero.facing_left else spr
     s = pygame.transform.scale(s, (sw, sh))
-    if hero.stealthed:
-        s = s.copy()
-        s.set_alpha(100)  # Semi-transparent when stealthed
-    elif hero.has_condition(Condition.POISONED):
-        s = s.copy()
-        s.fill((0, 80, 0, 0), special_flags=pygame.BLEND_RGBA_ADD)  # Green tint
-    elif getattr(hero, 'chill_visual', 0.0) > 0:
-        s = s.copy()
-        s.fill((100, 150, 255, 0), special_flags=pygame.BLEND_RGBA_ADD)  # Blue chill tint
+    s = status_tint(hero, s)
     screen.blit(s, (sx, sy))
-
-    # Demogorgon chill aura visual (blue ring) — visual only, player is slowed not frozen
-    if getattr(hero, 'chill_visual', 0.0) > 0:
-        pulse_c = int(70 + 30 * math.sin(view.game_time * 6))
-        chill_surf = pygame.Surface((sw + 8, sh + 8), pygame.SRCALPHA)
-        pygame.draw.circle(chill_surf, (150, 200, 255, pulse_c), (sw//2 + 4, sh//2 + 4), sw//2 + 4, 2)
-        screen.blit(chill_surf, (sx - 4, sy - 4))
-
-    # Poison drip visual
-    if hero.has_condition(Condition.POISONED):
-        pulse_p = int(60 + 30 * math.sin(view.game_time * 5))
-        poison_surf = pygame.Surface((sw + 6, sh + 6), pygame.SRCALPHA)
-        pygame.draw.circle(poison_surf, (50, 200, 50, pulse_p), (sw//2 + 3, sh//2 + 3), sw//2 + 3, 2)
-        screen.blit(poison_surf, (sx - 3, sy - 3))
-
-    # Wall bubble shield visual
-    if hero.absorb_shield > 0:
-        bubble_r = sw // 2 + 8
-        bubble_cx = sx + sw // 2
-        bubble_cy = sy + sh // 2
-        # Pulsing alpha
-        pulse = int(80 + 40 * math.sin(view.game_time * 4))
-        bubble_surf = pygame.Surface((bubble_r * 2 + 4, bubble_r * 2 + 4), pygame.SRCALPHA)
-        pygame.draw.circle(bubble_surf, (100, 180, 255, pulse), (bubble_r + 2, bubble_r + 2), bubble_r, 3)
-        pygame.draw.circle(bubble_surf, (100, 180, 255, pulse // 3), (bubble_r + 2, bubble_r + 2), bubble_r)
-        screen.blit(bubble_surf, (bubble_cx - bubble_r - 2, bubble_cy - bubble_r - 2))
-
-    # Renew visual (green sparkle indicator)
-    if "Renew" in hero.buffs:
-        renew_r = sw // 2 + 4
-        renew_cx = sx + sw // 2
-        renew_cy = sy + sh // 2
-        pulse_g = int(60 + 30 * math.sin(view.game_time * 6))
-        renew_surf = pygame.Surface((renew_r * 2 + 4, renew_r * 2 + 4), pygame.SRCALPHA)
-        pygame.draw.circle(renew_surf, (80, 255, 120, pulse_g), (renew_r + 2, renew_r + 2), renew_r, 2)
-        screen.blit(renew_surf, (renew_cx - renew_r - 2, renew_cy - renew_r - 2))
-
-    # Frostbolt channeling bar
-    if view.you.frostbolt_channeling:
-        bar_w = 40
-        bar_h = 5
-        bar_x = sx + sw // 2 - bar_w // 2
-        bar_y = sy - 14
-        progress = 1.0 - (view.you.frostbolt_channel_timer / hero.weapon_speed)
-        pygame.draw.rect(screen, (30, 30, 60), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
-        pygame.draw.rect(screen, (60, 60, 80), (bar_x, bar_y, bar_w, bar_h))
-        pygame.draw.rect(screen, (150, 200, 255), (bar_x, bar_y, int(bar_w * progress), bar_h))
+    draw_status_effects(hero, sx, sy, sw, sh)
 
     # NPC rendering
     for npc in view.npcs:
