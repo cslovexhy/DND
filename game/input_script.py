@@ -8,7 +8,7 @@ A script is a JSON list of events keyed by simulation tick (one tick = one headl
   {"tick": 20, "type": "click", "button": 3, "at": {"dx": 100, "dy": 0}}   # offset from the hero (world px)
   {"tick": 30, "type": "click", "button": 3, "at": [1200, 900]}            # absolute world position
 
-`at` may also be "nearest_npc" or "hero". The events are posted as real pygame events, so the
+`at` may also be "nearest_npc", "nearest_ally" (other player / companion) or "hero". The events are posted as real pygame events, so the
 normal input code path is exercised exactly as if a human had clicked.
 """
 import json
@@ -33,6 +33,10 @@ class InputScript:
             cands = [m for m in game_state.alive_monsters if not getattr(m, "stealthed", False)]
             m = min(cands, key=lambda m: hero.distance_to(m)) if cands else None
             return (m.x, m.y) if m else (hero.x, hero.y)
+        if at == "nearest_ally":   # another player's hero or a companion
+            friends = [f for f in getattr(game_state, "allies", []) + getattr(game_state, "companions", []) if f.alive]
+            f = min(friends, key=lambda f: hero.distance_to(f)) if friends else None
+            return (f.x, f.y) if f else (hero.x, hero.y)
         if at == "nearest_npc":
             n = min(npcs, key=lambda n: hero.distance_to(n)) if npcs else None
             return (n.x, n.y) if n else (hero.x, hero.y)

@@ -455,6 +455,16 @@ def get_monster_at_screen(sx, sy):
     return None
 
 
+def get_friend_at_screen(sx, sy):
+    """Friendly hero under the cursor (another player, a companion, or yourself), for support skills."""
+    wx = (sx - WIDTH//2) / cam_zoom + hero.x
+    wy = (sy - HEIGHT//2) / cam_zoom + hero.y
+    for f in view.allies + view.companions + [hero]:
+        if f.alive and abs(f.x - wx) < TILE_SIZE * 0.6 and abs(f.y - wy) < TILE_SIZE * 0.6:
+            return f
+    return None
+
+
 def get_npc_at_screen(sx, sy):
     """Check if a screen click hit an NPC sprite."""
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
@@ -544,11 +554,13 @@ while running:
             shift_held = key_mods() & pygame.KMOD_SHIFT
 
             clicked_id = clicked_monster.eid if clicked_monster else None
+            clicked_friend = get_friend_at_screen(mx_s, my_s)
+            friend_id = clicked_friend.eid if clicked_friend else None   # Wall / Renew / Holy Light land on them
 
             if event.button == 1:  # Left-click
                 if shift_held:
                     # Shift+Left = cast LEFT skill
-                    host.send(Cast(ability_keys[left_skill_idx], wx, wy, clicked_id))
+                    host.send(Cast(ability_keys[left_skill_idx], wx, wy, clicked_id, ally_id=friend_id))
                 elif my_s >= HEIGHT - 55:
                     # Clicked on skill bar area — switch skills
                     if mx_s < WIDTH//2:
@@ -571,7 +583,8 @@ while running:
                 elif hero.stealthed and clicked_monster and ability_keys[right_skill_idx] == "E":
                     host.send(AmbushTarget(clicked_id))
                 else:
-                    host.send(Cast(ability_keys[right_skill_idx], wx, wy, clicked_id, fallback_move=True))
+                    host.send(Cast(ability_keys[right_skill_idx], wx, wy, clicked_id, fallback_move=True,
+                                   ally_id=friend_id))
 
     # --- End screen ---
     if view.adventure_failed:
@@ -1002,7 +1015,7 @@ while running:
     ai_color = (100, 255, 100) if view.you.ai_enabled else (80, 80, 80)
     speed_label = f" {game_speed:.0f}x (+/-)" if game_speed > 1 else ""
     screen.blit(font.render(ai_label + speed_label, True, ai_color), (WIDTH - 160, HEIGHT - 18))
-    screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill  1/2/3=Switch  F=Pot  F1-F4=Summon", True, (70,70,70)), (10, HEIGHT-18))
+    screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill (on an ally = heal/shield them)  1/2/3=Switch  F=Pot  F1-F4=Summon", True, (70,70,70)), (10, HEIGHT-18))
     pygame.display.flip()
 
 if world is not None and world.record_commands:

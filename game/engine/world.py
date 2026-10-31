@@ -429,10 +429,12 @@ class World:
         for hero in self.player_heroes:
             # Check Holy Light cast completion BEFORE update (buff gets removed during update)
             if "Holy Light Casting" in hero.buffs and hero.buffs["Holy Light Casting"]["remaining"] <= dt:
-                heal_amount = hero.buffs["Holy Light Casting"]["heal"]
-                heal = hero.heal(heal_amount)
-                self.float_text(hero.x, hero.y - 30, f"+{heal:.0f} HP", (100, 255, 100))
-                del hero.buffs["Holy Light Casting"]
+                cast = hero.buffs.pop("Holy Light Casting")
+                target = self.entity(cast.get("target_id")) or hero   # the chosen ally, or the caster
+                if not target.alive or target not in gs.heroes:
+                    target = hero
+                heal = target.heal(cast["heal"])
+                self.float_text(target.x, target.y - 30, f"+{heal:.0f} HP", (100, 255, 100))
 
             # Update combat state for health regeneration
             hero.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == hero

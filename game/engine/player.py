@@ -20,6 +20,9 @@ from game.content.heroes import HERO_CLASSES
 from game.engine.pathfinding import astar
 
 
+SUPPORT_RANGE = 300   # px: how far away an ally can be for Wall / Renew / Holy Light
+
+
 class PlayerState:
     def __init__(self, world, hero, ai_enabled=False, potions=3, quests=None, name=None):
         self.world = world
@@ -32,6 +35,8 @@ class PlayerState:
         self.hero_ai = create_hero_ai(hero)   # autopilot brain (HeroAI)
         self.hero_ai.set_nav_dungeon(world.dungeon)
         self.hero_ai.clock = lambda: world.game_state.game_time
+        if hasattr(self.hero_ai, "allies"):
+            self.hero_ai.allies = world.game_state.heroes   # support AI (Cleric) can heal the whole party
         self.ai_enabled = ai_enabled     # autopilot on/off (TAB; on in --auto/--headless)
         # Movement / targeting
         self.move_path = []
@@ -61,6 +66,23 @@ class PlayerState:
     def _live_monster(self, eid):
         m = self.world.entity(eid) if eid is not None else None
         return m if (m is not None and m.alive and m in self.world.game_state.monsters) else None
+
+    def _friendly(self, eid):
+        """A living friendly hero (any player's hero or companion) by id, or None."""
+        e = self.world.entity(eid) if eid is not None else None
+        if e is None or not e.alive or e not in self.world.game_state.heroes:
+            return None
+        return e
+
+    def _support_target(self, ally):
+        """Who a support skill lands on: the chosen ally if close enough, else the caster.
+        Returns None (and says why) if the chosen ally is out of reach."""
+        if ally is None or ally is self.hero:
+            return self.hero
+        if self.hero.distance_to(ally) > SUPPORT_RANGE or not self.world.check_los(self.hero.x, self.hero.y, ally.x, ally.y):
+            self.world.float_text(self.hero.x, self.hero.y - 30, "Out of range!", (255, 150, 100))
+            return None
+        return ally
 
     def _stop_channel(self):
         """Interrupt a Frostbolt channel (releases the self-immobilize)."""
@@ -102,7 +124,8 @@ class PlayerState:
             if ab is None:
                 return
             if ab.is_ready():
-                self.cast_ability(cmd.ab_key, ab, cmd.x, cmd.y, self._live_monster(cmd.target_id))
+                self.cast_ability(cmd.ab_key, ab, cmd.x, cmd.y, self._live_monster(cmd.target_id),
+                                  ally=self._friendly(cmd.ally_id))
             elif cmd.fallback_move:
                 # Skill on cooldown — just move instead
                 self.move_path = astar(world.dungeon, hero.x, hero.y, cmd.x, cmd.y)
@@ -166,7 +189,7 @@ class PlayerState:
             raise ValueError(f"unknown command: {cmd!r}")
 
     # --- casting ---
-    def cast_ability(self, ab_key, ab, wx, wy, clicked_monster):
+    def cast_ability(self, ab_key, ab, wx, wy, clicked_monster, ally=None):
         """Cast an ability — handles AoE, single target, dash, stun, call-for-help, and Quinn's Seal system."""
         hero = self.hero
         gs = self.world.game_state
@@ -350,24 +373,30 @@ class PlayerState:
             self.move_path = []
             return
 
-        # === Quinn special: Wall (absorb shield on self) ===
+        # === Quinn special: Wall (absorb shield on self or a chosen ally) ===
         if ab.name == "Wall":
+            target = self._support_target(ally)
+            if target is None:
+                return
             ab.use()
             shield_amount = hero.surge_value  # Same as potion amount (200)
-            hero.absorb_shield = shield_amount
-            hero.buffs["Wall"] = {"remaining": 15.0}
-            self.world.float_text(hero.x, hero.y - 30, f"Wall +{shield_amount:.0f}!", (100, 200, 255))
+            target.absorb_shield = shield_amount
+            target.buffs["Wall"] = {"remaining": 15.0}
+            self.world.float_text(target.x, target.y - 30, f"Wall +{shield_amount:.0f}!", (100, 200, 255))
             hero.gcd = hero.GCD_DURATION
             self.move_path = []
             return
 
-        # === Quinn special: Renew (HoT on self) ===
+        # === Quinn special: Renew (HoT on self or a chosen ally) ===
         if ab.name == "Renew":
+            target = self._support_target(ally)
+            if target is None:
+                return
             ab.use()
             hot_total = hero.surge_value * 0.5  # 50% of potion amount (100)
             hot_duration = 8.0
-            hero.buffs["Renew"] = {"remaining": hot_duration, "hot_per_sec": hot_total / hot_duration}
-            self.world.float_text(hero.x, hero.y - 30, "Renew!", (100, 255, 150))
+            target.buffs["Renew"] = {"remaining": hot_duration, "hot_per_sec": hot_total / hot_duration}
+            self.world.float_text(target.x, target.y - 30, "Renew!", (100, 255, 150))
             hero.gcd = hero.GCD_DURATION
             self.move_path = []
             return
@@ -381,12 +410,16 @@ class PlayerState:
             self.move_path = []
             return
 
-        # === Quinn special: Holy Light (self-heal + immobilize self) ===
+        # === Quinn special: Holy Light (heal self or a chosen ally + immobilize self while casting) ===
         if ab.name == "Holy Light":
+            target = self._support_target(ally)
+            if target is None:
+                return
             ab.use()
-            # Start casting — immobilize for 2s, heal lands after cast finishes
+            # Start casting — immobilize for 2s, heal lands (on the target) after cast finishes
             hero.apply_condition(Condition.IMMOBILIZED, 2.0)
-            hero.buffs["Holy Light Casting"] = {"remaining": 2.0, "heal": 150}
+            hero.buffs["Holy Light Casting"] = {"remaining": 2.0, "heal": 150,
+                                                "target_id": target.eid if target is not hero else None}
             self.world.float_text(hero.x, hero.y - 30, "Casting...", (255, 255, 150))
             hero.gcd = hero.GCD_DURATION
             self.move_path = []
@@ -633,7 +666,7 @@ class PlayerState:
                         # Route through _cast_ability for consistent handling
                         wx = target_m.x if target_m else hero.x
                         wy = target_m.y if target_m else hero.y
-                        self.cast_ability(ab_key, ab, wx, wy, target_m)
+                        self.cast_ability(ab_key, ab, wx, wy, target_m, ally=ai_action.get("ability_target_ally"))
 
             elif ai_action["move_to"]:
                 tx, ty = ai_action["move_to"]

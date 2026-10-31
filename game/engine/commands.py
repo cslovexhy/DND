@@ -26,12 +26,15 @@ class SelectTarget:
 @dataclass
 class Cast:
     """Cast the ability bound to `ab_key` at a position and/or target.
-    `fallback_move`: if the skill is on cooldown, walk to (x, y) instead (right-click behaviour)."""
+    `fallback_move`: if the skill is on cooldown, walk to (x, y) instead (right-click behaviour).
+    `ally_id`: friendly hero under the cursor (player, ally or companion); support skills
+    (Wall, Renew, Holy Light) land on them instead of the caster."""
     ab_key: str
     x: float
     y: float
     target_id: Optional[int] = None
     fallback_move: bool = False
+    ally_id: Optional[int] = None
 
 
 @dataclass
