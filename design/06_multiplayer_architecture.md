@@ -110,7 +110,12 @@ this-computer-only); anyone on the home network who finds the game may join with
 up to 4 players; nothing is exposed to the internet (no router/UPnP changes).
 
 - The host binds exactly one interface: 127.0.0.1 (H) or this computer's private home-network IPv4 (L) — never
-  0.0.0.0. Only a connection from the host machine itself can take player 0 (the host's own hero).
+  0.0.0.0. The host's own game talks to its server in-process (`HostServer.local_client()`, no socket) and is
+  always player 0; no network connection can get player 0. (An earlier rule — "player 0 to the first connection
+  from this machine" — let a second game window on the same Mac take the host's hero.)
+- macOS App Nap would throttle a background host window (and the server inside it) for up to ~10 s, freezing
+  everyone: co-op sessions opt out via NSProcessInfo.beginActivity (game/client/appnap.py). Joiners show
+  "Waiting for the host..." when no frame arrives for 1 s.
 - Discovery without broadcasting: the joiner scans its own /24 block on the game port and asks `{"t": "info"}`;
   hosts answer with "Name (Lv N) - Map (Xpp) (LAN ip) · players" and close. Typing an address is the fallback.
 - Same version everywhere: protocol version in hello/info; pygame-ce pinned to 2.5.7 in run.sh and run.bat, and

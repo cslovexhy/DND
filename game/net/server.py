@@ -9,12 +9,17 @@ Where it listens (never on all interfaces):
             the game may join without approval (co-op with family); not reachable from the internet (no router
             or UPnP changes). Joiners are limited by max_players, sanitized characters and the message caps.
 
-Players: the world is created with the host player's character as player 0. Only a connection from this
-machine itself can take player 0 (your own hero); every other client brings its own character (validated)
-and joins as a new player, up to max_players. A joiner who leaves is removed; player 0's slot stays
-reserved so the host can reconnect. Before saying hello, anyone may ask {"t": "info"} for the one-line game
+Players: the world is created with the host player's character as player 0.
+  local_host=True (hosting from the game): player 0 belongs to the host's own game, which talks to the server
+            in-process via local_client() — no socket. No network connection can ever get player 0, even a
+            second game window on the same computer.
+  local_host=False (standalone `python -m game.net.server`, tests): the first client to say hello controls
+            player 0.
+Every other client brings its own character (validated) and joins as a new player, up to max_players.
+A joiner who leaves is removed. Before saying hello, anyone may ask {"t": "info"} for the one-line game
 description used by the Join screen.
 """
+import collections
 import os
 import random
 import selectors
@@ -55,7 +60,8 @@ class HostServer:
     MAX_COMMANDS_PER_TICK = 30   # per player; extra commands are dropped (flood protection)
 
     def __init__(self, map_path, class_name="Fighter", seed=1, port=DEFAULT_PORT, tick_rate=30,
-                 autopilot=False, auto_companion=False, host_character=None, max_players=4, pp=1, lan=False):
+                 autopilot=False, auto_companion=False, host_character=None, max_players=4, pp=1, lan=False,
+                 local_host=False):
         random.seed(seed)
         self.map_path = map_path
         self.max_players = max_players
@@ -78,7 +84,8 @@ class HostServer:
         else:
             self.address = LOOPBACK
         self.listener.bind((self.address, port))   # one interface only — never 0.0.0.0
-        self.local_addresses = {LOOPBACK, self.address}   # connections from this machine itself
+        self.local_host = local_host
+        self._local = None   # the host's own in-process client (local_host=True)
         self.listener.listen()
         self.listener.setblocking(False)
         self.port = self.listener.getsockname()[1]
@@ -163,10 +170,9 @@ class HostServer:
                 self._close(c)
             elif c.player_id is not None:
                 return   # duplicate hello: ignore
-            elif (c.addr[0] in self.local_addresses
-                  and not any(o.player_id == 0 for o in self.conns if o is not c)):
-                self._admit(c, 0)                    # the host player's own hero: only from this machine
-            elif sum(1 for o in self.conns if o.player_id is not None) >= self.max_players:
+            elif not self.local_host and not any(o.player_id == 0 for o in self.conns if o is not c):
+                self._admit(c, 0)                    # standalone server: first client controls player 0
+            elif self._player_count() >= self.max_players:
                 self._send(c, {"t": "reject", "reason": f"game is full ({self.max_players} players)"})
                 self._close(c)
             else:
@@ -187,13 +193,25 @@ class HostServer:
         elif t == "bye":
             self._close(c)
 
+    def local_client(self):
+        """The host's own game: an in-process client that always controls player 0 (same interface as RemoteHost)."""
+        if not self.local_host:
+            raise RuntimeError("local_client() needs HostServer(local_host=True)")
+        if self._local is None:
+            self._local = LocalClient(self)
+        return self._local
+
     def info(self):
         """Description for the Join screen: host's character, map and pp, player count."""
         host = self.world.players.get(0)
         hero = host.hero if host else self.world.hero
         name = os.path.splitext(os.path.basename(self.map_path))[0].replace("_", " ").title()
         return {"host_name": hero.name, "host_level": hero.level, "map_name": name, "pp": self.world.pp,
-                "players": sum(1 for o in self.conns if o.player_id is not None), "max_players": self.max_players}
+                "players": self._player_count(), "max_players": self.max_players}
+
+    def _player_count(self):
+        local = 1 if self._local is not None and not self._local.closed else 0
+        return local + sum(1 for o in self.conns if o.player_id is not None)
 
     def _admit(self, c, pid):
         c.player_id = pid
@@ -239,10 +257,15 @@ class HostServer:
 
     def _tick(self):
         w = self.world
+        if self._local is not None:                 # the host's own commands, queued from the game's main thread
+            while self._local._commands:
+                w.submit(self._local._commands.popleft(), 0)
         if not w.game_state.adventure_failed:
             w.step(self.dt)
         self._cmd_count.clear()
         evs, w.events = w.events, []
+        if self._local is not None:
+            self._local._deliver(make_snapshot(w, 0), [e for e in evs if getattr(e, "player_id", None) in (None, 0)])
         payload = [(getattr(e, "player_id", None), ev_mod.to_dict(e)) for e in evs]
         for c in list(self.conns):
             if c.player_id is None:
@@ -255,6 +278,52 @@ class HostServer:
             if not c.out and c in self.conns:
                 c.out = self._frame(c)
                 self._flush(c)
+
+
+class LocalClient:
+    """The host's own game talking to its HostServer in-process (thread-safe, no socket). Same interface as
+    RemoteHost: welcome, send(), step(), snapshot(), close(), closed. Always player 0."""
+
+    def __init__(self, server):
+        self._server = server
+        self._lock = threading.Lock()
+        self._commands = collections.deque()   # main thread appends, server thread pops (both thread-safe)
+        self._latest = None
+        self._events = []
+        self._have_snapshot = threading.Event()
+        self.closed = False
+        self.welcome = {"t": "welcome", "v": PROTOCOL_VERSION, "player_id": 0, "map": server.map_path,
+                        "map_data": server.world.world_map.data, "map_hash": server.map_hash,
+                        "pp": server.world.pp, "tick_rate": server.tick_rate}
+
+    # called by the server thread
+    def _deliver(self, snap, events):
+        with self._lock:
+            self._latest = snap
+            self._events.extend(events)
+        self._have_snapshot.set()
+
+    # called by the game's main thread
+    def send(self, command):
+        if not self.closed:
+            self._commands.append(command)          # the server thread submits it on its next tick
+
+    def step(self, dt=None):
+        with self._lock:
+            snap, self._latest = self._latest, None
+            events, self._events = self._events, []
+        if not self._server._thread or not self._server._thread.is_alive():
+            self.closed = True
+        return snap, events
+
+    def snapshot(self, timeout=10.0):
+        self._have_snapshot.wait(timeout)
+        with self._lock:
+            snap, self._latest = self._latest, None
+        return snap
+
+    def close(self):
+        self.closed = True
 
 
 def main(argv):

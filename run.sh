@@ -3,7 +3,8 @@
 # Usage: ./run.sh [--map path/to/map.json] [--auto] [--hero 0-4 (class)] [--debug]
 # Default: character select (create/delete here), then map select. ESC steps back.
 # First run on a new computer sets up .venv and installs pygame-ce (same as run.bat on Windows).
-# Log saved to /tmp/dnd_v1.log
+# Each launch logs to its own file, /tmp/dnd_<time>_<pid>.log (two windows on one computer keep separate logs);
+# /tmp/dnd_v1.log always points to the newest one.
 
 cd "$(dirname "$0")"
 PYTHON=".venv/bin/python3"
@@ -18,8 +19,9 @@ if [ ! -x "$PYTHON" ]; then
   .venv/bin/pip install "$PYGAME" || { echo "ERROR: could not install $PYGAME"; exit 1; }
   echo "Setup complete."
 fi
-rm -f /tmp/dnd_v1.log
-$PYTHON -m game.main "$@" > /tmp/dnd_v1.log 2>&1 &
-echo "Game running (PID: $!) — log at /tmp/dnd_v1.log"
-echo "  tail -f /tmp/dnd_v1.log  to watch"
+LOG="/tmp/dnd_$(date +%Y%m%d-%H%M%S)_$$.log"
+$PYTHON -m game.main "$@" > "$LOG" 2>&1 &
+ln -sf "$LOG" /tmp/dnd_v1.log
+echo "Game running (PID: $!) — log at $LOG"
+echo "  tail -f $LOG  to watch"
 echo "  kill $!  to stop"

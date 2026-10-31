@@ -141,14 +141,21 @@ if NET_MODE:
     from game.net.server import HostServer, DEFAULT_PORT
     from game.net.client import ConnectionRejected
     _port = NET_PORT or DEFAULT_PORT
+    # Background windows get "App Nap" on macOS (up to ~10 s stalls). The host runs the server, so a napping
+    # host would freeze everyone; a napping joiner would lag. Opt out while playing co-op.
+    from game.client.appnap import prevent_app_nap
+    prevent_app_nap("Playing a co-op game")
     try:
         if NET_MODE == "host":
-            _host_server = HostServer(USE_MAP, host_character=char_data, port=_port, pp=PP, lan=NET_LAN).start()
-            NET_ADDRESS = _host_server.address   # our own client connects to wherever the server listens
+            _host_server = HostServer(USE_MAP, host_character=char_data, port=_port, pp=PP, lan=NET_LAN,
+                                      local_host=True).start()
+            NET_ADDRESS = _host_server.address   # shown on the HUD; our own game talks to the server in-process
             print(f"[HOST] Hosting {USE_MAP} on {NET_ADDRESS}:{_host_server.port}"
                   f" ({'home network' if NET_LAN else 'this computer only'})", flush=True)
-        host = RemoteHost(NET_ADDRESS, _port, name=char_data["name"], class_name=char_data["class_name"],
-                          character=None if auto_mode else char_data)
+            host = _host_server.local_client()   # always player 0 (our hero); no network connection can take it
+        else:
+            host = RemoteHost(NET_ADDRESS, _port, name=char_data["name"], class_name=char_data["class_name"],
+                              character=None if auto_mode else char_data)
     except (OSError, ConnectionRejected) as e:
         print(f"[NET] Could not {'host' if NET_MODE == 'host' else 'join'} a game on port {_port}: {e}", flush=True)
         if _host_server:
@@ -558,6 +565,7 @@ key_mods = _input_script.key_mods if _input_script else pygame.key.get_mods
 if world is not None:
     world.record_commands = bool(HEADLESS.enabled and HEADLESS.record_commands)
 _tick = 0
+_last_snapshot_at = time.monotonic()    # co-op: when the host last sent us a frame
 _sent_hold = False                      # last HoldPosition / BindLeftSkill values sent to the sim
 _sent_left = ability_keys[0]
 running = True
@@ -691,6 +699,7 @@ while running:
 
     snap, events = host.step(dt)   # the client only sees snapshots + events from the host
     if snap is not None:           # a remote host may not have sent a new frame yet
+        _last_snapshot_at = time.monotonic()
         view.apply(snap)
         MAP_TITLE = map_title(MAP_NAME, view.pp)   # e.g. "Northshire (8pp)" — the host's pp, same for everyone
     view.advance(dt)               # remote play: glide between snapshots
@@ -1041,6 +1050,12 @@ while running:
     speed_label = f" {game_speed:.0f}x (+/-)" if game_speed > 1 else ""
     screen.blit(font.render(ai_label + speed_label, True, ai_color), (WIDTH - 160, HEIGHT - 18))
     screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill (on an ally = heal/shield them)  1/2/3=Switch  F=Pot  F1-F4=Summon", True, (70,70,70)), (10, HEIGHT-18))
+    if NET_MODE == "join" and time.monotonic() - _last_snapshot_at > 1.0:
+        # No word from the host for a while (host busy, asleep or gone): say so instead of looking frozen
+        wait = big_font.render("Waiting for the host...", True, GOLD)
+        pygame.draw.rect(screen, (20, 20, 30), (WIDTH//2 - wait.get_width()//2 - 16, HEIGHT//3 - 12,
+                                                wait.get_width() + 32, wait.get_height() + 24))
+        screen.blit(wait, (WIDTH//2 - wait.get_width()//2, HEIGHT//3))
     pygame.display.flip()
 
 if world is not None and world.record_commands:

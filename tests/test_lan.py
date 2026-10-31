@@ -85,21 +85,34 @@ class ListeningTest(unittest.TestCase):
         finally:
             srv.listener.close()
 
-    def test_only_this_machine_can_take_the_hosts_hero(self):
-        srv = host()
-        srv.local_addresses = {"10.255.255.254"}   # pretend every connection comes from another machine
+    def test_hosts_own_game_commands_and_events_go_through_in_process(self):
+        from game.client.view import ClientView
+        from game.engine import commands as C
+        import time
+        srv = host(local_host=True)
         try:
-            a = RemoteHost("127.0.0.1", srv.port)
-            self.assertEqual(a.welcome["player_id"], 1)   # a stranger never gets player 0 (your hero)
-            a.close()
+            me = srv.local_client()
+            v = ClientView()
+            v.apply(me.snapshot())
+            x0 = v.hero.x
+            me.send(C.MoveTo(x0 + 150, v.hero.y))
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and v.hero.x <= x0 + 30:
+                snap, _ = me.step()
+                if snap:
+                    v.apply(snap)
+                time.sleep(0.01)
+            self.assertGreater(v.hero.x, x0 + 30)
+            self.assertEqual(srv.info()["players"], 1)       # the host counts as a player
         finally:
             srv.stop()
 
     def test_player_limit_still_applies(self):
         from game.net.client import ConnectionRejected
-        srv = host()
+        srv = host(local_host=True)
         try:
-            clients = [RemoteHost("127.0.0.1", srv.port) for _ in range(4)]
+            srv.local_client()                                 # the host = player 1 of 4
+            clients = [RemoteHost("127.0.0.1", srv.port) for _ in range(3)]
             with self.assertRaises(ConnectionRejected):
                 RemoteHost("127.0.0.1", srv.port, timeout=3)
             for c in clients:
@@ -113,10 +126,10 @@ class RealHomeNetworkTest(unittest.TestCase):
         ip = discovery.lan_address()
         if ip is None:
             self.skipTest("this machine has no home-network address")
-        srv = host(lan=True, pp=3)
+        srv = host(lan=True, pp=3, local_host=True)
         try:
-            me = RemoteHost(ip, srv.port)                         # the host's own client, via the LAN address
-            self.assertEqual(me.welcome["player_id"], 0)          # from this machine -> its own hero
+            me = srv.local_client()                               # the host's own game (in-process)
+            self.assertEqual(me.welcome["player_id"], 0)
             games = discovery.scan(srv.port, prefix=ip.rsplit(".", 1)[0], include_local=False)
             mine = [g for g in games if g["address"] == ip]
             self.assertEqual(len(mine), 1, games)
@@ -124,10 +137,46 @@ class RealHomeNetworkTest(unittest.TestCase):
                              f"Quinn (Lv 1) - Northshire (3pp) (LAN {ip}) · 1/4 players")
             kid = RemoteHost(ip, srv.port, class_name="Rogue")
             self.assertEqual(kid.welcome["player_id"], 1)
+            self.assertEqual(srv.info()["players"], 2)
             kid.close()
             me.close()
             with self.assertRaises(OSError):                      # not on loopback: home-network address only
                 socket.create_connection(("127.0.0.1", srv.port), timeout=1).close()
+        finally:
+            srv.stop()
+
+
+class HostIdentityTest(unittest.TestCase):
+    """The host's hero (player 0) belongs to the host's own game, never to a network connection — even a
+    second game window on the same computer that connects first (the bug seen with two windows on one Mac)."""
+
+    def test_window_connecting_before_the_host_cannot_take_the_hosts_hero(self):
+        cs = saves.blank_character("cs", "Paladin")
+        xhy = saves.blank_character("xhy", "Cleric")
+        srv = HostServer("data/maps/haycock.json", port=0, tick_rate=60, host_character=cs, local_host=True).start()
+        try:
+            joiner = RemoteHost("127.0.0.1", srv.port, name="xhy", class_name="Cleric", character=xhy)
+            me = srv.local_client()                       # the host's own game, in-process
+            self.assertEqual(me.welcome["player_id"], 0)
+            self.assertNotEqual(joiner.welcome["player_id"], 0)
+            jv = __import__("game.client.view", fromlist=["ClientView"]).ClientView()
+            jv.apply(joiner.snapshot())
+            self.assertEqual((jv.hero.name, jv.hero.class_name), ("Xhy", "Cleric"))
+            mv = __import__("game.client.view", fromlist=["ClientView"]).ClientView()
+            mv.apply(me.snapshot())
+            self.assertEqual((mv.hero.name, mv.hero.class_name), ("Cs", "Paladin"))
+            joiner.close()
+            me.close()
+        finally:
+            srv.stop()
+
+    def test_no_network_connection_ever_gets_player_0(self):
+        srv = host(local_host=True)
+        try:
+            clients = [RemoteHost("127.0.0.1", srv.port) for _ in range(3)]
+            self.assertTrue(all(c.welcome["player_id"] != 0 for c in clients))
+            for c in clients:
+                c.close()
         finally:
             srv.stop()
 
@@ -195,6 +244,24 @@ class EndToEndByAddressTest(unittest.TestCase):
             self.assertIn("client=remote", out)
         finally:
             srv.stop()
+
+
+
+class AppNapTest(unittest.TestCase):
+    def test_macos_accepts_the_no_nap_request(self):
+        from game.client.appnap import prevent_app_nap
+        token = prevent_app_nap("test")
+        if sys.platform == "darwin":
+            self.assertTrue(token)
+            self.assertEqual(prevent_app_nap(), token)   # idempotent
+        else:
+            self.assertIsNone(token)
+
+    def test_coop_sessions_opt_out_of_app_nap(self):
+        with open(os.path.join(ROOT, "game", "session.py"), encoding="utf-8") as f:
+            src = f.read()
+        block = src[src.index("if NET_MODE:"):src.index("USE_MAP = host.welcome")]
+        self.assertIn("prevent_app_nap(", block)
 
 
 if __name__ == "__main__":

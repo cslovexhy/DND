@@ -29,6 +29,9 @@ Each computer keeps its own characters in `data/saves/`.
 
 ## Good to know
 
+- Trying it on one computer first is fine: open two game windows (run `./run.sh` twice), host with L in one,
+  join with J in the other. Each launch writes its own log, `/tmp/dnd_<time>_<pid>.log`.
+
 - Up to 4 players. Everyone gets XP and quest credit for every kill; each player saves their own progress.
 - If the host quits, joiners are put back on the menu (their progress is saved).
 - Who can join: anyone on the same home network who finds the game — there is no approval step (chosen on
