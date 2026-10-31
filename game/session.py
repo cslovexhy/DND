@@ -262,11 +262,11 @@ def result_line(outcome):
 # Game speed (for AI observation)
 game_speed = 4.0 if auto_mode else 1.0  # 1x, 2x, 4x
 
-# Camera zoom (scroll wheel to adjust)
-cam_zoom = 1.0       # 1.0 = default view, 2.0 = zoomed in 200%
-CAM_ZOOM_MIN = 0.5   # Zoomed out (see more map)
+# Camera zoom: fixed at the maximum (characters look biggest); the scroll wheel cannot zoom out.
 CAM_ZOOM_MAX = 2.0   # Zoomed in (characters look bigger)
+CAM_ZOOM_MIN = CAM_ZOOM_MAX  # no zooming out (was 0.5); raise MAX or lower MIN to re-enable the wheel
 CAM_ZOOM_STEP = 0.1
+cam_zoom = CAM_ZOOM_MAX
 
 # Skill slots (Diablo 2 style)
 ability_keys = view.you.ability_keys  # ["Q", "R", "E"]
