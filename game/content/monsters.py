@@ -29,7 +29,9 @@ SPAWN_STATS = {
                    # Deep Breath at 50% and again at 20% HP: "took a deep breath..." for 1.5 s, then a red zone of
                    # radius 200 px for 3 s that pulses 3 times, each pulse hitting everyone inside for 100 (300 total)
                    "skills": {"deep_breath": {"radius": 200, "duration": 3.0, "cycles": 3, "dps": 100, "windup": 1.5,
-                                              "at_hp_pct": (0.5, 0.2)}}},
+                                              "at_hp_pct": (0.5, 0.2)},
+                              # at 50% HP the boss' melee/ranged attacks deal 50% more damage
+                              "enrage": {"at_hp_pct": (0.5,), "damage_mult": 1.5}}},
     "bellax": {"name": "Bellax", "hp": 9, "ac": 17, "speed": 4, "atk": 8, "dmg": 2, "xp": 40, "boss": True},
     "karash": {"name": "Karash", "hp": 5, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 25, "boss": True},
     "margrath": {"name": "Margrath", "hp": 5, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 25, "boss": True},

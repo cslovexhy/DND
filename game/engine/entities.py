@@ -467,6 +467,7 @@ class Monster(Entity):
         # already fired this life, and the skills waiting to be cast
         self.skills: dict = {}
         self.skills_fired: set = set()
+        self.enraged = False   # Enrage skill fired: attack damage already multiplied
         self.skill_queue: list = []
         self.say = ""      # a message shown over its head (e.g. "Ashardalon took a deep breath..."), "" = none
 

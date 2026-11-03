@@ -206,6 +206,8 @@ class World:
         mt = SPAWN_STATS.get(sp.type)
         if mt is None:
             return None
+        if getattr(sp, "stats", None):
+            mt = {**mt, **sp.stats}          # this map's override of the shared stat entry
         wx, wy = self.world_map.get_spawn_world_pos(sp.x, sp.y)
         is_boss = mt.get("boss", False)
         m = Monster(mt["name"], "Monster", wx, wy,

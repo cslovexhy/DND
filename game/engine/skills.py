@@ -14,7 +14,8 @@ A monster entry may carry  "skills": {"deep_breath": {"radius": 200, "duration":
               for  dps x duration / cycles  true damage (armor does not reduce it): 3 pulses x 100 = 300 damage.
               The zone goes away at the end, or when the monster that breathed it dies.
 
-Deep Breath is the first skill.
+Deep Breath is the first skill. Enrage ("enrage": {"at_hp_pct": (0.5,), "damage_mult": 1.5}) is instant: at the
+threshold the monster's melee/ranged attack damage is multiplied (the Deep Breath zone is not).
 """
 from dataclasses import dataclass
 
@@ -83,8 +84,25 @@ def _busy(world, monster) -> bool:
             or any(h.source is monster for h in world.hazards))
 
 
+ENRAGE_COLOR = (255, 60, 20)
+
+
+def apply_enrage(world, monster):
+    """Enrage: the monster's attacks (melee and ranged) deal `damage_mult` times as much from now on. Instant, so it
+    never waits behind a Deep Breath wind-up that triggers at the same HP."""
+    mult = monster.skills["enrage"].get("damage_mult", 1.5)
+    monster.base_damage *= mult
+    monster.ranged_attack_damage *= mult
+    monster.enraged = True
+    world.events.append(FloatText(monster.x, monster.y - 60, "ENRAGED!", ENRAGE_COLOR))
+    world.events.append(Ring(monster.x, monster.y, 120, ENRAGE_COLOR))
+
+
 def cast_queued_skills(world):
     for m in world.game_state.monsters:
+        if m.alive and "enrage" in m.skill_queue:
+            m.skill_queue.remove("enrage")
+            apply_enrage(world, m)
         if m.alive and m.skill_queue and not _busy(world, m):
             start_cast(world, m, m.skill_queue.pop(0))
 

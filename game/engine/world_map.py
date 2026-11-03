@@ -25,6 +25,9 @@ class SpawnPoint:
     type: str  # "hero_start", "kobold_dragonshield", etc.
     x: int     # tile x
     y: int     # tile y
+    # Optional per-spawn overrides of SPAWN_STATS entries (board units: "hp", "ac", "dmg", ...), set in the map
+    # JSON spawn entry as "stats": {...}. Lets one map tune a boss without changing every map that uses it.
+    stats: dict = field(default_factory=dict)
 
 
 class WorldMap:
@@ -80,7 +83,7 @@ class WorldMap:
 
         # Load spawns
         for sp in data.get("spawns", []):
-            spawn = SpawnPoint(type=sp["type"], x=sp["x"], y=sp["y"])
+            spawn = SpawnPoint(type=sp["type"], x=sp["x"], y=sp["y"], stats=dict(sp.get("stats", {})))
             if spawn.type == "hero_start":
                 m.hero_start = (spawn.x, spawn.y)
             else:
