@@ -10,7 +10,7 @@ import math
 import random
 
 from game.engine import abilities
-from game.engine.ai import aggro_monster, call_for_help, AggroState
+from game.engine.ai import aggro_monster, call_for_help, drop_from_hate, AggroState
 from game.engine.entities import Condition, Projectile
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition)
@@ -293,7 +293,7 @@ class PlayerState:
             hero.last_crit = random.random() < hero.crit_chance
             if hero.last_crit:
                 dmg_amount *= hero.crit_multiplier
-            dmg = clicked_monster.take_damage(dmg_amount)
+            dmg = clicked_monster.take_damage(dmg_amount, source=hero)
             color = (255, 255, 50) if hero.last_crit else (180, 255, 180)
             text = f"{dmg:.0f}!" if hero.last_crit else f"{dmg:.0f}"
             self.world.float_text(clicked_monster.x, clicked_monster.y - 20, text, color)
@@ -313,11 +313,10 @@ class PlayerState:
             self.selected_target = None  # Stop auto-attack
             # Auto-bind right-click to Ambush
             self._bind_right("E")
-            # Drop aggro from all monsters targeting hero (except bosses)
+            # Monsters forget the hero (and reset if nobody else is on their hate table); bosses never let go
             for m in gs.alive_monsters:
-                if hasattr(m, 'aggro_target') and m.aggro_target == hero and not m.is_boss:
-                    m.aggro_state = AggroState.RESETTING
-                    m.aggro_target = None
+                if hero in m.hate and not m.is_boss:
+                    drop_from_hate(m, hero)
             self.world.float_text(hero.x, hero.y - 30, "Stealth!", (100, 200, 100))
             hero.gcd = hero.GCD_DURATION
             self.move_path = []
@@ -344,9 +343,9 @@ class PlayerState:
             hero.stealthed = False
             # Auto-bind right-click back to Stealth
             self._bind_right("R")
-            # Damage: 3x weapon + 20% target max HP
-            dmg_amount = ab.calc_damage(hero.base_damage) + clicked_monster.max_hp * 0.2
-            dmg = clicked_monster.take_damage(dmg_amount)
+            # Damage: 5x weapon (no %-of-max-HP bonus: it made boss HP meaningless)
+            dmg_amount = ab.calc_damage(hero.base_damage)
+            dmg = clicked_monster.take_damage(dmg_amount, source=hero)
             self.world.float_text(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", (255, 50, 50))
             self.world.float_text(clicked_monster.x, clicked_monster.y - 40, "AMBUSH!", (255, 50, 50))
             self.world.events.append(Ring(clicked_monster.x, clicked_monster.y, 40, (255, 50, 50)))
@@ -384,10 +383,10 @@ class PlayerState:
             hit_count = 0
             for m in gs.alive_monsters:
                 if hero.distance_to(m) <= ab.radius:
-                    dmg = m.take_damage(dmg_amount)
-                    m.apply_condition(Condition.FROZEN, 4.0)
+                    dmg = m.take_damage(dmg_amount, source=hero)
+                    frozen = m.apply_condition(Condition.FROZEN, 4.0)
                     self.world.float_text(m.x, m.y - 20, f"{dmg:.0f}", (180, 220, 255))
-                    self.world.float_text(m.x, m.y - 35, "FROZEN", (150, 220, 255))
+                    self.world.float_text(m.x, m.y - 35, "FROZEN" if frozen else "IMMUNE", (150, 220, 255))
                     hit_count += 1
             self.world.events.append(Ring(hero.x, hero.y, ab.radius, (150, 200, 255)))
             if hit_count == 0:
@@ -452,6 +451,7 @@ class PlayerState:
             shield_amount = hero.surge_value  # Same as potion amount (200)
             target.absorb_shield = shield_amount
             target.buffs["Wall"] = {"remaining": 15.0}
+            self.world.credit_heal(hero, target, shield_amount)   # shielding generates hate like healing
             self.world.float_text(target.x, target.y - 30, f"Wall +{shield_amount:.0f}!", (255, 215, 60))
             hero.gcd = hero.GCD_DURATION
             self.move_path = []
@@ -465,7 +465,9 @@ class PlayerState:
             ab.use()
             hot_total = hero.surge_value * 0.5  # 50% of potion amount (100)
             hot_duration = 8.0
-            target.buffs["Renew"] = {"remaining": hot_duration, "hot_per_sec": hot_total / hot_duration}
+            target.buffs["Renew"] = {"remaining": hot_duration, "hot_per_sec": hot_total / hot_duration,
+                                     "source": hero}   # each tick's healing is credited to the caster's hate
+            self.world.credit_heal(hero, target, 0)       # in combat with the friend -> on the mobs' tables now
             self.world.float_text(target.x, target.y - 30, "Renew!", (100, 255, 150))
             hero.gcd = hero.GCD_DURATION
             self.move_path = []
@@ -528,7 +530,7 @@ class PlayerState:
             hero.swing_timer = hero.weapon_speed
             bonus = 1.0 + (hero.buffs.get("Righteous Seal", {}).get("bonus", 0))
             skill_dmg = ab.calc_damage(hero.base_damage) * bonus
-            dmg = clicked_monster.take_damage(skill_dmg)
+            dmg = clicked_monster.take_damage(skill_dmg, source=hero)
             color = (255, 230, 100) if bonus > 1.0 else (255, 255, 255)
             self.world.float_text(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", color)
             call_for_help(clicked_monster, gs.monsters, hero)
@@ -596,8 +598,8 @@ class PlayerState:
                 for name, dmg in hits:
                     self.world.float_text(clicked_monster.x, clicked_monster.y-20, f"{dmg:.0f}", (255, 255, 255))
                 if ab.stun_duration > 0 and clicked_monster.alive:
-                    clicked_monster.apply_condition(Condition.STUNNED, ab.stun_duration)
-                    self.world.float_text(clicked_monster.x, clicked_monster.y-35, "STUNNED", (255,255,100))
+                    stunned = clicked_monster.apply_condition(Condition.STUNNED, ab.stun_duration)
+                    self.world.float_text(clicked_monster.x, clicked_monster.y-35, "STUNNED" if stunned else "IMMUNE", (255,255,100))
                 call_for_help(clicked_monster, gs.monsters, hero)
         else:
             # No target clicked for single-target skill
@@ -669,11 +671,11 @@ class PlayerState:
                 if not self.world.is_wall(wx, wy):
                     hero.x, hero.y = wx, wy
                 if self.dash_stun_target and self.dash_stun_target.alive:
-                    dmg = self.dash_stun_target.take_damage(self.dash_damage)
+                    dmg = self.dash_stun_target.take_damage(self.dash_damage, source=hero)
                     self.world.float_text(self.dash_stun_target.x, self.dash_stun_target.y-20, f"{dmg:.0f}", (255, 200, 50))
                     if self.dash_stun_duration > 0 and self.dash_stun_target.alive:
-                        self.dash_stun_target.apply_condition(Condition.STUNNED, self.dash_stun_duration)
-                        self.world.float_text(self.dash_stun_target.x, self.dash_stun_target.y-35, "STUNNED", (255,255,100))
+                        stunned = self.dash_stun_target.apply_condition(Condition.STUNNED, self.dash_stun_duration)
+                        self.world.float_text(self.dash_stun_target.x, self.dash_stun_target.y-35, "STUNNED" if stunned else "IMMUNE", (255,255,100))
                 self.dash_stun_target = None
                 self.dash_damage = 0
             else:

@@ -20,6 +20,9 @@ from game.engine.pathfinding import astar, has_line_of_sight
 # How far away an ally can be for Wall / Renew / Holy Light. One constant for the cast rule (player.py) and the
 # AI's target choice, so the AI never picks an ally the cast would refuse.
 SUPPORT_RANGE = 300
+# Support AIs (Cleric, Paladin) heal before anything else: the reachable party member with the lowest HP *percentage*
+# gets Wall/Renew (Cleric) or Holy Light (Paladin) as soon as they are below this.
+HEAL_BELOW_PCT = 0.70
 
 
 class HeroAI:
@@ -36,6 +39,14 @@ class HeroAI:
             if self.hero.distance_to(h) <= SUPPORT_RANGE and self.has_los(h):
                 out.append(h)
         return out
+
+    def _ally_needing_heal(self):
+        """The reachable party member (including self) with the lowest HP percentage if that is below
+        HEAL_BELOW_PCT, else None."""
+        ally = self._find_lowest_hp_ally()
+        if ally is not None and ally.hp / ally.max_hp < HEAL_BELOW_PCT:
+            return ally
+        return None
 
     def _find_lowest_hp_ally(self):
         """The reachable party member (including self) with the lowest HP percentage."""
@@ -364,7 +375,7 @@ class FighterAI(HeroAI):
 class ClericAI(HeroAI):
     """
     Quinn (Cleric) AI — Ranged wand attacker with ally support:
-    - Wall and Renew target lowest HP ally (including self)
+    - Heals first: Wall, else Renew, on the lowest-HP% party member (including self) once below 70%
     - Stay at range (~150-200px) and cast Wanding as auto-attack
     - Kite away from melee enemies if they get too close
     - Pop potion below 30% HP
@@ -401,12 +412,33 @@ class ClericAI(HeroAI):
                 return True
         return False
 
+    def _heal_lowest(self, action) -> bool:
+        """Wall (instant shield), else Renew (heal over time), on the party member who most needs it. True if cast."""
+        ally = self._ally_needing_heal()
+        if ally is None:
+            return False
+        ab_r = self.hero.abilities.get("R")
+        if ab_r and ab_r.is_ready() and ally.absorb_shield <= 0:
+            action["use_ability"] = "R"
+            action["ability_target_ally"] = ally
+            return True
+        ab_e = self.hero.abilities.get("E")
+        if ab_e and ab_e.is_ready() and "Renew" not in ally.buffs:
+            action["use_ability"] = "E"
+            action["ability_target_ally"] = ally
+            return True
+        return False
+
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
                   "ability_target_monster": None, "use_potion": False, "dash": None}
 
         alive = [m for m in monsters if m.alive]
         if not alive:
+            return action
+
+        # 0. Healing comes first: Wall / Renew on the lowest-HP% party member below HEAL_BELOW_PCT
+        if self.hero.gcd <= 0 and self._heal_lowest(action):
             return action
 
         if self.should_rest(alive):
@@ -451,24 +483,7 @@ class ClericAI(HeroAI):
                 action["move_to"] = kite_pos
                 return action
 
-        # 2. Wall on lowest HP ally (or self) if no shield on them
-        ab_r = self.hero.abilities.get("R")
-        if ab_r and ab_r.is_ready():
-            # Find lowest HP ally (including self) that doesn't have a shield
-            wall_target = self._find_lowest_hp_ally()
-            if wall_target and wall_target.absorb_shield <= 0 and wall_target.hp < wall_target.max_hp * 0.8:
-                action["use_ability"] = "R"
-                action["ability_target_ally"] = wall_target
-                return action
-
-        # 3. Renew on lowest HP ally if below 70% and not already ticking
-        ab_e = self.hero.abilities.get("E")
-        if ab_e and ab_e.is_ready():
-            renew_target = self._find_lowest_hp_ally()
-            if renew_target and renew_target.hp < renew_target.max_hp * 0.70 and "Renew" not in renew_target.buffs:
-                action["use_ability"] = "E"
-                action["ability_target_ally"] = renew_target
-                return action
+        # (Wall / Renew on the lowest-HP% ally already happened at the top of update(): healing comes first)
 
         # 4. Wanding (ranged auto-attack) if in range and LOS
         ab_q = self.hero.abilities.get("Q")
@@ -506,7 +521,7 @@ class PaladinAI(HeroAI):
     - Keep Righteous Seal up (buff uptime)
     - Smite as bread-and-butter (boosted by Seal)
     - Judgement on distant targets or to consume Seal before expiry
-    - Holy Light on the lowest-HP party member (including self) below 50% HP
+    - Holy Light first on the lowest-HP% party member (including self) once below 70%
     """
 
     def __init__(self, hero):
@@ -522,12 +537,25 @@ class PaladinAI(HeroAI):
             return min(in_melee, key=lambda m: m.hp)
         return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
 
+    def _heal_lowest(self, action) -> bool:
+        ally = self._ally_needing_heal()
+        ab_f = self.hero.abilities.get("F")
+        if ally is None or not ab_f or not ab_f.is_ready():
+            return False
+        action["use_ability"] = "F"
+        action["ability_target_ally"] = ally
+        return True
+
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
                   "ability_target_monster": None, "use_potion": False, "dash": None}
 
         alive = [m for m in monsters if m.alive]
         if not alive:
+            return action
+
+        # 0. Healing comes first: Holy Light on the lowest-HP% party member below HEAL_BELOW_PCT
+        if self.hero.gcd <= 0 and self._heal_lowest(action):
             return action
 
         if self.should_rest(alive):
@@ -548,13 +576,7 @@ class PaladinAI(HeroAI):
         dist = self.hero.distance_to(self.target)
         hp_pct = self.hero.hp / self.hero.max_hp
 
-        # 1. Holy Light on whoever in the party is below 50% HP (lowest first; self if no party)
-        ab_f = self.hero.abilities.get("F")
-        heal_target = self._find_lowest_hp_ally()
-        if ab_f and ab_f.is_ready() and heal_target.hp / heal_target.max_hp < 0.50:
-            action["use_ability"] = "F"
-            action["ability_target_ally"] = heal_target
-            return action
+        # (Holy Light on the lowest-HP% ally already happened at the top of update(): healing comes first)
 
         # 2. Potion if below 30%
         if hp_pct < 0.30:

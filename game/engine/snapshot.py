@@ -24,6 +24,7 @@ def _entity(e, kind, ctl=None):
     if kind == "monster":
         d["is_boss"] = bool(e.is_boss)
         d["unique"] = bool(getattr(e, "unique", False))
+        d["say"] = getattr(e, "say", "")
     elif kind in ("hero", "ally", "companion"):
         d["class_name"] = e.class_name
         d["absorb_shield"] = e.absorb_shield
@@ -89,6 +90,9 @@ def make_snapshot(world, player_id=0):
         "progress": {"level": hero.level, "xp": hero.xp, "gold": hero.gold, "kills": hero.kills,
                      "quests": player.quests.to_state()},   # what this player's machine saves
     }
+    hazards = [{"kind": z.kind, "x": z.x, "y": z.y, "radius": z.radius, "elapsed": z.elapsed,
+                "remaining": z.remaining, "duration": z.duration, "cycles": z.cycles, "color": list(z.color)}
+               for z in world.hazards]
     return {
         "v": SNAPSHOT_VERSION,
         "tick": world.tick,
@@ -98,5 +102,6 @@ def make_snapshot(world, player_id=0):
         "adventure_failed": gs.adventure_failed,
         "entities": entities,
         "projectiles": projectiles,
+        "hazards": hazards,                 # ground zones such as a boss' Deep Breath
         "you": you,
     }

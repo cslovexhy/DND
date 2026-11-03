@@ -774,6 +774,19 @@ while running:
         sy = int((wp[1] - cy) * cam_zoom + HEIGHT//2)
         pygame.draw.circle(screen, (60, 120, 60), (sx, sy), max(2, int(3 * cam_zoom)))
 
+    # Ground hazards (a boss' Deep Breath): a translucent red zone that pulses, then fades out
+    for z in view.hazards:
+        zr = int(z.radius * cam_zoom)
+        zx, zy = int((z.x - cx) * cam_zoom + WIDTH//2), int((z.y - cy) * cam_zoom + HEIGHT//2)
+        if zx + zr < 0 or zx - zr > WIDTH or zy + zr < 0 or zy - zr > HEIGHT:
+            continue
+        # brightness cycles dim -> bright -> dim once per cycle; each peak is one damage pulse (3 cycles = 3 hits)
+        glow = 0.5 * (1.0 - math.cos(2 * math.pi * z.cycles * z.elapsed / z.duration))
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        pygame.draw.circle(overlay, (*z.color, int(30 + 120 * glow)), (zx, zy), zr)
+        pygame.draw.circle(overlay, (*z.color, int(110 + 145 * glow)), (zx, zy), zr, max(2, int(5 * cam_zoom)))
+        screen.blit(overlay, (0, 0))
+
     # Effects
     for e in effects: e.draw(screen, cx, cy)
 
@@ -801,6 +814,12 @@ while running:
             screen.blit(ice_surf, (sx - 4, sy - 4))
         else:
             screen.blit(s, (sx, sy))
+        if getattr(m, "say", ""):                                  # e.g. "Ashardalon took a deep breath..."
+            msg = font.render(m.say, True, (255, 170, 90))
+            shadow = font.render(m.say, True, (40, 10, 10))
+            mx, my = sx + sw // 2 - msg.get_width() // 2, sy - 44
+            screen.blit(shadow, (mx + 1, my + 1))
+            screen.blit(msg, (mx, my))
         if m.hp < m.max_hp:
             pygame.draw.rect(screen, HP_BG, (sx-1, sy-9, sw+2, 6))
             pygame.draw.rect(screen, HP_RED, (sx, sy-8, sw, 4))

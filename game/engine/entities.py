@@ -29,6 +29,17 @@ class Condition(Enum):
     FROZEN = auto()     # Cannot move or act (ice effect)
 
 
+# One immunity flag per condition: Entity.<flag> = True makes apply_condition ignore that condition.
+CONDITION_IMMUNITY_FLAG = {
+    Condition.POISONED: "immune_poison",
+    Condition.DAZED: "immune_daze",
+    Condition.SLOWED: "immune_slow",
+    Condition.IMMOBILIZED: "immune_immobilize",
+    Condition.STUNNED: "immune_stun",
+    Condition.FROZEN: "immune_freeze",
+}
+
+
 @dataclass
 class ActiveCondition:
     condition: Condition
@@ -90,7 +101,7 @@ class Projectile:
         if dist < 15:
             # Hit! Returns (damage_dealt, target) so caller can handle aggro
             self.alive = False
-            dmg = self.target.take_damage(self.damage)
+            dmg = self.target.take_damage(self.damage, source=self.source)
             return (dmg, self.target)
         move = min(self.speed * dt, dist)
         self.x += (dx / dist) * move
@@ -141,6 +152,13 @@ class Entity:
         self.alive = True
         self.facing_left = False
         self.conditions: list[ActiveCondition] = []
+        # Condition immunities (all off by default; see CONDITION_IMMUNITY_FLAG). Bosses turn on slow, freeze, stun and immobilize.
+        self.immune_poison = False
+        self.immune_daze = False
+        self.immune_slow = False
+        self.immune_immobilize = False
+        self.immune_stun = False
+        self.immune_freeze = False
 
         # Health regeneration
         self.in_combat = False  # set externally by game loop
@@ -152,6 +170,8 @@ class Entity:
 
         # Absorb shield (Wall spell etc.)
         self.absorb_shield = 0.0  # current shield HP remaining
+        # (healer, hp healed) from heal-over-time ticks this frame; World drains it into the mobs' hate tables
+        self.heal_credits: list = []
 
         # Visual
         self.flash_timer = 0.0
@@ -218,8 +238,9 @@ class Entity:
 
         self.facing_left = dx < 0
 
-    def take_damage(self, raw_damage: float, ignore_armor: bool = False) -> float:
-        """Apply damage after armor reduction. Shield absorbs first. Returns actual damage dealt."""
+    def take_damage(self, raw_damage: float, ignore_armor: bool = False, source: 'Entity' = None) -> float:
+        """Apply damage after armor reduction. Shield absorbs first. Returns actual damage dealt.
+        `source` is who dealt it (only Monster uses it, to build its hate table)."""
         if not self.alive:
             return 0
 
@@ -263,10 +284,14 @@ class Entity:
     def apply_condition(self, condition: Condition, duration: float,
                         tick_damage: float = 0.0, source: str = "",
                         slow_factor: float = 0.5):
-        """Apply a condition. Replaces existing condition of same type."""
+        """Apply a condition. Replaces existing condition of same type.
+        Returns False (and does nothing) if the entity is immune to it."""
+        if getattr(self, CONDITION_IMMUNITY_FLAG[condition]):
+            return False
         # Remove existing
         self.conditions = [c for c in self.conditions if c.condition != condition]
         self.conditions.append(ActiveCondition(condition, duration, tick_damage, source, slow_factor))
+        return True
 
     def update_conditions(self, dt: float):
         """Update condition timers, apply tick damage (poison)."""
@@ -295,8 +320,9 @@ class Entity:
             v["remaining"] -= dt
             # HoT tick processing (heals each frame proportionally)
             if "hot_per_sec" in v and v["remaining"] > -dt:
-                heal_tick = v["hot_per_sec"] * dt
-                self.heal(heal_tick)
+                healed = self.heal(v["hot_per_sec"] * dt)
+                if v.get("source") is not None:
+                    self.heal_credits.append((v["source"], healed))
         expired = [k for k, v in self.buffs.items() if v["remaining"] <= 0]
         for k in expired:
             del self.buffs[k]
@@ -333,7 +359,7 @@ class Entity:
         self.last_crit = random.random() < self.crit_chance
         if self.last_crit:
             damage *= self.crit_multiplier
-        return target.take_damage(damage)
+        return target.take_damage(damage, source=self)
 
 
 class Hero(Entity):
@@ -384,14 +410,14 @@ class Hero(Entity):
                 dx = t.x - center_x
                 dy = t.y - center_y
                 if math.sqrt(dx*dx + dy*dy) <= ab.radius:
-                    dmg = t.take_damage(skill_damage)
+                    dmg = t.take_damage(skill_damage, source=self)
                     hits.append((t.name, dmg))
         else:
             # Single target - closest in range
             in_range = [t for t in targets if t.alive and self.distance_to(t) <= ab.range]
             if in_range:
                 target = min(in_range, key=lambda t: self.distance_to(t))
-                dmg = target.take_damage(skill_damage)
+                dmg = target.take_damage(skill_damage, source=self)
                 hits.append((target.name, dmg))
 
         return hits
@@ -428,6 +454,36 @@ class Monster(Entity):
         # Boss scaling
         if is_boss:
             self.weapon_speed *= 0.8  # bosses attack faster
+            self.immune_slow = True
+            self.immune_freeze = True
+            self.immune_stun = True          # Charge's stun
+            self.immune_immobilize = True
+
+        # Hate table: {hero: hate}. 1 hate per damage dealt to this monster, 0.8 per HP healed / shielded on a hero
+        # already in the table (see ai.credit_heal_hate). Bosses chase the top entry (ai.boss_pick_target).
+        self.hate: dict = {}
+
+        # Special skills from the monster table (see engine/skills.py): name -> config, which HP triggers have
+        # already fired this life, and the skills waiting to be cast
+        self.skills: dict = {}
+        self.skills_fired: set = set()
+        self.skill_queue: list = []
+        self.say = ""      # a message shown over its head (e.g. "Ashardalon took a deep breath..."), "" = none
+
+    def add_hate(self, hero, amount: float = 0.0):
+        """Add `amount` hate for `hero` (0 just puts the hero on the table)."""
+        self.hate[hero] = self.hate.get(hero, 0.0) + amount
+
+    def top_hate_target(self, candidates):
+        """The candidate with the most hate, or None if none of them is on the table."""
+        listed = [c for c in candidates if c in self.hate]
+        return max(listed, key=lambda c: self.hate[c], default=None)
+
+    def take_damage(self, raw_damage: float, ignore_armor: bool = False, source: 'Entity' = None) -> float:
+        dealt = super().take_damage(raw_damage, ignore_armor, source)
+        if source is not None and dealt > 0:
+            self.add_hate(source, dealt)
+        return dealt
 
 
 class GameState:

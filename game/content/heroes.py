@@ -109,7 +109,7 @@ def create_rogue(name: str, x: float, y: float) -> Hero:
                                power_type="utility", color=(100, 180, 100)))
     h.add_ability("E", Ability("Ambush", cooldown=0, multiplier=5.0, flat_bonus=0,
                                radius=0, range=55,
-                               effect="Stealth only. 5x weapon dmg + 20% target max HP.",
+                               effect="Stealth only. 5x weapon dmg.",
                                power_type="daily", color=(255, 50, 50)))
     return h
 

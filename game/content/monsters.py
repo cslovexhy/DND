@@ -1,7 +1,7 @@
 """Monster stat table for map spawn points (pure data; no pygame).
 
 Keys are the spawn-type strings used in data/maps/*.json. Optional flags: boss, unique, ranged,
-condition (on-hit), relentless, hive_mind, respawn_mult.
+condition (on-hit), relentless, hive_mind, respawn_mult, skills (see game/engine/skills.py).
 """
 from game.engine.entities import Condition
 
@@ -25,7 +25,11 @@ SPAWN_STATS = {
     "demobat": {"name": "Demobat", "hp": 1, "ac": 14, "speed": 8, "atk": 7, "dmg": 1, "xp": 5},
     "vecna": {"name": "Vecna", "hp": 10, "ac": 18, "speed": 5, "atk": 11, "dmg": 3, "xp": 50, "boss": True},
     "meerak": {"name": "Meerak", "hp": 6, "ac": 17, "speed": 5, "atk": 8, "dmg": 1, "xp": 25, "boss": True},
-    "ashardalon": {"name": "Ashardalon", "hp": 12, "ac": 16, "speed": 4, "atk": 10, "dmg": 2, "xp": 50, "boss": True},
+    "ashardalon": {"name": "Ashardalon", "hp": 12, "ac": 16, "speed": 4, "atk": 10, "dmg": 2, "xp": 50, "boss": True,
+                   # Deep Breath at 50% and again at 20% HP: "took a deep breath..." for 1.5 s, then a red zone of
+                   # radius 200 px for 3 s that pulses 3 times, each pulse hitting everyone inside for 100 (300 total)
+                   "skills": {"deep_breath": {"radius": 200, "duration": 3.0, "cycles": 3, "dps": 100, "windup": 1.5,
+                                              "at_hp_pct": (0.5, 0.2)}}},
     "bellax": {"name": "Bellax", "hp": 9, "ac": 17, "speed": 4, "atk": 8, "dmg": 2, "xp": 40, "boss": True},
     "karash": {"name": "Karash", "hp": 5, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 25, "boss": True},
     "margrath": {"name": "Margrath", "hp": 5, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 25, "boss": True},

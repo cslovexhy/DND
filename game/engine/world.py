@@ -10,10 +10,11 @@ import random
 
 from game.content.heroes import HERO_CLASSES
 from game.engine.ai import (generate_patrol_route, setup_monster_aggro, aggro_monster, call_for_help,
-                            run_monster_ai)
+                            run_monster_ai, drop_from_hate, credit_heal_hate)
 from game.engine.entities import Condition, Monster, Projectile
 from game.engine.events import FloatText, LevelUp, QuestReady, NpcDialogue, GOLD, HP_RED
 from game.engine.npc import NPC
+from game.engine import skills
 from game.engine.snapshot import quest_info
 from game.engine.pathfinding import has_line_of_sight
 from game.engine.world_map import TILE_SIZE
@@ -37,6 +38,8 @@ class World:
         self.companions_enabled = True     # map difficulty: monsters get HP x pp, damage x (1 + pp) / 2
         self.quests = quests       # player 0's QuestLog for this map (each PlayerState has its own)
         self.projectiles = []      # active projectiles (Wanding, Frostbolt, monster arrows)
+        self.hazards = []          # damaging ground zones (a boss' Deep Breath), see engine/skills.py
+        self.casts = []            # monster skills in their wind-up (the message over the monster's head)
         self.world_map = world_map
         self.dungeon = world_map   # navigation duck-type (is_wall, is_floor, get_start_pos) used by AI/pathfinding
         self.game_state = game_state
@@ -185,6 +188,7 @@ class World:
                     experience=mt["xp"], is_boss=is_boss)
         if self.on_monster_spawned:
             self.on_monster_spawned(m)
+        m.skills = dict(mt.get("skills", {}))
         m.unique = mt.get("unique", False)  # one-of-a-kind minion: name shown, but respawns/leashes like a normal mob
         if mt.get("condition"):
             m.on_hit_condition = mt["condition"]
@@ -393,8 +397,8 @@ class World:
                         call_for_help(hit_target, gs.monsters, proj.source)
                     # Frostbolt slow
                     if getattr(proj, 'apply_slow', False) and hit_target.alive:
-                        hit_target.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.25)
-                        self.float_text(hit_target.x, hit_target.y - 35, "SLOWED", (150, 200, 255))
+                        slowed = hit_target.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.25)
+                        self.float_text(hit_target.x, hit_target.y - 35, "SLOWED" if slowed else "IMMUNE", (150, 200, 255))
                 else:
                     # Monster projectile hitting hero
                     self.float_text(hit_target.x + random.randint(-10, 10), hit_target.y - 30, f"{dmg:.0f}", HP_RED)
@@ -422,6 +426,9 @@ class World:
             player.auto_attack()
         self.update_companions(dt)
         self.update_monsters(dt, alive)
+        skills.cast_queued_skills(self)
+        skills.update_casts(self, dt)
+        skills.update_hazards(self, dt)
         self.process_kills()
         self.process_level_ups()
         self.process_respawns()
@@ -436,12 +443,15 @@ class World:
                 self.respawn_player(player)
         self.tick += 1
 
+    def credit_heal(self, healer, target, amount):
+        """A heal or shield: `amount` HP on `target` by `healer` makes hate on every mob that has `target` in combat."""
+        credit_heal_hate(self.game_state.monsters, healer, target, amount)
+
     # --- death and respawn ---
     RESPAWN_HP_PCT = 0.10   # respawn weak: the autopilot rests until 80% HP, so dying works like a cooldown
 
     def respawn_player(self, player):
         """Bring a dead player back at the map's start point with 10% HP and a clean slate."""
-        from game.engine.ai import AggroState
         hero = player.hero
         hero.x, hero.y = self.world_map.get_start_pos()
         hero.alive = True
@@ -466,10 +476,11 @@ class World:
         player.hero_ai.target = None
         player.hero_ai._path_cache.clear()
         # monsters that were fighting this hero give up (otherwise it would be "in combat" at 10% HP)
+        # A new life starts with a clean slate: every monster forgets this hero's hate (otherwise a boss would walk to
+        # the start point and spawn-camp them). Bosses still never give up: they pick the next-hated hero.
         for m in self.game_state.monsters:
-            if m.alive and getattr(m, "aggro_target", None) is hero:
-                m.aggro_state = AggroState.RESETTING
-                m.aggro_target = None
+            if m.alive and hero in m.hate:
+                drop_from_hate(m, hero)
         self.float_text(hero.x, hero.y - 30, "Respawned", (255, 220, 120))
 
     # --- per-frame start ---
@@ -486,6 +497,7 @@ class World:
                 if not target.alive or target not in gs.heroes:
                     target = hero
                 heal = target.heal(cast["heal"])
+                self.credit_heal(hero, target, heal)
                 self.float_text(target.x, target.y - 30, f"+{heal:.0f} HP", (100, 255, 100))
 
             # Update combat state for health regeneration
@@ -503,6 +515,10 @@ class World:
         self.update_demogorgon_skills(dt)
 
         gs.update(dt)
+        for h in gs.heroes:                       # heal-over-time ticks (Renew) -> hate for the healer
+            for healer, amount in h.heal_credits:
+                self.credit_heal(healer, h, amount)
+            h.heal_credits.clear()
         alive = gs.alive_monsters
         return alive
 

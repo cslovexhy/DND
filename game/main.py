@@ -209,7 +209,7 @@ MONSTER_SPRITES = {
     "Duergar Guard": get_creature(4, 12),
     "Legion Devil": get_creature(8, 3),
     "Grey Wolf": get_creature(3, 2),
-    "Grell": get_creature(5, 0),
+    "Grell": get_creature(0, 12),
     "Gibbering Mouther": get_creature(4, 8),
     "Demodog": get_creature(2, 10),  # Hellhound (CC0 Tiny Creatures)
     "Demobat": get_creature(8, 13),  # Bat (CC0 Tiny Creatures)
@@ -221,9 +221,20 @@ BOSS_SPRITE = get_creature(9, 7, int(TILE_SIZE * BOSS_SCALE))
 GARRICK_SPRITE = get_creature(7, 6, int(TILE_SIZE * BOSS_SCALE))  # Scaled-up Human Cultist
 VECNA_SPRITE = get_creature(6, 9, int(TILE_SIZE * BOSS_SCALE))    # Scaled-up Lich
 
+def _boss_creature(col, row):
+    return get_creature(col, row, int(TILE_SIZE * BOSS_SCALE))
+
+# Bosses without an entry here fall back to BOSS_SPRITE (the scaled-up kobold).
 BOSS_SPRITES = {
+    "Ashardalon": _boss_creature(3, 3),
+    "Rage Drake": _boss_creature(8, 7),
     "Garrick Padfoot": GARRICK_SPRITE,
     "Vecna": VECNA_SPRITE,
+    "Otyugh": _boss_creature(5, 7),
+    "Bellax": _boss_creature(5, 0),
+    "Meerak": _boss_creature(8, 7),
+    "Karash": _boss_creature(5, 12),
+    "Margrath": _boss_creature(7, 2),
 }
 
 # === AUTO MODE (AI playtesting) ===

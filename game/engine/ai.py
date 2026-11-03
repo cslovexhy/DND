@@ -7,6 +7,10 @@ Aggro rules:
 - CALL FOR HELP: when attacked, monsters within call_range also aggro
 - LEASH RANGE: if hero moves too far from spawn, monster resets
 - LINKED GROUPS: optional, pull one = pull all in group
+- HATE: every monster keeps a hate table (Monster.hate). 1 hate per damage dealt to it, 0.8 per HP a healer heals or
+  shields on a hero already on its table; healing such a friend also puts the healer on the table. Every aggroed
+  monster chases the top-hated living hero (pick_target). Only difference: normal monsters can be unleashed (leash
+  range, nobody left to fight) and then clear their table; BOSSES never release aggro.
 
 Attack positioning:
 - All attacks have range > 0
@@ -24,6 +28,7 @@ import random
 from typing import Optional
 from .entities import Monster, Hero, Entity, Condition, POISON_DPS
 from .pathfinding import astar, has_line_of_sight
+from .skills import check_skill_triggers
 
 
 # === AGGRO STATE ===
@@ -31,6 +36,34 @@ class AggroState:
     IDLE = "idle"        # Not aware of hero
     AGGROED = "aggroed"  # Chasing/attacking hero
     RESETTING = "reset"  # Walking back to spawn (lost aggro)
+
+
+HEAL_HATE_PER_HP = 0.8   # hate per HP healed or shielded (damage is 1 hate per point)
+
+
+def release_aggro(monster):
+    """Monster gives up: forget its target and hate table and walk back to spawn. Never call this on a boss."""
+    monster.aggro_state = AggroState.RESETTING
+    monster.aggro_target = None
+    monster.hate.clear()
+
+
+def drop_from_hate(monster, hero):
+    """`hero` is no longer a valid target for this monster (stealthed, or fell and respawned elsewhere): take them off
+    the hate table. A boss never lets go; any other monster resets if nobody alive is left on its table."""
+    monster.hate.pop(hero, None)
+    if monster.aggro_target is hero:
+        monster.aggro_target = None
+    if not monster.is_boss and not any(h.alive for h in monster.hate):
+        release_aggro(monster)
+
+
+def credit_heal_hate(monsters, healer, target, amount):
+    """`healer` healed/shielded `amount` HP on `target`: every living monster that has `target` on its hate table
+    gets `amount` x 0.8 hate for the healer, and the healer joins the table even when the heal did nothing."""
+    for m in monsters:
+        if m.alive and target in m.hate:
+            m.add_hate(healer, amount * HEAL_HATE_PER_HP)
 
 
 def init_monster_aggro(monster: Monster, sense_range=180, call_range=120, leash_range=500,
@@ -160,8 +193,7 @@ def check_aggro(monster: Monster, heroes: list[Hero], all_monsters: list[Monster
         dy = monster.y - monster.spawn_y
         exempt = monster.is_boss or getattr(monster, 'relentless', False)
         if not exempt and math.sqrt(dx*dx + dy*dy) > monster.leash_range:
-            monster.aggro_state = AggroState.RESETTING
-            monster.aggro_target = None
+            release_aggro(monster)
         return
 
     if monster.aggro_state == AggroState.RESETTING:
@@ -170,6 +202,7 @@ def check_aggro(monster: Monster, heroes: list[Hero], all_monsters: list[Monster
         dy = monster.spawn_y - monster.y
         if math.sqrt(dx*dx + dy*dy) < 20:
             monster.aggro_state = AggroState.IDLE
+            monster.hate.clear()
             resume_patrol_from_nearest(monster)
         return
 
@@ -193,6 +226,7 @@ def aggro_monster(monster: Monster, target: Hero, all_monsters: list[Monster]):
     """Aggro a monster and optionally its linked group. Breaks stealth."""
     monster.aggro_state = AggroState.AGGROED
     monster.aggro_target = target
+    monster.add_hate(target)
 
     # Break stealth if hero is stealthed and detected
     if getattr(target, 'stealthed', False):
@@ -207,6 +241,7 @@ def aggro_monster(monster: Monster, target: Hero, all_monsters: list[Monster]):
                 if m.aggro_state == AggroState.IDLE:
                     m.aggro_state = AggroState.AGGROED
                     m.aggro_target = target
+                    m.add_hate(target)
 
 
 def call_for_help(attacked_monster: Monster, all_monsters: list[Monster], target: Hero):
@@ -228,6 +263,7 @@ def call_for_help(attacked_monster: Monster, all_monsters: list[Monster], target
         if attacked_monster.distance_to(m) <= attacked_monster.call_range:
             m.aggro_state = AggroState.AGGROED
             m.aggro_target = target
+            m.add_hate(target)
             continue
 
         # 2) Hive mind: m watches for specific types being attacked within range
@@ -237,9 +273,18 @@ def call_for_help(attacked_monster: Monster, all_monsters: list[Monster], target
             if attacked_type in hive_types and attacked_monster.distance_to(m) <= hive_range:
                 m.aggro_state = AggroState.AGGROED
                 m.aggro_target = target
+                m.add_hate(target)
 
 
 # === MOVEMENT WITH PROPER SPACING ===
+
+def face_target(monster: Monster, target) -> None:
+    """Turn the sprite toward `target` (left or right). Only changes when the target is clearly to one side, so a
+    target straight above/below doesn't make it flicker."""
+    dx = target.x - monster.x
+    if abs(dx) > 1.0:
+        monster.facing_left = dx < 0
+
 
 def move_to_attack_range(monster: Monster, target: Hero, dt: float, collision_fn=None):
     """Move toward target but stop at attack range (not 0 distance).
@@ -257,6 +302,7 @@ def move_to_attack_range(monster: Monster, target: Hero, dt: float, collision_fn
             retreat_x = monster.x + (dx/d) * 20
             retreat_y = monster.y + (dy/d) * 20
             monster.move_toward(retreat_x, retreat_y, dt * 0.5, collision_fn)
+        face_target(monster, target)   # backing off must not turn its back on the target it is attacking
         return True  # In range
     else:
         # Use pathfinding if we have a dungeon reference and collision function
@@ -295,12 +341,10 @@ def move_to_attack_range(monster: Monster, target: Hero, dt: float, collision_fn
 
 def ai_melee(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None):
     """Melee monster: move to attack range, attack when close enough."""
-    target = monster.aggro_target
-    if not target or not target.alive:
-        target = _find_closest_alive(monster, heroes)
-        if not target:
-            return None
-        monster.aggro_target = target
+    target = pick_target(monster, heroes)
+    if target is None:
+        return None
+    monster.aggro_target = target
 
     in_range = move_to_attack_range(monster, target, dt, collision_fn)
 
@@ -317,12 +361,10 @@ def ai_melee(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None)
 
 def ai_ranged(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None):
     """Ranged monster: keep distance, shoot from afar."""
-    target = monster.aggro_target
-    if not target or not target.alive:
-        target = _find_closest_alive(monster, heroes)
-        if not target:
-            return None
-        monster.aggro_target = target
+    target = pick_target(monster, heroes)
+    if target is None:
+        return None
+    monster.aggro_target = target
 
     dist = monster.distance_to(target)
     preferred_min = monster.attack_range * 0.5
@@ -344,6 +386,7 @@ def ai_ranged(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None
         can_shoot = True
         if hasattr(monster, '_nav_dungeon') and monster._nav_dungeon:
             can_shoot = has_line_of_sight(monster._nav_dungeon, monster.x, monster.y, target.x, target.y)
+        face_target(monster, target)
         if can_shoot and monster.swing_timer <= 0:
             monster.swing_timer = monster.weapon_speed
             # Cast time: freeze in place while shooting
@@ -357,27 +400,34 @@ def ai_ranged(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None
     return ("move", target, 0)
 
 
+def pick_target(monster: Monster, heroes: list[Hero]):
+    """Who an aggroed monster chases: the living hero with the most hate (the current target wins ties). If nobody alive is on
+    its hate table it keeps its current target, else the closest living hero. None only when every hero is dead."""
+    alive = [h for h in heroes if h.alive]
+    if not alive:
+        return None
+    current = monster.aggro_target if monster.aggro_target in alive else None
+    top = monster.top_hate_target(alive)
+    if top is None:
+        return current or _find_closest_alive(monster, alive)
+    if current is not None and monster.hate.get(current, 0.0) >= monster.hate[top]:
+        return current
+    return top
+
+
 def ai_boss(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None):
-    """Boss: aggressive, targets lowest HP at low health, attacks faster when enraged."""
-    target = monster.aggro_target
-    if not target or not target.alive:
-        target = _find_closest_alive(monster, heroes)
-        if not target:
-            return None
-        monster.aggro_target = target
+    """Boss: never releases aggro; chases the top-hated hero until they die (then the next one), attacks faster
+    when enraged."""
+    target = pick_target(monster, heroes)
+    if target is None:
+        return None
+    monster.aggro_target = target
 
     hp_pct = monster.hp / monster.max_hp
 
     # Enrage at 30%
     if hp_pct < 0.3:
         monster.weapon_speed = max(0.6, monster.weapon_speed * 0.98)
-
-    # Switch to lowest HP target at 50%
-    if hp_pct < 0.5:
-        lowest = min([h for h in heroes if h.alive], key=lambda h: h.hp, default=target)
-        if lowest:
-            target = lowest
-            monster.aggro_target = target
 
     in_range = move_to_attack_range(monster, target, dt, collision_fn)
 
@@ -492,6 +542,9 @@ def run_monster_ai(monster: Monster, heroes: list[Hero], dt: float,
         patrol_tick(monster, dt, collision_fn)
         return None
 
+    # Aggroed: special skills whose HP trigger was reached are queued here and cast by the World
+    check_skill_triggers(monster)
+
     # Aggroed: run behavior
-    ai_fn = AI_BEHAVIORS.get(monster.name, ai_melee)
+    ai_fn = ai_boss if monster.is_boss else AI_BEHAVIORS.get(monster.name, ai_melee)   # every boss uses the hate rules
     return ai_fn(monster, heroes, dt, collision_fn)
