@@ -2,9 +2,9 @@
   "name": "tarak",
   "class_name": "Rogue",
   "level": 10,
-  "xp": 787,
-  "gold": 30800,
-  "kills": 187,
+  "xp": 887,
+  "gold": 33000,
+  "kills": 189,
   "quests": {
     "northshire": {
       "completed": [
@@ -21,6 +21,11 @@
       "progress": {}
     },
     "haycock": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    },
+    "bossTestRoom": {
       "completed": [],
       "active": [],
       "progress": {}
