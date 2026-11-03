@@ -7,7 +7,7 @@ import random
 
 from game.engine.ai import aggro_monster, call_for_help
 from game.engine.entities import Projectile
-from game.engine.events import Ring, FloatText, BindRightSkill
+from game.engine.events import Ring, FloatText
 
 
 def _aggro_and_call_for_help(world, caster, target):
@@ -68,10 +68,10 @@ def stab(world, caster, target, ab):
     caster.swing_timer = caster.weapon_speed
     if getattr(caster, 'stealthed', False):
         caster.stealthed = False
-        # Player heroes only (not companions): the client rebinds right-click back to Stealth
+        # The client of this player rebinds right-click back to Stealth (companions have no client)
         player = world.player_for_hero(caster)
         if player is not None:
-            world.events.append(BindRightSkill("R", player.player_id))
+            player._bind_right("R")
     dmg_amount = ab.calc_damage(caster.base_damage)
     # Crit check
     if random.random() < getattr(caster, 'crit_chance', 0.05):

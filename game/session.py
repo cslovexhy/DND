@@ -165,7 +165,6 @@ if NET_MODE:
         raise SessionAbort(str(e))
     USE_MAP = host.welcome["map"]
     world = game_state = None
-    companions = []
     try:
         world_map = WorldMap.from_data(host.welcome["map_data"])   # the host's map, validated (untrusted)
     except (MapError, KeyError, TypeError) as e:
@@ -189,7 +188,6 @@ else:
     host = LocalHost(world)
     world_map = world.world_map    # static map data (tiles); the client draws it directly
     game_state = world.game_state  # host-side state: only used for the headless RESULT line and debug logs
-    companions = world.companions  # host-side: debug logs only
 MAP_ID = map_id_for(USE_MAP)  # key for per-map quest progress
 
 
@@ -622,9 +620,6 @@ while running:
             # Summon AI companions (F1-F4) — press again to dismiss
             summon_keys = [pygame.K_F1, pygame.K_F2, pygame.K_F3, pygame.K_F4]
             for ki, sk in enumerate(summon_keys):
-                if event.key == sk and NET_MODE:
-                    floating_texts.append(FloatingText(hero.x, hero.y - 30, "Companions are off in co-op", (200, 150, 150)))
-                    break
                 if event.key == sk and ki < len(available_companions):
                     host.send(ToggleCompanion(available_companions[ki]["class"]))
                     break
@@ -731,9 +726,6 @@ while running:
         print(f"[FRAME t={game_state.game_time:.2f}s] hero=({hero.x:.0f},{hero.y:.0f}) hp={hero.hp:.0f}/{hero.max_hp} monsters={len(game_state.alive_monsters)}", flush=True)
         for m in game_state.alive_monsters:
             print(f"  [MOB] {m.name} pos=({m.x:.0f},{m.y:.0f}) hp={m.hp:.0f}/{m.max_hp} dist={hero.distance_to(m):.0f} aggro={getattr(m, 'aggro_state', '?')}", flush=True)
-        for comp, _ in companions:
-            if comp.alive:
-                print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist={hero.distance_to(comp):.0f}", flush=True)
 
     # --- RENDER ---
     screen.fill(BG)
@@ -972,6 +964,8 @@ while running:
     # Companion health bars (top HUD, below the potion count)
     comp_hud_y = 74
     for comp in view.companions:
+        if comp.owner_id != view.you.player_id:
+            continue          # the HUD lists only your own companions
         comp_hp_pct = comp.hp / comp.max_hp if comp.max_hp > 0 else 0
         bar_color = (100, 150, 255) if comp.alive else (80, 80, 80)
         pygame.draw.rect(screen, HP_BG, (18, comp_hud_y, 156, 14))

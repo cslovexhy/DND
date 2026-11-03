@@ -55,7 +55,7 @@ class SupportSkillsTest(unittest.TestCase):
         world, cleric, _ = two_players("Cleric")
         world.submit(C.ToggleCompanion("Fighter"), 0)
         world.step(DT)
-        comp = world.companions[-1][0]
+        comp = world.companions[-1].hero
         comp.hp = comp.max_hp * 0.4
         cast_on(world, cleric, "E", comp)
         self.assertIn("Renew", comp.buffs)
@@ -140,6 +140,62 @@ class SupportAiRangeTest(unittest.TestCase):
 class CompanionTest(unittest.TestCase):
     """Companions run the same PlayerState controller as players (companion mode)."""
 
+    def _boss_fight_in_melee(self):
+        from game.boss_sim import BossStats, build_fight
+        from game.engine.ai import AggroState
+        world, boss = build_fight(["Wizard", "Fighter"], 10, BossStats(16, 2, 10 ** 4), 1, as_companions=True)
+        comp = world.companions[0]
+        h = comp.hero
+        for _ in range(30 * 60):                       # until the fighter is in melee with the aggroed boss
+            world.step(DT)
+            if boss.aggro_state == AggroState.AGGROED and h.distance_to(boss) <= h.attack_range:
+                break
+        self.assertLessEqual(h.distance_to(boss), h.attack_range)
+        boss.speed = boss.base_speed = 0                 # keep the target still: any movement is the companion's
+        owner = world.players[0]
+        owner.ai_enabled = False
+        owner.move_path, owner.selected_target = [], None   # the owner stands still from here on
+        return world, boss, comp, owner
+
+    def test_melee_companion_does_not_jitter_between_swings(self):
+        """In melee with its aggroed target, a companion waits for its swing instead of stepping toward its owner
+        and back every swing (the left-right shuffle seen in the boss room)."""
+        world, boss, comp, owner = self._boss_fight_in_melee()
+        h = comp.hero
+        owner.hero.x -= 150                              # owner a bit away (follow range, but no teleport)
+        reversals, last_dx, px = 0, 0.0, h.x
+        for _ in range(30 * 5):
+            world.step(DT)
+            dx = h.x - px
+            if abs(dx) > 0.01:
+                if dx * last_dx < 0:
+                    reversals += 1
+                last_dx = dx
+            px = h.x
+        self.assertLessEqual(reversals, 2)
+
+    def test_companion_never_follows_or_teleports_during_combat(self):
+        world, boss, comp, owner = self._boss_fight_in_melee()
+        self.assertTrue(comp.in_combat())
+        comp.hero_ai.update = lambda *a, **k: {"move_to": None, "use_ability": None, "ability_target_pos": None,
+                                              "ability_target_monster": None, "use_potion": False, "dash": None}
+        comp.move_path = []
+        comp.dash_active, comp.dash_path = False, []      # no Charge in flight: any movement would be following
+        owner.hero.x, owner.hero.y = world.world_map.get_start_pos()   # owner far away (would normally teleport)
+        far = comp.hero.distance_to(owner.hero)
+        self.assertGreater(far, 600)
+        closest = far
+        for _ in range(30 * 2):
+            world.step(DT)
+            closest = min(closest, comp.hero.distance_to(owner.hero))
+        self.assertEqual(closest, far)                                 # no teleport, no walking back to the owner
+        boss.hp = 0
+        boss.alive = False                                             # fight over: follows again
+        for _ in range(3):
+            world.step(DT)
+        self.assertFalse(comp.in_combat())
+        self.assertLess(comp.hero.distance_to(owner.hero), 200)
+
     def _world_with(self, player_class, comp_class):
         from game.content.heroes import HERO_CLASSES
         random.seed(2)
@@ -150,12 +206,13 @@ class CompanionTest(unittest.TestCase):
     def test_companion_uses_the_player_controller(self):
         from game.engine.player import PlayerState
         world, player, comp = self._world_with("Fighter", "Rogue")
-        ctl = world.companions[0][1]
+        ctl = world.companions[0]
         self.assertIsInstance(ctl, PlayerState)
         self.assertTrue(ctl.is_companion)
         self.assertIs(ctl.owner, player)
         self.assertTrue(ctl.ai_enabled)
-        self.assertNotIn(ctl, world.players.values())   # not a player: no commands, no snapshot of its own
+        self.assertIn(ctl, world.players.values())      # an ordinary player entry (own id, no client)
+        self.assertGreaterEqual(ctl.player_id, 1000)
 
     def test_paladin_companion_holy_lights_its_hurt_owner(self):
         world, player, comp = self._world_with("Fighter", "Paladin")
@@ -224,7 +281,7 @@ class RightClickOnAllyTest(unittest.TestCase):
                 world.submit(C.from_dict(by_tick[tick]["cmd"]), 0)
             world.step(DT)
         comp = world.entity(casts[0]["ally_id"])
-        self.assertIs(comp, world.companions[0][0])
+        self.assertIs(comp, world.companions[0].hero)
         self.assertIn("Renew", comp.buffs)
 
 

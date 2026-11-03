@@ -226,20 +226,16 @@ class PlayerState:
         elif isinstance(cmd, ToggleAutopilot):
             self.ai_enabled = not self.ai_enabled
         elif isinstance(cmd, ToggleCompanion):
-            if not world.companions_enabled:
-                world.float_text(hero.x, hero.y - 30, "Companions are off in co-op", (200, 150, 150))
-                return
+            if self.is_companion:
+                return                       # companions don't summon companions
             comp_info = next((c for c in self.available_companions if c["class"] == cmd.class_name), None)
             if comp_info is None:
                 return
             # Already summoned — dismiss; otherwise summon
-            existing = [(i, c) for i, (c, _) in enumerate(world.companions)
-                        if c.class_name == comp_info["class"] and getattr(c, "owner", None) is self]
+            existing = [c for c in world.companions if c.owner is self and c.hero.class_name == comp_info["class"]]
             if existing:
-                idx, comp = existing[0]
-                world.companions.pop(idx)
-                gs.heroes.remove(comp)
-                world.unregister(comp)
+                comp = existing[0].hero
+                world.dismiss_companion(comp)
                 world.float_text(comp.x, comp.y - 30, f"{comp.name} dismissed", (200, 150, 150))
             else:
                 comp = world.spawn_companion(comp_info, owner=self)
@@ -708,8 +704,9 @@ class PlayerState:
             for m in gs.alive_monsters:
                 dist_to_hero = hero.distance_to(m)
                 print(f"  [MOB] {m.name} pos=({m.x:.0f},{m.y:.0f}) hp={m.hp:.0f}/{m.max_hp} dist={dist_to_hero:.0f} aggro={getattr(m, 'aggro_state', '?')}", flush=True)
-            for comp, _ in self.world.companions:
-                if comp.alive:
+            for other in self.world.companions:
+                comp = other.hero
+                if comp.alive and other is not self:
                     print(f"  [COMP] {comp.name} pos=({comp.x:.0f},{comp.y:.0f}) hp={comp.hp:.0f}/{comp.max_hp} dist_to_hero={hero.distance_to(comp):.0f}", flush=True)
 
         if ai_action["use_potion"] and self._potion_ready() and hero.hp < hero.max_hp:
@@ -800,10 +797,26 @@ class PlayerState:
         when the AI has nothing to do (no monster to fight, no path to walk)."""
         self.update(dt)
         action = self.run_ai(dt)
+        # Never follow (or teleport to) the owner during a fight: between swings / cooldowns the AI has nothing to do
+        # for a moment, and stepping toward the owner then back made melee companions shuffle left and right.
+        if self.in_combat():
+            return
         busy = (self.dash_active or self.frostbolt_channeling or self.move_path
                 or (action and (action.get("use_ability") or action.get("move_to") or action.get("dash"))))
         if not busy:
             self.follow_owner(dt)
+
+    def in_combat(self):
+        """Companion's party fight is on: an aggroed monster is fighting this companion or its owner (has them on its
+        hate table or as its target), or the companion's own target is aggroed."""
+        mine = (self.hero, self.owner.hero)
+        for m in self.world.game_state.monsters:
+            if not m.alive or m.aggro_state != AggroState.AGGROED:
+                continue
+            if m.aggro_target in mine or any(h in m.hate for h in mine):
+                return True
+        target = self.hero_ai.target
+        return target is not None and target.alive and target.aggro_state == AggroState.AGGROED
 
     def update_ambush(self):
         """Tarak's walk-to-target Ambush while stealthed (manual play only)."""

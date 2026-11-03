@@ -24,6 +24,10 @@ ap.add_argument("--ac", type=float, default=16)
 ap.add_argument("--dmg", type=float, default=2, help="board damage (x25 = real per hit)")
 ap.add_argument("--hp", type=float, default=343.1, help="board HP (x50 = real HP)")
 ap.add_argument("--seed", type=int, default=1)
+ap.add_argument("--two-players", action="store_true",
+                help="two joined players (first and last class), each with the other 4 classes as AI companions")
+ap.add_argument("--companions", action="store_true",
+                help="only the first class is a player; the others are summoned as AI companions (the solo-game path)")
 args = ap.parse_args()
 
 from game.boss_sim import BossStats, build_fight                      # noqa: E402
@@ -35,7 +39,22 @@ STATS = BossStats(args.ac, args.dmg, args.hp)
 
 def boss_hunt_world(map_path, char_data, **_ignored):
     """Stands in for bootstrap.create_world: the session gets our party and boss instead of one throwaway hero."""
-    world, _boss = build_fight(CLASSES, args.level, STATS, args.seed, args.boss)
+    if args.two_players:
+        from game import saves
+        from game.engine.bootstrap import join_player
+        from game.engine.commands import ToggleCompanion
+        from game.content.heroes import HERO_CLASSES
+        world, _boss = build_fight(CLASSES[:1], args.level, STATS, args.seed, args.boss)
+        c = saves.blank_character("second", CLASSES[-1])
+        c["level"] = args.level
+        join_player(world, 1, c, map_path, autopilot=True)
+        for pid in (0, 1):
+            for info in HERO_CLASSES:
+                if info["class"] != world.players[pid].hero.class_name:
+                    world.submit(ToggleCompanion(info["class"]), pid)
+        world.step(1 / 30)
+        return world, world.players[0]
+    world, _boss = build_fight(CLASSES, args.level, STATS, args.seed, args.boss, as_companions=args.companions)
     return world, world.players[0]
 
 

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 from game import saves
 from game.engine.bootstrap import create_world, join_player
+from game.engine.commands import ToggleCompanion
 from game.engine.entities import HP_SCALE
 from game.engine.ai import AggroState
 from game.engine.world_map import SpawnPoint
@@ -74,8 +75,10 @@ def score_of(result: FightResult, target_time: float) -> float:
     return 1.0 + result.hp_left_frac
 
 
-def build_fight(classes, level, boss_stats: BossStats, seed, boss_type="ashardalon", boss_attrs=None):
-    """A ready-to-step world: `classes` (one hero each, all on autopilot, `level`) and one boss with `boss_stats`."""
+def build_fight(classes, level, boss_stats: BossStats, seed, boss_type="ashardalon", boss_attrs=None,
+                as_companions=False):
+    """A ready-to-step world: `classes` (one hero each, all on autopilot, `level`) and one boss with `boss_stats`.
+    as_companions: only classes[0] is a joined player; the others are summoned as AI companions of that player."""
     random.seed(seed)
 
     def char(i, cls):
@@ -84,8 +87,13 @@ def build_fight(classes, level, boss_stats: BossStats, seed, boss_type="ashardal
         return c
 
     world, p0 = create_world(MAP, char(0, classes[0]), autopilot=True)
-    for i, cls in enumerate(classes[1:], start=1):
-        join_player(world, i, char(i, cls), MAP, autopilot=True)
+    if as_companions:
+        for cls in classes[1:]:
+            world.submit(ToggleCompanion(cls), 0)
+        world.step(0)                      # applies the summon commands; the companions copy player 0's level
+    else:
+        for i, cls in enumerate(classes[1:], start=1):
+            join_player(world, i, char(i, cls), MAP, autopilot=True)
     gs = world.game_state
     # exactly one boss in the room: the map's, or `boss_type` spawned where the map's boss stands
     old = [m for m in gs.monsters if m.is_boss]
@@ -105,13 +113,13 @@ def build_fight(classes, level, boss_stats: BossStats, seed, boss_type="ashardal
 
 
 def run_fight(classes, level, boss_stats: BossStats, seed=1, target_time=120.0, boss_type="ashardalon",
-              boss_attrs=None) -> FightResult:
+              boss_attrs=None, as_companions=False) -> FightResult:
     with contextlib.redirect_stdout(io.StringIO()):          # the hero AIs print debug lines; keep the output clean
-        return _run_fight(classes, level, boss_stats, seed, target_time, boss_type, boss_attrs)
+        return _run_fight(classes, level, boss_stats, seed, target_time, boss_type, boss_attrs, as_companions)
 
 
-def _run_fight(classes, level, boss_stats, seed, target_time, boss_type, boss_attrs) -> FightResult:
-    world, boss = build_fight(classes, level, boss_stats, seed, boss_type, boss_attrs)
+def _run_fight(classes, level, boss_stats, seed, target_time, boss_type, boss_attrs, as_companions) -> FightResult:
+    world, boss = build_fight(classes, level, boss_stats, seed, boss_type, boss_attrs, as_companions)
     gs = world.game_state
     t_aggro = None
     t = 0.0

@@ -138,17 +138,25 @@ def create_wizard(name: str, x: float, y: float) -> Hero:
     return h
 
 
-# Class registry. `companion_name` is the name AI companions of that class go by.
+# Class registry.
 HERO_CLASSES = [
-    {"class": "Fighter", "create": create_fighter, "sprite_key": "fighter", "companion_name": "Vistra",
+    {"class": "Fighter", "create": create_fighter, "sprite_key": "fighter",
      "desc": "Tank — 1H Sword+Shield, AoE melee"},
-    {"class": "Cleric", "create": create_cleric, "sprite_key": "cleric", "companion_name": "Quinn",
+    {"class": "Cleric", "create": create_cleric, "sprite_key": "cleric",
      "desc": "Healer — Ranged Wand, Ward, HoT"},
-    {"class": "Paladin", "create": create_paladin, "sprite_key": "paladin", "companion_name": "Keyleth",
+    {"class": "Paladin", "create": create_paladin, "sprite_key": "paladin",
      "desc": "Holy Warrior — 2H Mace, Seal/Smite/Judgement"},
-    {"class": "Rogue", "create": create_rogue, "sprite_key": "rogue", "companion_name": "Tarak",
+    {"class": "Rogue", "create": create_rogue, "sprite_key": "rogue",
      "desc": "Assassin — Fast Daggers, Stealth, Ambush"},
-    {"class": "Wizard", "create": create_wizard, "sprite_key": "wizard", "companion_name": "Heskan",
+    {"class": "Wizard", "create": create_wizard, "sprite_key": "wizard",
      "desc": "Caster — Channeled Frostbolt, AoE spells"},
 ]
 HERO_CLASS_BY_NAME = {c["class"]: c for c in HERO_CLASSES}
+
+# AI companions are ordinary players with a random name from this pool (World.spawn_companion picks one that no
+# hero in the world already has, so two players' companions never share a name).
+COMPANION_NAMES = [
+    "Vistra", "Quinn", "Keyleth", "Tarak", "Heskan", "Aldric", "Brynn", "Cassia", "Dorian", "Elowen", "Fenwick",
+    "Gwyn", "Halric", "Isolde", "Jorund", "Kaelen", "Lyra", "Marek", "Nyssa", "Orin", "Perrin", "Rowan", "Sable",
+    "Thessaly", "Ulric", "Vesper", "Wren", "Xanthe", "Yorick", "Zephyr",
+]

@@ -274,16 +274,26 @@ class RespawnTest(unittest.TestCase):
         self.assertEqual(self.host.potions, 3)
 
 
-class NoCompanionsInCoopTest(unittest.TestCase):
-    def test_host_refuses_companions(self):
+class CompanionsInCoopTest(unittest.TestCase):
+    def test_every_player_can_summon_and_names_never_collide(self):
         from game.net.server import HostServer
-        srv = HostServer(MAP, port=0, local_host=True, auto_companion=True)   # even if asked to
+        from game.engine.bootstrap import join_player
+        srv = HostServer(MAP, port=0, local_host=True)
         try:
-            self.assertFalse(srv.world.companions_enabled)
-            self.assertEqual(srv.world.companions, [])
-            srv.world.submit(C.ToggleCompanion("Fighter"), 0)
-            srv.world.step(DT)
-            self.assertEqual(srv.world.companions, [])
+            world = srv.world
+            join_player(world, 1, saves.blank_character("bob", "Rogue", ), MAP)
+            for pid in (0, 1):
+                for cls in ("Fighter", "Cleric", "Wizard"):
+                    if world.players[pid].hero.class_name != cls:
+                        world.submit(C.ToggleCompanion(cls), pid)
+            world.step(DT)
+            comps = world.companions
+            self.assertEqual(len(comps), 5)             # host Fighter: Cleric+Wizard; Bob the Rogue: all 3
+            names = [h.name.lower() for h in world.game_state.heroes]
+            self.assertEqual(len(names), len(set(names)), names)          # every hero (players too) has its own name
+            self.assertEqual({c.owner.player_id for c in comps}, {0, 1})
+            self.assertEqual(srv._player_count(), 0)                      # companions are not connections
+            self.assertEqual([p.player_id for p in world.human_players], [0, 1])
         finally:
             srv.listener.close()
 

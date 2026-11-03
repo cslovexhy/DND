@@ -59,12 +59,15 @@ def make_snapshot(world, player_id=0):
     hero = player.hero
     gs = world.game_state
     entities = [_entity(hero, "hero", player)]
-    for other in world.player_list:          # other players' heroes
+    for other in world.player_list:          # every other player's hero: humans are allies, AI players companions
         if other is not player:
-            d = _entity(other.hero, "ally", other)
+            if other.is_companion:
+                d = _entity(other.hero, "companion", other)
+                d["owner_id"] = other.owner.player_id     # whose companion (the HUD lists only your own)
+            else:
+                d = _entity(other.hero, "ally", other)
             d["player_name"] = other.name
             entities.append(d)
-    entities += [_entity(c, "companion", ctl) for c, ctl in world.companions]
     entities += [_entity(m, "monster") for m in gs.monsters]
     for n in world.npcs:
         d = _entity(n, "npc")

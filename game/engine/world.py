@@ -8,7 +8,7 @@ import heapq
 import itertools
 import random
 
-from game.content.heroes import HERO_CLASSES
+from game.content.heroes import HERO_CLASSES, COMPANION_NAMES
 from game.engine.ai import (generate_patrol_route, setup_monster_aggro, aggro_monster, call_for_help,
                             run_monster_ai, drop_from_hate, credit_heal_hate)
 from game.engine.entities import Condition, Monster, Projectile
@@ -23,6 +23,8 @@ from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_
 from game.engine.entities import POISON_DPS
 from game.progression import (MAX_LEVEL, xp_to_next_level, apply_level_growth, set_hero_level, growth_for)
 
+COMPANION_ID_BASE = 1000           # player ids of AI companions start here (humans get 0, 1, 2, ...)
+
 # --- Demogorgon special skills ---
 DEMOGORGON_STEALTH_DELAY = 6.0   # seconds since last attack before auto-stealth
 DEMOGORGON_AURA_RADIUS = 90.0    # pixels; aura reaches this far
@@ -33,9 +35,6 @@ class World:
     def __init__(self, world_map, game_state, hero, quests=None, debug=False, pp=PP_DEFAULT):
         self.debug = debug
         self.pp = clamp_pp(pp)
-        # AI companions (F1-F4). Off in co-op (the host turns them off): they were buggy with several players
-        # and are meant to be replaced by AI-driven temporary players.
-        self.companions_enabled = True     # map difficulty: monsters get HP x pp, damage x (1 + pp) / 2
         self.quests = quests       # player 0's QuestLog for this map (each PlayerState has its own)
         self.projectiles = []      # active projectiles (Wanding, Frostbolt, monster arrows)
         self.hazards = []          # damaging ground zones (a boss' Deep Breath), see engine/skills.py
@@ -44,7 +43,6 @@ class World:
         self.dungeon = world_map   # navigation duck-type (is_wall, is_floor, get_start_pos) used by AI/pathfinding
         self.game_state = game_state
         self.hero = hero           # player 0's hero (the host's own player); other players: self.players
-        self.companions = []       # list of (hero_obj, ai_obj) tuples
         self.events = []           # view events produced this frame (engine/events.py)
         # Respawn queue: min-heap of (respawn_at_game_time, seq, SpawnPoint)
         self.respawn_heap = []
@@ -63,6 +61,10 @@ class World:
         self.tick = 0              # number of completed simulation steps
         self.record_commands = False
         self.register(hero)
+        # AI companions are ordinary players (in self.players) flagged with an owner. Their ids start high so they
+        # never collide with the ids the host hands out to humans; their names are random (see spawn_companion).
+        self._next_companion_id = COMPANION_ID_BASE
+        self._name_rng = random.Random(0xC0DE)   # own stream: picking a name must not disturb the sim's random numbers
         # One AI companion per class other than the player's own (summoned with ToggleCompanion)
         self.available_companions = [c for c in HERO_CLASSES if c["class"] != hero.class_name]
 
@@ -90,13 +92,21 @@ class World:
         player = self.players.pop(player_id, None)
         if player is None:
             return
-        for comp, ai in [c for c in self.companions if getattr(c[0], "owner", None) is player]:
-            self.companions.remove((comp, ai))
-            self.game_state.heroes.remove(comp)
-            self.unregister(comp)
+        for comp in [c for c in self.companions if c.owner is player]:
+            self.remove_player(comp.player_id)
         if player.hero in self.game_state.heroes and player.hero is not self.hero:
             self.game_state.heroes.remove(player.hero)
             self.unregister(player.hero)
+
+    @property
+    def companions(self):
+        """The AI companions: players whose `owner` is set (stable order)."""
+        return [p for p in self.player_list if p.is_companion]
+
+    @property
+    def human_players(self):
+        """Everyone except the AI companions (they earn no XP or quest credit and have no client)."""
+        return [p for p in self.player_list if not p.is_companion]
 
     @property
     def player_list(self):
@@ -155,25 +165,41 @@ class World:
         return x, y
 
     # --- spawning ---
+    def _companion_name(self):
+        """A random name no hero in the world has yet (two players' companions must never share one)."""
+        taken = {h.name.lower() for h in self.game_state.heroes}
+        free = [n for n in COMPANION_NAMES if n.lower() not in taken]
+        if free:
+            return self._name_rng.choice(free)
+        base = self._name_rng.choice(COMPANION_NAMES)
+        n = 2
+        while f"{base} {n}".lower() in taken:
+            n += 1
+        return f"{base} {n}"
+
     def spawn_companion(self, comp_info, owner=None):
-        """Summon an AI companion of the given class for `owner` (a PlayerState; default player 0).
-        Its level is fixed at the owner's CURRENT level when summoned (it does not level up afterwards)."""
+        """Summon an AI companion of the given class for `owner` (a PlayerState; default player 0). It is an ordinary
+        player (own id in self.players, same hero / controller / skills as a human) that is always on autopilot, never
+        runs out of potions and follows its owner when idle. Its level is fixed at the owner's CURRENT level when
+        summoned. Returns its hero."""
+        from game.engine.player import PlayerState
         owner = owner or self.players.get(0)
-        hero = owner.hero if owner else self.hero
-        cx, cy = self.find_walkable_nearby(hero.x, hero.y, radius=60)
-        comp = comp_info["create"](comp_info["companion_name"], cx, cy)
-        comp.owner = owner       # follows and fights for this player
+        lead = owner.hero if owner else self.hero
+        cx, cy = self.find_walkable_nearby(lead.x, lead.y, radius=60)
+        comp = comp_info["create"](self._companion_name(), cx, cy)
         if self.on_companion_spawned:
             self.on_companion_spawned(comp, comp_info)
-        set_hero_level(comp, hero.level)
-        # Same controller a player hero uses (casting, movement, autopilot), in companion mode:
-        # always on autopilot, never runs out of potions, follows its owner when idle.
-        from game.engine.player import PlayerState
+        set_hero_level(comp, lead.level)
         ctl = PlayerState(self, comp, ai_enabled=True, potions=None, owner=owner, name=comp.name)
-        self.companions.append((comp, ctl))
-        self.game_state.heroes.append(comp)
-        self.register(comp)
+        self.add_player(self._next_companion_id, ctl)
+        self._next_companion_id += 1
         return comp
+
+    def dismiss_companion(self, comp):
+        """Remove a companion (its hero) from the world."""
+        ctl = self.player_for_hero(comp)
+        if ctl is not None and ctl.is_companion:
+            self.remove_player(ctl.player_id)
 
     def spawn_single_world_monster(self, sp):
         """Spawn a single monster from a SpawnPoint. Returns the Monster or None."""
@@ -331,8 +357,7 @@ class World:
             # 2) Slow / chill aura — affects heroes (player + companions) in radius.
             #    Gameplay effect is a 20% slow (NOT a movement lock). The player also
             #    gets a visual blue "chill" marker so the aura reads on-screen.
-            targets = player_heroes + [c for c, _ in self.companions]
-            for t in targets:
+            for t in player_heroes:
                 if not t.alive:
                     continue
                 if m.distance_to(t) <= DEMOGORGON_AURA_RADIUS:
@@ -350,12 +375,12 @@ class World:
         # Co-op party rules: every player gets the full XP, their own gold roll, the kill and quest credit.
         for m in self.game_state.monsters:
             if not m.alive and m.experience > 0:
-                for player in self.player_list:
+                for player in self.human_players:
                     hero = player.hero
                     hero.xp += m.experience
                     hero.gold += random.randint(10, 30) * getattr(m, "base_experience", m.experience)
                     hero.kills += 1
-                    if player.player_id == 0 or len(self.players) == 1:
+                    if player.player_id == 0 or len(self.human_players) == 1:
                         self.float_text(m.x, m.y + 10, f"+{m.experience}xp", GOLD)
                     # Quest kill tracking
                     for aq, just_completed in player.quests.record_kill(m.name):
@@ -367,7 +392,7 @@ class World:
                 self.queue_respawn(m)
 
     def process_level_ups(self):
-        for player in self.player_list:
+        for player in self.human_players:     # companions keep the level they were summoned at
             hero = player.hero
             while hero.level < MAX_LEVEL and hero.xp >= xp_to_next_level(hero.level):
                 hero.xp -= xp_to_next_level(hero.level)
@@ -381,7 +406,7 @@ class World:
     # --- projectiles ---
     def update_projectiles(self, dt):
         gs = self.game_state
-        hero_side = set(map(id, self.player_heroes)) | {id(c) for c, _ in self.companions}
+        hero_side = set(map(id, self.player_heroes))
         for proj in self.projectiles:
             result = proj.update(dt)
             if result is not None:
@@ -420,11 +445,13 @@ class World:
             player = self.players[pid]
             if not player.hero.alive:
                 continue               # a dead player's hero doesn't move, cast or think (co-op: others play on)
+            if player.is_companion:
+                player.update_companion(dt)    # autopilot, then follow the owner when idle
+                continue
             player.update(dt)
             player.run_ai(dt)          # autopilot, when enabled
             player.update_ambush()
             player.auto_attack()
-        self.update_companions(dt)
         self.update_monsters(dt, alive)
         skills.cast_queued_skills(self)
         skills.update_casts(self, dt)
@@ -503,10 +530,6 @@ class World:
             # Update combat state for health regeneration
             hero.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == hero
                                  for m in gs.monsters)
-        for comp, _ in self.companions:
-            if comp.alive:
-                comp.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == comp
-                                     for m in gs.monsters)
         for m in gs.monsters:
             if m.alive:
                 m.in_combat = getattr(m, 'aggro_state', '') == 'aggroed'
@@ -521,14 +544,6 @@ class World:
             h.heal_credits.clear()
         alive = gs.alive_monsters
         return alive
-
-    # --- companion AI ---
-    def update_companions(self, dt):
-        """Run each summoned companion for this frame. Companions are driven by the same PlayerState
-        controller as players (see PlayerState.update_companion)."""
-        for comp, ctl in self.companions:
-            if comp.alive:
-                ctl.update_companion(dt)
 
     # --- monster AI ---
     def update_monsters(self, dt, alive):

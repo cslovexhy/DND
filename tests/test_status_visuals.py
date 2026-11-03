@@ -72,7 +72,7 @@ class StatusVisualsTest(unittest.TestCase):
     def test_companion_effects_visible(self):
         self.world.submit(C.ToggleCompanion("Fighter"), 0)
         self.world.step(DT)
-        comp = self.world.companions[-1][0]
+        comp = self.world.companions[-1].hero
         comp.x, comp.y = self.cleric.hero.x + 40, self.cleric.hero.y
         self.world.submit(C.Cast("E", comp.x, comp.y, None, ally_id=comp.eid), 0)
         self.world.step(DT)

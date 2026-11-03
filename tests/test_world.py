@@ -175,12 +175,12 @@ class MultiplayerSimTest(unittest.TestCase):
         w = self.world
         w.submit(C.ToggleCompanion("Cleric"), player_id=1)
         w.step(1 / 30)
-        comp = w.companions[-1][0]
-        self.assertIs(comp.owner, self.p1)
+        comp = w.companions[-1].hero
+        self.assertIs(w.companions[-1].owner, self.p1)
         # player 0 toggling Cleric summons their OWN cleric instead of dismissing player 1's
         w.submit(C.ToggleCompanion("Cleric"), player_id=0)
         w.step(1 / 30)
-        self.assertEqual(sum(1 for c, _ in w.companions if c.class_name == "Cleric"), 2)
+        self.assertEqual(sum(1 for c in w.companions if c.hero.class_name == "Cleric"), 2)
 
     def test_no_game_over_players_respawn(self):
         w = self.world
@@ -198,7 +198,8 @@ class MultiplayerSimTest(unittest.TestCase):
         w.remove_player(1)
         self.assertEqual(len(w.player_heroes), 1)
         self.assertNotIn(self.p1.hero, w.game_state.heroes)
-        self.assertFalse(any(getattr(c, "owner", None) is self.p1 for c, _ in w.companions))
+        self.assertFalse(any(c.owner is self.p1 for c in w.companions))
+        self.assertEqual(len(w.companions), 0)
 
     def test_sanitize_character(self):
         from game.engine.bootstrap import sanitize_character
