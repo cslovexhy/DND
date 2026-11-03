@@ -55,6 +55,7 @@ class HeroAI:
 
     def __init__(self, hero: Hero):
         self.hero = hero
+        self.allies = []  # Set externally to the live list of all party heroes (players + companions, includes self)
         self.target: Monster = None
         self.dash_request = None  # (target_x, target_y, target_monster, damage, stun_dur)
         self._nav_dungeon = None  # Set externally after creation
@@ -216,10 +217,26 @@ class HeroAI:
         return sum(1 for m in monsters if m.alive and not getattr(m, 'stealthed', False)
                    and getattr(m, 'aggro_state', None) == AggroState.AGGROED)
 
+    def in_party(self) -> bool:
+        """True when at least one other hero (player or companion) fights alongside this one."""
+        return any(h is not self.hero for h in self.allies)
+
+    def team_target(self, candidates):
+        """Shared-pool target pick. Once any party member has aggroed mobs, everyone fights the same pool of
+        engaged mobs and focuses the one with the LOWEST HP (fastest kill; ties -> nearest by path), so the party
+        converges instead of each hero chasing its own nearest mob. Before anything is aggroed (the pull) a hero
+        picks the nearest visible mob as before."""
+        from game.engine.ai import AggroState
+        engaged = [m for m in candidates if m.aggro_state == AggroState.AGGROED]
+        if engaged:
+            return min(engaged, key=lambda m: (m.hp, self.path_distance(m)))
+        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
+
     def melee_move_to(self, monsters, tx, ty):
-        """Melee movement: walk straight to (tx, ty), except when more than one mob is
-        aggroed — then use the wizard-style kite position (falls back to straight walk)."""
-        if self.aggroed_count(monsters) > 1:
+        """Melee movement: walk straight to (tx, ty). Only a lone melee hero (no party) kites, and only when more
+        than one mob is aggroed — then it uses the wizard-style kite position (falls back to straight walk).
+        In a party the others share the aggro, so melee heroes stay on their target and fight."""
+        if not self.in_party() and self.aggroed_count(monsters) > 1:
             kite_pos = self._find_best_kite_position(monsters)
             if kite_pos:
                 return kite_pos
@@ -240,7 +257,7 @@ class HeroAI:
         candidates = self.get_engaged_monsters(monsters)
         if not candidates:
             return None
-        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
+        return self.team_target(candidates)
 
     def should_use_potion(self, potions: int) -> bool:
         """Use potion when below 40% HP."""
@@ -286,8 +303,8 @@ class FighterAI(HeroAI):
         if in_melee:
             return min(in_melee, key=lambda m: m.hp)
 
-        # Otherwise closest by path distance
-        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
+        # Otherwise the party's shared focus (lowest HP engaged mob); nearest when nothing is aggroed yet
+        return self.team_target(candidates)
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
@@ -383,17 +400,13 @@ class ClericAI(HeroAI):
 
     def __init__(self, hero):
         super().__init__(hero)
-        self.allies = []  # Set externally to list of all hero entities
 
     def pick_target(self, monsters):
         candidates = self.get_engaged_monsters(monsters)
         if not candidates:
             return None
         # Prioritize low HP targets to secure kills
-        low_hp = [m for m in candidates if m.hp <= m.max_hp * 0.3]
-        if low_hp:
-            return min(low_hp, key=lambda m: self.path_distance(m))
-        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
+        return self.team_target(candidates)
 
     def _near_unaggroed(self, monsters, margin=40, pos=None):
         """True if a non-target, unaggroed mob is within its sense range (+margin) of pos (default: hero)."""
@@ -526,7 +539,6 @@ class PaladinAI(HeroAI):
 
     def __init__(self, hero):
         super().__init__(hero)
-        self.allies = []  # Set externally to list of all hero entities (party)
 
     def pick_target(self, monsters):
         candidates = self.get_engaged_monsters(monsters)
@@ -535,7 +547,7 @@ class PaladinAI(HeroAI):
         in_melee = [m for m in candidates if self.hero.distance_to(m) < 70 and self.has_los(m)]
         if in_melee:
             return min(in_melee, key=lambda m: m.hp)
-        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
+        return self.team_target(candidates)
 
     def _heal_lowest(self, action) -> bool:
         ally = self._ally_needing_heal()
@@ -626,10 +638,7 @@ class WizardAI(HeroAI):
         candidates = self.get_engaged_monsters(monsters)
         if not candidates:
             return None
-        low_hp = [m for m in candidates if m.hp <= m.max_hp * 0.3]
-        if low_hp:
-            return min(low_hp, key=lambda m: self.path_distance(m))
-        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
+        return self.team_target(candidates)
 
     def update(self, monsters: list[Monster], dt: float, collision_fn=None) -> dict:
         action = {"move_to": None, "use_ability": None, "ability_target_pos": None,
@@ -758,10 +767,7 @@ class RogueAI(HeroAI):
         if not candidates:
             return None
         # Prioritize low HP targets to secure kills
-        low_hp = [m for m in candidates if m.hp <= m.max_hp * 0.3]
-        if low_hp:
-            return min(low_hp, key=lambda m: self.path_distance(m))
-        return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
+        return self.team_target(candidates)
 
     def is_in_combat(self, monsters):
         """Check if any monster is targeting the hero."""

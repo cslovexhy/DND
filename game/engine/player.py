@@ -39,8 +39,7 @@ class PlayerState:
         self.hero_ai = create_hero_ai(hero)   # autopilot brain (HeroAI)
         self.hero_ai.set_nav_dungeon(world.dungeon)
         self.hero_ai.clock = lambda: world.game_state.game_time
-        if hasattr(self.hero_ai, "allies"):
-            self.hero_ai.allies = world.game_state.heroes   # support AI (Cleric) can heal the whole party
+        self.hero_ai.allies = world.game_state.heroes   # the party: shared by every AI (support heals, team focus, no melee kiting)
         self.ai_enabled = ai_enabled     # autopilot on/off (TAB; on in --auto/--headless)
         # Movement / targeting
         self.move_path = []
