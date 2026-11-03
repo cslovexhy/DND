@@ -2,9 +2,9 @@
   "name": "vistra",
   "class_name": "Fighter",
   "level": 12,
-  "xp": 218,
-  "gold": 75265,
-  "kills": 450,
+  "xp": 698,
+  "gold": 84525,
+  "kills": 496,
   "quests": {
     "northshire": {
       "completed": [
@@ -20,12 +20,17 @@
       ],
       "progress": {
         "skirmish_at_echo_ridge": {
-          "Kobold Dragonshield": 3
+          "Kobold Dragonshield": 4
         },
         "bounty_on_garrick_padfoot": {}
       }
     },
     "haycock": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    },
+    "goldshire": {
       "completed": [],
       "active": [],
       "progress": {}

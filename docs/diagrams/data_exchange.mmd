@@ -1,0 +1,58 @@
+---
+title: Co-op data exchange — host, host player (player 0) and guest players
+---
+flowchart LR
+    subgraph HOSTPC["Host computer (one pygame process)"]
+        direction TB
+        HP["Host player = player 0<br/>main thread: input, view, render, audio<br/>always the host's own hero"]
+        LC["LocalClient<br/>in-process, no socket<br/>thread-safe queue + latest snapshot"]
+        subgraph SRV["HostServer (background thread, 30 ticks/s)"]
+            direction TB
+            NET["Socket layer<br/>one bound interface only<br/>127.0.0.1 (H) or home LAN IP (L)<br/>never 0.0.0.0"]
+            CHK["Admission and validation<br/>version check, max 4 players<br/>sanitize_character, 30 cmds/tick/player"]
+            WORLD["World (authoritative)<br/>submit(cmd, player_id) then step(1/30)<br/>AI, combat, XP, quests, respawns"]
+            SNAP["Per-player snapshot + delta<br/>make_snapshot(world, pid)<br/>DeltaEncoder per guest"]
+            NET --> CHK --> WORLD --> SNAP
+        end
+        HP -- "1. Commands (MoveTo, Cast, ...)" --> LC
+        LC -- "2. queued, submitted as player 0" --> WORLD
+        SNAP -- "3. snapshot for player 0 + its events<br/>full state, never delta" --> LC
+        LC -- "4. step() returns snap + events" --> HP
+    end
+
+    subgraph G1["Guest computer A (player 1)"]
+        direction TB
+        GA["Guest client: input, view, render<br/>RemoteHost + DeltaDecoder<br/>interpolates between snapshots<br/>saves own character file"]
+    end
+
+    subgraph G2["Guest computer B (player 2)"]
+        direction TB
+        GB["Guest client<br/>same as A"]
+    end
+
+    DISC["Join screen<br/>scans own /24 block on game port"]
+
+    GA -- "hello {v:2, character}" --> NET
+    NET -- "welcome {player_id, map_data, map_hash, tick_rate}<br/>then first full frame" --> GA
+    GA -- "cmd {...} when the player acts" --> NET
+    SNAP -- "frame {snap for that player, ents = changed fields, personal events}<br/>skipped if the guest has not drained the last one (events kept)" --> GA
+    GA -- "bye (or connection drop)" --> NET
+
+    GB -- "hello / cmd / bye" --> NET
+    SNAP -- "frame" --> GB
+
+    DISC -. "info {} (before hello)" .-> NET
+    NET -. "info: host name, level, map, players n/4, then close" .-> DISC
+
+    GA x--x|"no direct link: guests only see each other as ally entities in the host's snapshot"| GB
+
+    classDef host fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef guest fill:#ff9999,stroke:#cc0000,color:#000
+    classDef srv fill:#e1bee7,stroke:#6a1b9a,color:#000
+    classDef sim fill:#99ccff,stroke:#0066cc,color:#000
+    classDef misc fill:#eeeeee,stroke:#666,color:#000
+    class HP,LC host
+    class GA,GB guest
+    class NET,CHK,SNAP srv
+    class WORLD sim
+    class DISC misc

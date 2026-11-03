@@ -1,0 +1,36 @@
+{
+  "name": "yiren",
+  "class_name": "Paladin",
+  "level": 9,
+  "xp": 114,
+  "gold": 20725,
+  "kills": 174,
+  "quests": {
+    "northshire": {
+      "completed": [
+        "a_threat_within",
+        "kobold_camp_cleanup",
+        "wolves_across_the_border",
+        "brotherhood_of_thieves",
+        "investigate_echo_ridge"
+      ],
+      "active": [
+        "bounty_on_garrick_padfoot",
+        "millys_harvest",
+        "skirmish_at_echo_ridge"
+      ],
+      "progress": {
+        "bounty_on_garrick_padfoot": {},
+        "millys_harvest": {
+          "Human Cultist": 8
+        },
+        "skirmish_at_echo_ridge": {}
+      }
+    },
+    "haycock": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    }
+  }
+}

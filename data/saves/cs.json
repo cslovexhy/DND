@@ -1,10 +1,10 @@
 {
   "name": "cs",
   "class_name": "Paladin",
-  "level": 11,
-  "xp": 152,
-  "gold": 37500,
-  "kills": 274,
+  "level": 14,
+  "xp": 489,
+  "gold": 53405,
+  "kills": 358,
   "quests": {
     "northshire": {
       "completed": [

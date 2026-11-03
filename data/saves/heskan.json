@@ -1,10 +1,10 @@
 {
   "name": "heskan",
   "class_name": "Wizard",
-  "level": 17,
-  "xp": 475,
-  "gold": 140700,
-  "kills": 910,
+  "level": 20,
+  "xp": 440,
+  "gold": 193525,
+  "kills": 1205,
   "quests": {
     "northshire": {
       "completed": [
@@ -21,6 +21,21 @@
       "progress": {}
     },
     "haycock": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    },
+    "upside_down": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    },
+    "goldshire": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    },
+    "bossTestRoom": {
       "completed": [],
       "active": [],
       "progress": {}
