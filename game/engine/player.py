@@ -541,7 +541,7 @@ class PlayerState:
             hit_count = 0
             for m in gs.alive_monsters:
                 if hero.distance_to(m) <= ab.radius:
-                    # 50% damage reduction for 10s
+                    # enemy damage x0.9 / x0.8 / x0.7 (skill level 1 / 2 / 3) for 10s
                     m.buffs["Demoralized"] = {"remaining": 10.0, "damage_mult": 1.0 - shout_reduction(ab)}
                     # Slow for 3s
                     m.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.5)

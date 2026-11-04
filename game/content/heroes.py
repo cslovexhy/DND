@@ -37,7 +37,7 @@ def create_fighter(name: str, x: float, y: float) -> Hero:
                                is_dash=True, stun_duration=1.5))
     h.add_ability("E", Ability("Demoralizing Shout", cooldown=5.0, multiplier=0, flat_bonus=0,
                                radius=120, range=0,
-                               effect="Reduces nearby enemies damage by 50% for 10s, slows 3s",
+                               effect="Reduces nearby enemies damage by 10/20/30% (skill level 1/2/3) for 10s, slows 3s",
                                power_type="encounter", color=(200, 150, 50)))
     return h
 

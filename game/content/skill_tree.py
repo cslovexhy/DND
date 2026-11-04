@@ -67,7 +67,9 @@ def apply_skill_levels(hero) -> list:
 # --- effect strengths shared by the cast code and the descriptions -----------------------------------------------
 
 BASE_SEAL_BONUS = 0.25          # Righteous Seal: Smite +25% (level 3)
-BASE_SHOUT_REDUCTION = 0.5      # Demoralizing Shout: enemy damage -50% (level 3)
+# Demoralizing Shout: enemies deal 90% / 80% / 70% of their damage at skill level 1 / 2 / 3 (user-tuned: the old flat
+# 50% made boss fights too easy), so it does not follow the usual 33/67/100% power curve.
+SHOUT_DAMAGE_MULT = {1: 0.9, 2: 0.8, 3: 0.7}
 BASE_HOLY_LIGHT_HEAL = 150      # Holy Light (level 3)
 
 
@@ -88,7 +90,8 @@ def seal_bonus(ab) -> float:
 
 
 def shout_reduction(ab) -> float:
-    return BASE_SHOUT_REDUCTION * ab.power
+    """Share of enemy damage Demoralizing Shout removes (0.1 / 0.2 / 0.3 by skill level)."""
+    return 1.0 - SHOUT_DAMAGE_MULT[ab.level]
 
 
 def judgement_seal_bonus(hero, ab) -> float:

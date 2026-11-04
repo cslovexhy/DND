@@ -169,3 +169,36 @@ class LevelUpTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DemoralizingShoutTest(unittest.TestCase):
+    def test_damage_multiplier_is_90_80_70_percent(self):
+        from game.content.skill_tree import shout_reduction
+        _, f = hero_at("Fighter", MAX_LEVEL)
+        shout = f.hero.abilities["E"]
+        got = []
+        for level in (1, 2, 3):
+            shout.set_level(level)
+            got.append(round(1.0 - shout_reduction(shout), 6))
+        self.assertEqual(got, [0.9, 0.8, 0.7])
+
+    def test_cast_applies_the_level_multiplier(self):
+        random.seed(1)
+        world, f = create_world(MAP, saves.blank_character("f", "Fighter", level=6))   # Shout at skill level 1
+        m = world.game_state.monsters[0]
+        m.x, m.y = f.hero.x + 60, f.hero.y
+        world.submit(C.Cast("E", f.hero.x, f.hero.y, None), 0)
+        world.step(DT)
+        self.assertAlmostEqual(m.buffs["Demoralized"]["damage_mult"], 0.9)
+
+    def test_ai_shouts_first_at_a_single_fresh_enemy_and_not_again_while_it_is_demoralized(self):
+        random.seed(1)
+        world, f = create_world(MAP, saves.blank_character("f", "Fighter", level=16), autopilot=True)
+        mobs = world.game_state.monsters
+        del mobs[1:]
+        m = mobs[0]
+        m.x, m.y = f.hero.x + 100, f.hero.y          # inside the 120 px shout, outside melee
+        ai = f.hero_ai
+        self.assertEqual(ai.update(mobs, DT)["use_ability"], "E")
+        m.buffs["Demoralized"] = {"remaining": 10.0, "damage_mult": 0.7}
+        self.assertNotEqual(ai.update(mobs, DT)["use_ability"], "E")

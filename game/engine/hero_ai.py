@@ -287,7 +287,7 @@ class FighterAI(HeroAI):
     """
     Fighter AI strategy:
     - Charge into ranged enemies or distant packs
-    - Use Whirlwind when surrounded (3+ enemies in melee)
+    - Demoralizing Shout first whenever an enemy in its radius is not Demoralized
     - Use Reaping Strike as bread-and-butter
     - Stay in melee range of target
     - Pop potion below 40% HP
@@ -343,9 +343,11 @@ class FighterAI(HeroAI):
         if self.should_use_potion(3):  # AI always "has" potions conceptually
             action["use_potion"] = True
 
-        # 2. Demoralizing Shout (E) if 2+ enemies in melee range
+        # 2. Demoralizing Shout (E) first whenever any enemy within its radius is not Demoralized yet
         ab_e = self.hero.abilities.get("E")
-        if ab_e and ab_e.is_ready() and enemies_in_melee >= 2:
+        if ab_e and ab_e.is_ready() and any(
+                self.hero.distance_to(m) <= ab_e.radius and "Demoralized" not in m.buffs
+                and not getattr(m, "stealthed", False) for m in alive):
             action["use_ability"] = "E"
             action["ability_target_pos"] = (self.hero.x, self.hero.y)
             return action
