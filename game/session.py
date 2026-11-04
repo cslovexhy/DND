@@ -870,6 +870,11 @@ while running:
         if m.is_boss or getattr(m, 'unique', False):
             t = font.render(m.name, True, (255,100,100))
             screen.blit(t, (sx+sw//2-t.get_width()//2, sy-20))
+        elif getattr(m, "leveled", False):
+            # grey when this monster is 6+ levels below you (it gives no XP)
+            lv_color = (150, 150, 150) if hero.level - m.level >= 6 else WHITE
+            t = font.render(f"Lv {m.level}", True, lv_color)
+            screen.blit(t, (sx+sw//2-t.get_width()//2, sy-20))
         if m is view.you.selected_target:
             pygame.draw.circle(screen, GOLD, (sx+sw//2, sy+sh//2), sw//2+4, 2)
 

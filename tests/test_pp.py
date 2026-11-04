@@ -4,7 +4,7 @@ import unittest
 
 from game import saves
 from game.content.difficulty import clamp_pp, damage_multiplier, hp_multiplier, map_title, scaled_xp
-from game.content.monsters import SPAWN_STATS
+from game.content.monsters import SPAWN_STATS, base_xp_for_level, hp_for_level, monster_hp_mult
 from game.engine.bootstrap import create_world, join_player
 from game.engine.entities import HP_SCALE, POISON_DPS
 from game.engine.snapshot import make_snapshot
@@ -19,7 +19,14 @@ def world(pp):
 
 
 def base_hp(m):
-    return SPAWN_STATS[m.spawn_type]["hp"] * HP_SCALE
+    """HP before pp: from the level for monsters with a map level, else the hand-tuned SPAWN_STATS HP."""
+    stats = SPAWN_STATS[m.spawn_type]
+    hp = hp_for_level(m.level) if m.leveled else stats["hp"] * HP_SCALE
+    return hp * monster_hp_mult(stats)
+
+
+def base_xp(m):
+    return base_xp_for_level(m.level) if m.leveled else SPAWN_STATS[m.spawn_type]["xp"]
 
 
 def base_dmg(m):
@@ -53,8 +60,8 @@ class PpMonstersTest(unittest.TestCase):
         self.assertAlmostEqual(m.poison_dps, POISON_DPS * (1 + pp) / 2)
         if getattr(m, "ranged_attack_range", 0):
             self.assertAlmostEqual(m.ranged_attack_damage, m.base_damage)
-        self.assertEqual(m.experience, scaled_xp(SPAWN_STATS[m.spawn_type]["xp"], pp))
-        self.assertEqual(m.base_experience, SPAWN_STATS[m.spawn_type]["xp"])
+        self.assertEqual(m.experience, scaled_xp(base_xp(m), pp))
+        self.assertEqual(m.base_experience, base_xp(m))
 
     def test_1pp_is_the_normal_game(self):
         for m in world(1).game_state.monsters:

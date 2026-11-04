@@ -25,6 +25,7 @@ def _entity(e, kind, ctl=None):
         d["is_boss"] = bool(e.is_boss)
         d["unique"] = bool(getattr(e, "unique", False))
         d["say"] = getattr(e, "say", "")
+        d["leveled"] = bool(getattr(e, "leveled", False))   # has a real level (map monster_levels): show "Lv N"
     elif kind in ("hero", "ally", "companion"):
         d["class_name"] = e.class_name
         d["absorb_shield"] = e.absorb_shield

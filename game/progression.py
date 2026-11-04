@@ -7,7 +7,7 @@ Pure logic (no pygame) so it can be shared by the player, AI companions and test
 from game.content.skill_tree import apply_skill_levels
 
 MAX_LEVEL = 30
-XP_BASE = 100  # XP needed for level 2
+XP_BASE = 100  # XP needed for level 2 (see XP_TABLE)
 
 # Stat growth per level (HP bonus in raw points, damage in raw points added to base_damage)
 GROWTH_RATES = {
@@ -24,19 +24,26 @@ def growth_for(class_name):
     return GROWTH_RATES.get(class_name, DEFAULT_GROWTH)
 
 
-def xp_multiplier(level):
-    """Tiered growth: 1.3x early, flattens later."""
-    if level <= 10:
-        return 1.3
-    elif level <= 20:
-        return 1.2
-    else:
-        return 1.1
+# XP to go from level L to L+1: 100 for 1->2; after that each level costs the previous one plus
+# max(5%, 50% - L x 2%)  (L = the level you are leveling from: +46% at 2, +30% at 10, +10% at 20, 5% from 23 on).
+def xp_growth(level):
+    return max(0.05, 0.50 - 0.02 * level)
+
+
+def _build_xp_table():
+    table, cost = {1: XP_BASE}, float(XP_BASE)
+    for level in range(2, MAX_LEVEL):
+        cost *= 1.0 + xp_growth(level)
+        table[level] = int(round(cost))
+    return table
+
+
+XP_TABLE = _build_xp_table()   # level -> XP needed to reach level + 1
 
 
 def xp_to_next_level(level):
     """XP needed from current level to reach the next."""
-    return int(XP_BASE * (xp_multiplier(level) ** (level - 1)))
+    return XP_TABLE.get(level, XP_TABLE[MAX_LEVEL - 1])
 
 
 def apply_level_growth(hero, levels=1):

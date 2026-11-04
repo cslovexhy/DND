@@ -106,6 +106,15 @@ def validate_map(data, known_spawn_types=None):
                 and n.get("gender", "male") in ("male", "female")):
             errors.append(f"npc {i}: needs name, npc_id, x/y inside the map, sprite_col/row")
 
+    levels = data.get("monster_levels", {})
+    if not isinstance(levels, dict) or len(levels) > 200:
+        errors.append("monster_levels must be an object of spawn type -> [min, max]")
+        levels = {}
+    for kind, rng in levels.items():
+        if not (isinstance(kind, str) and len(kind) <= MAX_TEXT and isinstance(rng, list) and len(rng) == 2
+                and _is_int(rng[0], 1, 30) and _is_int(rng[1], 1, 30) and rng[0] <= rng[1]):
+            errors.append(f"monster_levels[{kind!r}] must be [min, max] levels 1..30")
+
     music = data.get("music", [])
     if not isinstance(music, list) or len(music) > 50:
         errors.append("music must be a list of paths")

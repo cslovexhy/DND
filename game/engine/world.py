@@ -18,7 +18,7 @@ from game.engine import skills
 from game.engine.snapshot import quest_info
 from game.engine.pathfinding import has_line_of_sight
 from game.engine.world_map import TILE_SIZE
-from game.content.monsters import SPAWN_STATS, respawn_delay
+from game.content.monsters import SPAWN_STATS, respawn_delay, hp_for_level, base_xp_for_level, kill_xp, monster_hp_mult
 from game.content.skill_tree import apply_skill_levels, describe
 from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_multiplier, scaled_xp
 from game.engine.entities import POISON_DPS
@@ -221,6 +221,15 @@ class World:
         m.unique = mt.get("unique", False)  # one-of-a-kind minion: name shown, but respawns/leashes like a normal mob
         if mt.get("condition"):
             m.on_hit_condition = mt["condition"]
+        m.gold_value = mt["xp"]       # gold rolls use the hand-tuned value (levels change only HP and XP)
+        level_range = self.world_map.data.get("monster_levels", {}).get(sp.type)
+        m.leveled = level_range is not None
+        if m.leveled:                 # this map gives the type a level range: HP and XP follow the rolled level
+            m.level = random.randint(level_range[0], level_range[1])
+            m.max_hp = hp_for_level(m.level)
+            m.experience = base_xp_for_level(m.level)
+        m.max_hp *= monster_hp_mult(mt)   # per-type HP multiplier (default 1)
+        m.hp = m.max_hp
         self._apply_pp(m)
         if mt.get("ranged"):
             m.ranged_attack_range = 250
@@ -380,11 +389,13 @@ class World:
             if not m.alive and m.experience > 0:
                 for player in self.human_players:
                     hero = player.hero
-                    hero.xp += m.experience
-                    hero.gold += random.randint(10, 30) * getattr(m, "base_experience", m.experience)
+                    # leveled monsters give less XP to heroes above their level (none from 6 levels up)
+                    xp = kill_xp(m.experience, hero.level, m.level) if getattr(m, "leveled", False) else m.experience
+                    hero.xp += xp
+                    hero.gold += random.randint(10, 30) * getattr(m, "gold_value", m.base_experience)
                     hero.kills += 1
                     if player.player_id == 0 or len(self.human_players) == 1:
-                        self.float_text(m.x, m.y + 10, f"+{m.experience}xp", GOLD)
+                        self.float_text(m.x, m.y + 10, f"+{xp}xp", GOLD)
                     # Quest kill tracking
                     for aq, just_completed in player.quests.record_kill(m.name):
                         self.float_text(hero.x, hero.y - 50, aq.get_progress_text(), (200, 200, 255))

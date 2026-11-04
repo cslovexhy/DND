@@ -1,7 +1,8 @@
 """Monster stat table for map spawn points (pure data; no pygame).
 
 Keys are the spawn-type strings used in data/maps/*.json. Optional flags: boss, unique, ranged,
-condition (on-hit), relentless, hive_mind, respawn_mult, skills (see game/engine/skills.py).
+condition (on-hit), relentless, hive_mind, respawn_mult, skills (see game/engine/skills.py),
+hp_mult (max HP multiplier for the type, default 1; see monster_hp_mult).
 """
 from game.engine.entities import Condition
 
@@ -37,9 +38,43 @@ SPAWN_STATS = {
     "margrath": {"name": "Margrath", "hp": 5, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 25, "boss": True},
     "rage_drake": {"name": "Rage Drake", "hp": 5, "ac": 15, "speed": 6, "atk": 9, "dmg": 2, "xp": 25, "boss": True},
     "otyugh": {"name": "Otyugh", "hp": 5, "ac": 14, "speed": 3, "atk": 8, "dmg": 2, "xp": 25, "boss": True},
-    "garrick_padfoot": {"name": "Garrick Padfoot", "hp": 4, "ac": 15, "speed": 5, "atk": 8, "dmg": 2, "xp": 30, "unique": True, "respawn_mult": 3},
+    "garrick_padfoot": {"name": "Garrick Padfoot", "hp": 4, "ac": 15, "speed": 5, "atk": 8, "dmg": 2, "xp": 30, "unique": True, "respawn_mult": 3,
+                        "hp_mult": 2},
 }
 
+
+# --- Monster levels ---------------------------------------------------------------------------------------------
+# A map may give spawn types a level range:  "monster_levels": {"human_cultist": [3, 4], ...}  (data/maps/*.json).
+# Each spawned monster rolls a level in that range; the level alone sets its HP and the XP it is worth (the
+# SPAWN_STATS "hp" is not used, so a higher-level monster always has more HP). AC, damage and speed stay
+# hand-tuned in SPAWN_STATS. Spawn types without a level keep their hand-tuned HP and XP.
+MONSTER_HP_LEVEL_1 = 50     # real HP of a level-1 monster
+MONSTER_HP_PER_LEVEL = 25   # + per level above 1: same growth as a hero's default (progression.DEFAULT_GROWTH["hp"])
+XP_PER_MONSTER_LEVEL = 10   # base XP = monster level x 10
+XP_LEVEL_SPAN = 6           # a hero this many levels above a monster gets no XP from it
+
+
+def monster_hp_mult(stats):
+    """Per-type max HP multiplier (SPAWN_STATS "hp_mult", default 1). Applies to levelled and hand-tuned HP alike,
+    before map difficulty (pp)."""
+    return stats.get("hp_mult", 1)
+
+
+def hp_for_level(level):
+    """Max HP (real points, before pp) of a monster of this level: 50, 75, 100, 125, 150, ..."""
+    return MONSTER_HP_LEVEL_1 + MONSTER_HP_PER_LEVEL * (level - 1)
+
+
+def base_xp_for_level(level):
+    return XP_PER_MONSTER_LEVEL * level
+
+
+def kill_xp(base_xp, hero_level, monster_level):
+    """XP a hero of `hero_level` gets for killing a monster of `monster_level` worth `base_xp`:
+    base x (6 - min(6, max(0, heroLv - monsterLv))) / 6 — full XP at or below the monster's level, 1/6 less per level
+    above it, nothing from 6 levels up."""
+    above = min(XP_LEVEL_SPAN, max(0, hero_level - monster_level))
+    return int(round(base_xp * (XP_LEVEL_SPAN - above) / XP_LEVEL_SPAN))
 
 
 def respawn_delay(m):
