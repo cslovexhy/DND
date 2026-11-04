@@ -12,8 +12,8 @@ DT = 1 / 30
 def party(healer_class, *others):
     """A healer (player 0) and `others` standing together, with an aggroed boss further away (so the healer has a
     target to fight)."""
-    world, p0 = create_world(MAP, saves.blank_character("healer", healer_class), autopilot=True)
-    players = [p0] + [join_player(world, i + 1, saves.blank_character(f"m{i}", cls), MAP, autopilot=True)
+    world, p0 = create_world(MAP, saves.blank_character("healer", healer_class, level=30), autopilot=True)
+    players = [p0] + [join_player(world, i + 1, saves.blank_character(f"m{i}", cls, level=30), MAP, autopilot=True)
                       for i, cls in enumerate(others)]
     gs = world.game_state
     boss = next(m for m in gs.monsters if m.is_boss)

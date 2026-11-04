@@ -59,7 +59,7 @@ class PathfindingTest(unittest.TestCase):
 class NeverInsideAWallTest(unittest.TestCase):
     def test_clicking_unreachable_spots_never_puts_the_hero_in_a_wall(self):
         random.seed(1)
-        world, p = create_world(MAP, saves.blank_character("quinn", "Cleric"))
+        world, p = create_world(MAP, saves.blank_character("quinn", "Cleric", level=30))
         world.game_state.monsters.clear()
         _, _, islands = reachable_and_islands(world.world_map)
         for target in islands[::20][:10]:
@@ -70,7 +70,7 @@ class NeverInsideAWallTest(unittest.TestCase):
 
     def test_bad_path_is_stopped_at_the_wall(self):
         random.seed(1)
-        world, p = create_world(MAP, saves.blank_character("quinn", "Cleric"))
+        world, p = create_world(MAP, saves.blank_character("quinn", "Cleric", level=30))
         world.game_state.monsters.clear()
         _, _, islands = reachable_and_islands(world.world_map)
         p.move_path = [center(islands[0])]            # force a straight line through walls
@@ -80,8 +80,8 @@ class NeverInsideAWallTest(unittest.TestCase):
 
     def test_coop_autopilot_never_inside_walls(self):
         random.seed(1)
-        world, host = create_world(MAP, saves.blank_character("heskan", "Wizard"), autopilot=True)
-        join_player(world, 1, saves.blank_character("quinn", "Cleric"), MAP, autopilot=True)
+        world, host = create_world(MAP, saves.blank_character("heskan", "Wizard", level=30), autopilot=True)
+        join_player(world, 1, saves.blank_character("quinn", "Cleric", level=30), MAP, autopilot=True)
         for _ in range(30 * 45):
             world.step(DT)
             world.events.clear()
@@ -95,7 +95,7 @@ class ChargeTest(unittest.TestCase):
 
     def fighter(self, seed=1):
         random.seed(seed)
-        world, p = create_world(MAP, saves.blank_character("vistra", "Fighter"))
+        world, p = create_world(MAP, saves.blank_character("vistra", "Fighter", level=30))
         return world, p
 
     def test_charges_never_enter_walls_and_always_finish_with_the_hit(self):
@@ -183,7 +183,7 @@ class ChargeTest(unittest.TestCase):
 
     def test_fighter_autopilot_never_inside_walls(self):
         random.seed(7)
-        world, p = create_world(MAP, saves.blank_character("vistra", "Fighter"), autopilot=True)
+        world, p = create_world(MAP, saves.blank_character("vistra", "Fighter", level=30), autopilot=True)
         for _ in range(30 * 60):
             world.step(DT)
             world.events.clear()
@@ -195,8 +195,8 @@ class RespawnTest(unittest.TestCase):
 
     def setUp(self):
         random.seed(2)
-        self.world, self.host = create_world(MAP, saves.blank_character("heskan", "Wizard"), autopilot=True)
-        self.quinn = join_player(self.world, 1, saves.blank_character("quinn", "Cleric"), MAP, autopilot=True)
+        self.world, self.host = create_world(MAP, saves.blank_character("heskan", "Wizard", level=30), autopilot=True)
+        self.quinn = join_player(self.world, 1, saves.blank_character("quinn", "Cleric", level=30), MAP, autopilot=True)
         for _ in range(60):
             self.world.step(DT)
 
@@ -233,7 +233,7 @@ class RespawnTest(unittest.TestCase):
     def test_solo_monsters_give_up_after_the_hero_falls(self):
         from game.engine.ai import aggro_monster, AggroState
         random.seed(4)
-        world, p = create_world(MAP, saves.blank_character("solo", "Fighter"))
+        world, p = create_world(MAP, saves.blank_character("solo", "Fighter", level=30))
         m = world.game_state.monsters[0]
         aggro_monster(m, p.hero, world.game_state.monsters)
         p.hero.take_damage(10 ** 6, ignore_armor=True)
@@ -258,7 +258,7 @@ class RespawnTest(unittest.TestCase):
 
     def test_solo_never_ends(self):
         random.seed(3)
-        world, p = create_world(MAP, saves.blank_character("solo", "Rogue"), autopilot=True)
+        world, p = create_world(MAP, saves.blank_character("solo", "Rogue", level=30), autopilot=True)
         for i in range(3):
             p.hero.take_damage(10 ** 6, ignore_armor=True)
             world.step(DT)
@@ -281,7 +281,7 @@ class CompanionsInCoopTest(unittest.TestCase):
         srv = HostServer(MAP, port=0, local_host=True)
         try:
             world = srv.world
-            join_player(world, 1, saves.blank_character("bob", "Rogue", ), MAP)
+            join_player(world, 1, saves.blank_character("bob", "Rogue", level=30), MAP)
             for pid in (0, 1):
                 for cls in ("Fighter", "Cleric", "Wizard"):
                     if world.players[pid].hero.class_name != cls:
@@ -299,7 +299,7 @@ class CompanionsInCoopTest(unittest.TestCase):
 
     def test_solo_still_has_companions(self):
         random.seed(1)
-        world, _ = create_world(MAP, saves.blank_character("me", "Wizard"))
+        world, _ = create_world(MAP, saves.blank_character("me", "Wizard", level=30))
         world.submit(C.ToggleCompanion("Fighter"), 0)
         world.step(DT)
         self.assertEqual(len(world.companions), 1)

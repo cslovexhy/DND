@@ -49,20 +49,48 @@ class ActiveCondition:
     slow_factor: float = 0.5  # speed multiplier when SLOWED (0.25 = 25% speed)
 
 
+# Skill level -> share of the level-3 (full) damage / heal / effect strength
+LEVEL_POWER = {1: 0.33, 2: 0.67, 3: 1.0}
+
+
 @dataclass
 class Ability:
     name: str
     cooldown: float       # seconds (how often you can use this skill)
     remaining: float = 0.0
-    multiplier: float = 1.0   # damage = base_damage * multiplier + flat_bonus
-    flat_bonus: float = 0.0   # flat added damage
+    multiplier: float = 1.0   # damage = base_damage * multiplier + flat_bonus (at the CURRENT skill level)
+    flat_bonus: float = 0.0   # flat added damage (current skill level)
     radius: float = 0.0  # AoE radius (0 = single target)
     range: float = 50.0  # max range in pixels
-    effect: str = ""     # description of special effect
+    effect: str = ""     # description of special effect (written for the full, level-3 skill)
     power_type: str = "at_will"  # at_will, daily, utility
     color: tuple = (200, 200, 255)
     is_dash: bool = False       # hero dashes to target on use
     stun_duration: float = 0.0  # applies stun to target (seconds)
+    # Skill levels (see content/skill_tree.py). `multiplier` / `flat_bonus` / `range` given at construction are the
+    # level-3 values; set_level() scales them. Level 3 = full strength = the default, so abilities that never call
+    # set_level (monsters, tests) are unchanged.
+    level: int = 3
+    max_level: int = 3
+    range_levels: tuple = ()    # optional range per skill level (e.g. Wizard bolts 200 / 230 / 260)
+
+    def __post_init__(self):
+        self.full_multiplier = self.multiplier
+        self.full_flat_bonus = self.flat_bonus
+
+    @property
+    def power(self) -> float:
+        """Strength of the skill at its current level: 33% / 67% / 100% of the level-3 damage, heal or effect.
+        Skills with a single level always run at full strength."""
+        return LEVEL_POWER[self.level] if self.max_level == 3 else 1.0
+
+    def set_level(self, level: int):
+        """Scale damage/flat bonus (and range, if it has per-level ranges) to the given skill level."""
+        self.level = max(1, min(self.max_level, level))
+        self.multiplier = self.full_multiplier * self.power
+        self.flat_bonus = self.full_flat_bonus * self.power
+        if self.range_levels:
+            self.range = self.range_levels[min(self.level, len(self.range_levels)) - 1]
 
     def calc_damage(self, base_damage: float) -> float:
         """Calculate skill damage from hero's base weapon damage."""
@@ -382,6 +410,10 @@ class Hero(Entity):
 
         # Equipment (slot -> item)
         self.equipment: dict[str, dict] = {}
+
+        # Skill levels (content/skill_tree.py): None = every skill at full strength (no level gating)
+        self.skill_levels = None
+        self.all_abilities = None   # every ability of the class, locked ones included
 
     def use_ability(self, key: str, targets: list['Entity'],
                     target_pos: tuple = None) -> list[tuple[str, float]]:

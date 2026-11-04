@@ -16,8 +16,8 @@ DT = 1 / 30
 def room(second_class="Fighter", boss_type="ashardalon"):
     """A bossTestRoom world holding only one boss; two players standing next to it (boss idle, far from them)."""
     random.seed(3)
-    world, p0 = create_world(MAP, saves.blank_character("tank", "Fighter"))
-    p1 = join_player(world, 1, saves.blank_character("buddy", second_class), MAP)
+    world, p0 = create_world(MAP, saves.blank_character("tank", "Fighter", level=30))
+    p1 = join_player(world, 1, saves.blank_character("buddy", second_class, level=30), MAP)
     gs = world.game_state
     boss = next(m for m in gs.monsters if getattr(m, "spawn_type", None) == boss_type)
     gs.monsters[:] = [boss]

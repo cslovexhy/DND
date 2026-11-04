@@ -46,10 +46,10 @@ def validate_name(name, save_dir=None):
     return None
 
 
-def blank_character(name, class_name):
+def blank_character(name, class_name, level=1):
     return {
         "name": name, "class_name": class_name,
-        "level": 1, "xp": 0, "gold": 0, "kills": 0,
+        "level": level, "xp": 0, "gold": 0, "kills": 0,
         "quests": {},
     }
 

@@ -238,14 +238,17 @@ BOSS_SPRITES = {
 }
 
 # === AUTO MODE (AI playtesting) ===
-# --auto [--hero CLASS_IDX] [--map PATH] runs a throwaway level-1 hero with the AI on.
+# --auto [--hero CLASS_IDX] [--level N] [--map PATH] runs a throwaway hero (level 1 unless --level) with the AI on.
 # It NEVER reads or writes real character saves.
 auto_mode = "--auto" in sys.argv or HEADLESS.enabled  # headless implies auto
+auto_level = 1
 auto_hero_idx = 0  # index into HERO_CLASSES (0=Fighter, 1=Cleric, 2=Paladin, 3=Rogue, 4=Wizard)
 if auto_mode:
     for i, arg in enumerate(sys.argv):
         if arg == "--hero" and i + 1 < len(sys.argv):
             auto_hero_idx = int(sys.argv[i + 1])
+        if arg == "--level" and i + 1 < len(sys.argv):
+            auto_level = max(1, min(MAX_LEVEL, int(sys.argv[i + 1])))
     if USE_MAP is None:
         USE_MAP = "data/maps/northshire.json"
 # --connect [ADDRESS:]PORT: join a co-op host (default address 127.0.0.1) instead of running the
@@ -287,7 +290,7 @@ def run():
         start_map_music(TITLE_MUSIC)
         if auto_mode:
             cls = HERO_CLASSES[auto_hero_idx]["class"]
-            char_data, map_path = saves.blank_character(cls.lower(), cls), preset_map
+            char_data, map_path = saves.blank_character(cls.lower(), cls, level=auto_level), preset_map
         else:
             result = run_menus(MenuContext(clock=clock, font=font, big_font=big_font,
                                            title_font=title_font, hero_sprites=HERO_SPRITES),

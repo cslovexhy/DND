@@ -21,6 +21,7 @@ from game.engine.pathfinding import astar
 from game.engine.world_map import TILE_SIZE
 
 
+from game.content.skill_tree import wall_shield, renew_total, seal_bonus, holy_light_heal, shout_reduction
 from game.engine.hero_ai import SUPPORT_RANGE   # px: how far away an ally can be for Wall / Renew / Holy Light
 
 
@@ -443,7 +444,7 @@ class PlayerState:
             if target is None:
                 return
             ab.use()
-            shield_amount = hero.surge_value  # Same as potion amount (200)
+            shield_amount = wall_shield(hero, ab)   # potion amount (200) at skill level 3
             target.absorb_shield = shield_amount
             target.buffs["Wall"] = {"remaining": 15.0}
             self.world.credit_heal(hero, target, shield_amount)   # shielding generates hate like healing
@@ -458,7 +459,7 @@ class PlayerState:
             if target is None:
                 return
             ab.use()
-            hot_total = hero.surge_value * 0.5  # 50% of potion amount (100)
+            hot_total = renew_total(hero, ab)   # 50% of the potion amount (100) at skill level 3
             hot_duration = 8.0
             target.buffs["Renew"] = {"remaining": hot_duration, "hot_per_sec": hot_total / hot_duration,
                                      "source": hero}   # each tick's healing is credited to the caster's hate
@@ -471,7 +472,7 @@ class PlayerState:
         # === Quinn special: Righteous Seal (self-buff, no target needed) ===
         if ab.name == "Righteous Seal":
             ab.use()
-            hero.buffs["Righteous Seal"] = {"remaining": 10.0, "bonus": 0.25}
+            hero.buffs["Righteous Seal"] = {"remaining": 10.0, "bonus": seal_bonus(ab)}
             self.world.float_text(hero.x, hero.y - 30, "Seal Active!", (255, 220, 80))
             hero.gcd = hero.GCD_DURATION
             self.move_path = []
@@ -485,7 +486,7 @@ class PlayerState:
             ab.use()
             # Start casting — immobilize for 2s, heal lands (on the target) after cast finishes
             hero.apply_condition(Condition.IMMOBILIZED, 2.0)
-            hero.buffs["Holy Light Casting"] = {"remaining": 2.0, "heal": 150,
+            hero.buffs["Holy Light Casting"] = {"remaining": 2.0, "heal": holy_light_heal(ab),
                                                 "target_id": target.eid if target is not hero else None}
             self.world.float_text(hero.x, hero.y - 30, "Casting...", (255, 255, 150))
             hero.gcd = hero.GCD_DURATION
@@ -541,7 +542,7 @@ class PlayerState:
             for m in gs.alive_monsters:
                 if hero.distance_to(m) <= ab.radius:
                     # 50% damage reduction for 10s
-                    m.buffs["Demoralized"] = {"remaining": 10.0, "damage_mult": 0.5}
+                    m.buffs["Demoralized"] = {"remaining": 10.0, "damage_mult": 1.0 - shout_reduction(ab)}
                     # Slow for 3s
                     m.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.5)
                     self.world.float_text(m.x, m.y - 20, "Demoralized!", (200, 150, 50))
@@ -615,7 +616,8 @@ class PlayerState:
                 self.frostbolt_channeling = False
                 # Fire projectile if target still alive (range doesn't matter — bolt chases)
                 if self.frostbolt_target and self.frostbolt_target.alive:
-                    proj_damage = hero.base_damage  # 100% weapon
+                    frostbolt = next(a for a in hero.abilities.values() if a.name == "Frostbolt")
+                    proj_damage = frostbolt.calc_damage(hero.base_damage)   # 100% weapon at skill level 3
                     proj = Projectile(x=hero.x, y=hero.y, target=self.frostbolt_target,
                                       speed=500.0, damage=proj_damage,
                                       color=(150, 200, 255), source=hero)

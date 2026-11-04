@@ -652,6 +652,10 @@ class WizardAI(HeroAI):
             self.target = None  # resting: skip target picking until HP >= 80%
             return action
 
+        # Bolt range follows the Frostbolt skill level (200 / 230 / 260)
+        ab_bolt = self.hero.abilities.get("Q")
+        cast_range = ab_bolt.range if ab_bolt else 260
+
         # Phase split: nothing aggroed -> body pull (walk straight to target, no kiting);
         # something aggroed -> kite logic.
         engaged = self.aggroed_count(alive) > 0
@@ -661,11 +665,11 @@ class WizardAI(HeroAI):
             self.target = self.pick_target(alive)
             if self.target:
                 dist = self.hero.distance_to(self.target)
-                if dist < 220 and engaged:
+                if dist < cast_range - 40 and engaged:
                     kite_pos = self._find_best_kite_position(alive)
                     if kite_pos:
                         action["move_to"] = kite_pos
-                elif dist > 260:
+                elif dist > cast_range:
                     action["move_to"] = (self.target.x, self.target.y)
             return action
 
@@ -716,14 +720,14 @@ class WizardAI(HeroAI):
 
         # 4. Fire Blast instant nuke when available (instant — safe at any range)
         ab_r = self.hero.abilities.get("R")
-        if ab_r and ab_r.is_ready() and dist <= 260 and self.has_los(self.target):
+        if ab_r and ab_r.is_ready() and dist <= ab_r.range and self.has_los(self.target):
             action["use_ability"] = "R"
             action["ability_target_monster"] = self.target
             return action
 
         # 5. Frostbolt if in range and LOS — but kite first if enemy is dangerously close
         ab_q = self.hero.abilities.get("Q")
-        if ab_q and ab_q.is_ready() and dist <= 260 and self.has_los(self.target):
+        if ab_q and ab_q.is_ready() and dist <= cast_range and self.has_los(self.target):
             # If enemy very close, try to kite first (one cycle) then cast
             if dist < 130 and engaged:
                 kite_pos = self._find_best_kite_position(alive)
@@ -736,7 +740,7 @@ class WizardAI(HeroAI):
             return action
 
         # 6. Kite if enemy too close AND abilities on CD (don't stand still waiting)
-        if dist < 220 and engaged and not (ab_q and ab_q.is_ready()):
+        if dist < cast_range - 40 and engaged and not (ab_q and ab_q.is_ready()):
             kite_pos = self._find_best_kite_position(alive)
             if kite_pos:
                 action["move_to"] = kite_pos
@@ -825,7 +829,7 @@ class RogueAI(HeroAI):
 
         # 2. Stealth if not already stealthed and CD ready
         ab_r = self.hero.abilities.get("R")
-        if ab_r and ab_r.is_ready() and not self.hero.stealthed:
+        if ab_r and ab_r.is_ready() and not self.hero.stealthed and ab_e:   # no Ambush yet: stay visible and Stab
             action["use_ability"] = "R"
             return action
 
@@ -850,7 +854,7 @@ class RogueAI(HeroAI):
         #    If Stealth is almost ready (<0.5s), wait for it to cycle into Ambush
         ab_q = self.hero.abilities.get("Q")
         if ab_q and ab_q.is_ready() and not self.hero.stealthed and dist <= 55 and self.has_los(self.target):
-            if not ab_r or ab_r.remaining > 0.5:
+            if not ab_r or not ab_e or ab_r.remaining > 0.5:
                 # Stealth on CD — Stab while waiting
                 action["use_ability"] = "Q"
                 action["ability_target_monster"] = self.target

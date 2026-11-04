@@ -13,6 +13,9 @@ PALADIN_COLOR = (255, 255, 200)
 ROGUE_COLOR = (180, 255, 180)
 WIZARD_COLOR = (255, 130, 50)
 
+# Wizard bolt range by skill level 1 / 2 / 3 (Frostbolt and Fire Blast)
+WIZARD_BOLT_RANGES = (200, 230, 260)
+
 
 def create_fighter(name: str, x: float, y: float) -> Hero:
     """Fighter. 1H Sword + Shield — balanced speed and defense."""
@@ -106,7 +109,7 @@ def create_rogue(name: str, x: float, y: float) -> Hero:
     h.add_ability("R", Ability("Stealth", cooldown=2.0, multiplier=0, flat_bonus=0,
                                radius=0, range=0,
                                effect="Go invisible. 60% move speed. Mobs can't see you. Attack breaks stealth.",
-                               power_type="utility", color=(100, 180, 100)))
+                               power_type="utility", color=(100, 180, 100), max_level=1))   # nothing to scale
     h.add_ability("E", Ability("Ambush", cooldown=0, multiplier=5.0, flat_bonus=0,
                                radius=0, range=55,
                                effect="Stealth only. 5x weapon dmg.",
@@ -126,11 +129,11 @@ def create_wizard(name: str, x: float, y: float) -> Hero:
     h.add_ability("Q", Ability("Frostbolt", cooldown=1.2, multiplier=1.0, flat_bonus=0,
                                radius=0, range=260,
                                effect="Channeled ranged bolt. Immobile while casting. Slows 25% for 3s.",
-                               power_type="at_will", color=(150, 200, 255)))
+                               power_type="at_will", color=(150, 200, 255), range_levels=WIZARD_BOLT_RANGES))
     h.add_ability("R", Ability("Fire Blast", cooldown=8.0, multiplier=1.0, flat_bonus=0,
                                radius=0, range=260,
                                effect="Instant ranged fire bolt. Same damage as Frostbolt.",
-                               power_type="daily", color=(255, 130, 50)))
+                               power_type="daily", color=(255, 130, 50), range_levels=WIZARD_BOLT_RANGES))
     h.add_ability("E", Ability("Frost Nova", cooldown=12.0, multiplier=0.25, flat_bonus=0,
                                radius=120, range=0,
                                effect="AoE freeze around self. 4s freeze + cold damage.",

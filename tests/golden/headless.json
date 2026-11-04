@@ -1,97 +1,97 @@
 {
   "haycock": {
     "deaths": "0",
-    "digest": "ef9005a9ed1a",
-    "hp": "400/425",
-    "kills": "14",
+    "digest": "3c1f96dba27b",
+    "hp": "400/400",
+    "kills": "8",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "hero0_seed1": {
     "deaths": "0",
-    "digest": "4089f7cb4b93",
-    "hp": "343/400",
-    "kills": "13",
+    "digest": "053e056a7e02",
+    "hp": "271/400",
+    "kills": "3",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "hero1_seed1": {
     "deaths": "0",
-    "digest": "495ce78c2ad3",
+    "digest": "5e1e611f260a",
     "hp": "400/400",
-    "kills": "7",
+    "kills": "2",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "hero2_seed1": {
     "deaths": "0",
-    "digest": "79bcd77c843c",
-    "hp": "400/400",
-    "kills": "12",
+    "digest": "08f442edbf4e",
+    "hp": "173/400",
+    "kills": "3",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "hero3_seed1": {
     "deaths": "0",
-    "digest": "21321011cb54",
-    "hp": "380/400",
-    "kills": "7",
+    "digest": "ce8bf8d3d684",
+    "hp": "288/400",
+    "kills": "3",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "hero4_seed1": {
     "deaths": "0",
-    "digest": "07d6eee6b5e2",
+    "digest": "74f7cf78e4bf",
     "hp": "300/300",
-    "kills": "10",
+    "kills": "3",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "manual_cleric": {
     "deaths": "0",
-    "digest": "edb8de5c9aa6",
-    "hp": "425/425",
-    "kills": "27",
+    "digest": "ca7a93a37494",
+    "hp": "370/400",
+    "kills": "10",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_fighter": {
     "deaths": "0",
-    "digest": "a95acadd6ecf",
-    "hp": "430/430",
-    "kills": "25",
+    "digest": "f28c5aa312be",
+    "hp": "177/400",
+    "kills": "9",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_paladin": {
     "deaths": "0",
-    "digest": "92e8d2589d71",
-    "hp": "428/428",
-    "kills": "22",
+    "digest": "69a886dbd84e",
+    "hp": "343/400",
+    "kills": "10",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_rogue": {
-    "deaths": "0",
-    "digest": "2ceff2e2ee79",
-    "hp": "420/420",
-    "kills": "19",
+    "deaths": "1",
+    "digest": "07ea5558db51",
+    "hp": "145/400",
+    "kills": "9",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_wizard": {
     "deaths": "0",
-    "digest": "b6260c101ab1",
-    "hp": "318/318",
-    "kills": "15",
+    "digest": "908113d87fc2",
+    "hp": "56/300",
+    "kills": "6",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "northshire_long_respawns": {
     "deaths": "0",
-    "digest": "3a107effdf34",
-    "hp": "450/490",
-    "kills": "70",
+    "digest": "389f25b69ec2",
+    "hp": "289/430",
+    "kills": "30",
     "outcome": "TIMEOUT",
     "time": "200.0s"
   }

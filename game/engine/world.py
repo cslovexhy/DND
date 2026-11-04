@@ -12,13 +12,14 @@ from game.content.heroes import HERO_CLASSES, COMPANION_NAMES
 from game.engine.ai import (generate_patrol_route, setup_monster_aggro, aggro_monster, call_for_help,
                             run_monster_ai, drop_from_hate, credit_heal_hate)
 from game.engine.entities import Condition, Monster, Projectile
-from game.engine.events import FloatText, LevelUp, QuestReady, NpcDialogue, GOLD, HP_RED
+from game.engine.events import FloatText, LevelUp, SkillUp, QuestReady, NpcDialogue, GOLD, HP_RED
 from game.engine.npc import NPC
 from game.engine import skills
 from game.engine.snapshot import quest_info
 from game.engine.pathfinding import has_line_of_sight
 from game.engine.world_map import TILE_SIZE
 from game.content.monsters import SPAWN_STATS, respawn_delay
+from game.content.skill_tree import apply_skill_levels, describe
 from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_multiplier, scaled_xp
 from game.engine.entities import POISON_DPS
 from game.progression import (MAX_LEVEL, xp_to_next_level, apply_level_growth, set_hero_level, growth_for)
@@ -401,6 +402,10 @@ class World:
                 hero.level += 1
                 growth = growth_for(hero.class_name)
                 apply_level_growth(hero)  # also full-heals on level-up
+                for key, skill_level, is_new in apply_skill_levels(hero):   # new skill / next skill level (every 2 levels)
+                    ab = hero.abilities[key]
+                    self.events.append(SkillUp(hero.level, key, ab.name, skill_level, ab.max_level, is_new,
+                                               describe(hero, ab), player.player_id))
                 self.events.append(LevelUp(hero.x, hero.y, player.player_id))
                 self.float_text(hero.x, hero.y - 30,
                                 f"Lv {hero.level}! +{growth['hp']:.0f}HP +{growth['damage']:.0f}dmg", GOLD)

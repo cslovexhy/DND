@@ -5,6 +5,7 @@ Validation (range, LOS, cooldown) is done by the caller. Visuals are reported as
 """
 import random
 
+from game.content.skill_tree import judgement_seal_bonus
 from game.engine.ai import aggro_monster, call_for_help
 from game.engine.entities import Projectile
 from game.engine.events import Ring, FloatText
@@ -53,7 +54,7 @@ def judgement(world, caster, target, ab):
     ab.use()
     total_damage = ab.calc_damage(caster.base_damage)
     if "Righteous Seal" in caster.buffs:
-        total_damage += caster.base_damage
+        total_damage += judgement_seal_bonus(caster, ab)    # one weapon hit at skill level 3
         del caster.buffs["Righteous Seal"]
         world.float_text(target.x, target.y - 40, "Seal Consumed!", (255, 200, 50))
     dmg = target.take_damage(total_damage, source=caster)

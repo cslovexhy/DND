@@ -42,7 +42,7 @@ class ConditionImmunityTest(unittest.TestCase):
         from game import saves
         from game.engine import commands as C
         from game.engine.bootstrap import create_world
-        world, p = create_world("data/maps/bossTestRoom.json", saves.blank_character("tank", "Fighter"))
+        world, p = create_world("data/maps/bossTestRoom.json", saves.blank_character("tank", "Fighter", level=30))
         boss = next(m for m in world.game_state.monsters if m.is_boss)
         world.game_state.monsters[:] = [boss]
         if boss_as_normal_mob:
@@ -76,7 +76,7 @@ class ConditionImmunityTest(unittest.TestCase):
         from game import saves
         from game.engine import commands as C
         from game.engine.bootstrap import create_world
-        world, p = create_world("data/maps/bossTestRoom.json", saves.blank_character("wiz", "Wizard"))
+        world, p = create_world("data/maps/bossTestRoom.json", saves.blank_character("wiz", "Wizard", level=30))
         boss = next(m for m in world.game_state.monsters if m.is_boss)
         world.game_state.monsters[:] = [boss]
         p.hero.x, p.hero.y = boss.x - 60, boss.y

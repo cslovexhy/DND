@@ -40,7 +40,7 @@ from game.engine.player import PlayerState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition)
 from game.engine import abilities
-from game.engine.events import FloatText, Ring, LevelUp, QuestReady, BindRightSkill, NpcDialogue
+from game.engine.events import FloatText, Ring, LevelUp, SkillUp, QuestReady, BindRightSkill, NpcDialogue
 
 # === EFFECTS ===
 floating_texts = []
@@ -115,6 +115,9 @@ def drain_events(events):
         elif isinstance(ev, LevelUp):
             effects.append(LevelUpEffect(ev.x, ev.y))
             save_game()
+        elif isinstance(ev, SkillUp):
+            if not HEADLESS.enabled:            # scripted test runs have nobody to click the popup away
+                skill_popups.append(SkillPopupPanel(ev))
         elif isinstance(ev, BindRightSkill):
             if ev.ability_key in ability_keys:
                 right_skill_idx = ability_keys.index(ev.ability_key)
@@ -132,6 +135,7 @@ def drain_events(events):
 # === GAME SETUP ===
 # The simulation is built by engine/bootstrap.py (shared with pygame-free tools). Art is attached through hooks.
 NET_MODE = globals().get("NET_MODE")
+START_LEVEL = char_data["level"]   # recordings replay from this level (the hero levels up during the run)
 PP = globals().get("PP", 1)   # map difficulty chosen in map select (hosts and solo); joiners get the host's
 NET_LAN = globals().get("NET_LAN", False)               # host on the home network instead of this computer only
 NET_ADDRESS = globals().get("NET_ADDRESS", "127.0.0.1")  # where to join (or, when hosting, where we listen)
@@ -281,10 +285,11 @@ CAM_ZOOM_MIN = CAM_ZOOM_MAX  # no zooming out (was 0.5); raise MAX or lower MIN 
 CAM_ZOOM_STEP = 0.1
 cam_zoom = CAM_ZOOM_MAX
 
-# Skill slots (Diablo 2 style)
-ability_keys = view.you.ability_keys  # ["Q", "R", "E"]
+# Skill slots (Diablo 2 style). Skills unlock as the hero levels up, so this list grows during the game.
+ability_keys = view.you.ability_keys  # ["Q"] at level 1 ... ["Q", "R", "E", "F"]
 left_skill_idx = 0    # Index into ability_keys for left-click skill
-right_skill_idx = 1   # Index into ability_keys for right-click skill
+right_skill_idx = min(1, len(ability_keys) - 1)   # Index into ability_keys for right-click skill
+skill_popups = []     # SkillUpPanel queue: "skill unlocked / upgraded" popups, shown one at a time
 
 
 # === QUEST POPUP PANEL ===
@@ -446,6 +451,42 @@ class QuestPopupPanel:
         screen.blit(panel_surf, (px, py))
 
 
+class SkillPopupPanel:
+    """"New skill!" / "Skill upgraded!" panel for a SkillUp event: the skill, its level and what it does now."""
+    WIDTH = 460
+    PAD = 16
+
+    def __init__(self, ev):
+        self.ev = ev
+        self.lines = textwrap.wrap(ev.text, width=54)
+        self.height = self.PAD * 2 + 30 + 26 + 22 + len(self.lines) * 16 + 12 + 18
+
+    def draw(self, screen, queued=1):
+        ev = self.ev
+        px, py = WIDTH // 2 - self.WIDTH // 2, HEIGHT // 3 - self.height // 2
+        panel = pygame.Surface((self.WIDTH, self.height), pygame.SRCALPHA)
+        panel.fill((20, 20, 30, 235))
+        pygame.draw.rect(panel, GOLD, (0, 0, self.WIDTH, self.height), 2, border_radius=6)
+        y = self.PAD
+        header = "New skill unlocked!" if ev.is_new else "Skill upgraded!"
+        hdr = big_font.render(header, True, (120, 255, 140) if ev.is_new else GOLD)
+        panel.blit(hdr, (self.WIDTH // 2 - hdr.get_width() // 2, y))
+        y += 30
+        lvl = font.render(f"Character level {ev.hero_level}", True, (180, 180, 180))
+        panel.blit(lvl, (self.WIDTH // 2 - lvl.get_width() // 2, y))
+        y += 26
+        name = big_font.render(f"[{ev.key}] {ev.name}  —  Level {ev.skill_level} / {ev.max_level}", True, WHITE)
+        panel.blit(name, (self.PAD, y))
+        y += 22
+        for line in self.lines:
+            panel.blit(font.render(line, True, (210, 210, 210)), (self.PAD, y))
+            y += 16
+        y += 12
+        more = f"  (+{queued - 1} more)" if queued > 1 else ""
+        panel.blit(font.render("Click to continue" + more, True, (150, 150, 170)), (self.PAD, y))
+        screen.blit(panel, (px, py))
+
+
 # Active quest popup (only one at a time)
 quest_popup_panel = None
 
@@ -596,6 +637,9 @@ while running:
                 else:
                     running = False
                     return_to_menu = not auto_mode  # ESC -> back to character select
+            if skill_popups and event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                skill_popups.pop(0)                # close the skill popup
+                continue
             if event.key == pygame.K_TAB:
                 host.send(ToggleAutopilot())
             # Game speed: +/- to cycle 1x/2x/4x
@@ -605,14 +649,14 @@ while running:
                 game_speed = max(game_speed / 2, 1.0)
             # 1,2,3 = switch right-click skill
             if event.key == pygame.K_1: right_skill_idx = 0
-            if event.key == pygame.K_2: right_skill_idx = 1
+            if event.key == pygame.K_2: right_skill_idx = 1 if len(ability_keys) > 1 else right_skill_idx
             if event.key == pygame.K_3: right_skill_idx = 2 if len(ability_keys) > 2 else right_skill_idx
             if event.key == pygame.K_4: right_skill_idx = 3 if len(ability_keys) > 3 else right_skill_idx
             # Shift+1,2,3 = switch left-click skill
             mods = key_mods()
             if mods & pygame.KMOD_CTRL:
                 if event.key == pygame.K_1: left_skill_idx = 0
-                if event.key == pygame.K_2: left_skill_idx = 1
+                if event.key == pygame.K_2: left_skill_idx = 1 if len(ability_keys) > 1 else left_skill_idx
                 if event.key == pygame.K_3: left_skill_idx = 2 if len(ability_keys) > 2 else left_skill_idx
             # Potion
             if event.key == pygame.K_f:
@@ -626,6 +670,10 @@ while running:
 
         if event.type == pygame.MOUSEBUTTONDOWN and not view.adventure_failed:
             mx_s, my_s = event.pos
+            # A skill popup is open: any click closes it
+            if skill_popups:
+                skill_popups.pop(0)
+                continue
             # If quest popup panel is open, intercept clicks
             if quest_popup_panel and quest_popup_panel.active:
                 quest_popup_panel.handle_click(mx_s, my_s)
@@ -699,6 +747,9 @@ while running:
     if snap is not None:           # a remote host may not have sent a new frame yet
         _last_snapshot_at = time.monotonic()
         view.apply(snap)
+        ability_keys = view.you.ability_keys               # a level-up may have unlocked a skill
+        left_skill_idx = min(left_skill_idx, len(ability_keys) - 1)
+        right_skill_idx = min(right_skill_idx, len(ability_keys) - 1)
         MAP_TITLE = map_title(MAP_NAME, view.pp)   # e.g. "Northshire (8pp)" — the host's pp, same for everyone
     view.advance(dt)               # remote play: glide between snapshots
     if NET_MODE == "join" and host.closed and (not auto_mode or "--reconnect" in sys.argv):
@@ -988,12 +1039,12 @@ while running:
             bg_c = (140, 100, 40)
         else:
             bg_c = ABILITY_READY if ready else GRAY
-        pygame.draw.rect(screen, bg_c, (20, ab_y, 200, 20))
+        pygame.draw.rect(screen, bg_c, (20, ab_y, 250, 20))
         cd = "READY" if ready else f"{ab.remaining:.1f}s"
         slot_label = ""
         if is_left: slot_label = "[L] "
         if is_right: slot_label = "[R] "
-        screen.blit(font.render(f"{slot_label}[{i+1}] {ab.name} {cd}", True, WHITE), (24, ab_y+3))
+        screen.blit(font.render(f"{slot_label}[{i+1}] {ab.name} Lv{ab.level}/{ab.max_level} {cd}", True, WHITE), (24, ab_y+3))
         ab_y += 24
 
     # Skill bar at bottom
@@ -1004,13 +1055,13 @@ while running:
     left_color = (180, 130, 50) if left_ab.is_ready() else (80, 60, 30)
     pygame.draw.rect(screen, left_color, (WIDTH//2 - 180, bar_y, 160, 30), 0, 4)
     pygame.draw.rect(screen, (220, 170, 60), (WIDTH//2 - 180, bar_y, 160, 30), 2, 4)
-    screen.blit(font.render(f"L: {left_ab.name}", True, WHITE), (WIDTH//2 - 175, bar_y + 8))
+    screen.blit(font.render(f"L: {left_ab.name} Lv{left_ab.level}/{left_ab.max_level}", True, WHITE), (WIDTH//2 - 175, bar_y + 8))
     # Right skill
     right_ab = view.you.abilities[ability_keys[right_skill_idx]]
     right_color = (50, 50, 140) if right_ab.is_ready() else (30, 30, 70)
     pygame.draw.rect(screen, right_color, (WIDTH//2 + 20, bar_y, 160, 30), 0, 4)
     pygame.draw.rect(screen, (80, 80, 200), (WIDTH//2 + 20, bar_y, 160, 30), 2, 4)
-    screen.blit(font.render(f"R: {right_ab.name}", True, WHITE), (WIDTH//2 + 25, bar_y + 8))
+    screen.blit(font.render(f"R: {right_ab.name} Lv{right_ab.level}/{right_ab.max_level}", True, WHITE), (WIDTH//2 + 25, bar_y + 8))
 
     screen.blit(font.render(f"Kills: {hero.kills}  Gold: {hero.gold}", True, GOLD), (WIDTH-160, 20))
     screen.blit(font.render(MAP_TITLE, True, BLUE), (WIDTH-160, 40))
@@ -1055,6 +1106,10 @@ while running:
     if quest_popup_panel and quest_popup_panel.active:
         quest_popup_panel.draw(screen)
 
+    # Skill unlocked / upgraded popup (first in the queue)
+    if skill_popups:
+        skill_popups[0].draw(screen, len(skill_popups))
+
     # FPS counter
     fps = int(clock.get_fps())
     fps_color = HP_GREEN if fps >= 50 else (GOLD if fps >= 30 else HP_RED)
@@ -1079,6 +1134,7 @@ if world is not None and world.record_commands:
     from game.engine.replay import save_recording
     save_recording(HEADLESS.record_commands,
                    {"map": USE_MAP, "class_name": hero.class_name, "seed": HEADLESS.seed, "pp": world.pp,
+                    "level": START_LEVEL,
                     "max_time": HEADLESS.max_time}, world)
 
 save_game()

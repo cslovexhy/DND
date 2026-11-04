@@ -36,6 +36,19 @@ class LevelUp:
 
 
 @dataclass
+class SkillUp:
+    """The player's hero unlocked a new skill (is_new) or raised one to its next level at `hero_level`."""
+    hero_level: int
+    key: str
+    name: str
+    skill_level: int
+    max_level: int
+    is_new: bool
+    text: str          # what the skill does at this level, with real numbers
+    player_id: int = 0
+
+
+@dataclass
 class QuestReady:
     """A quest objective was just completed (client shows a popup; host persists progress)."""
     title: str
@@ -65,7 +78,7 @@ HP_RED = (200, 50, 50)
 
 
 # --- (de)serialization for the network (design/06 phase 4) ---
-_BY_NAME = {cls.__name__: cls for cls in (FloatText, Ring, LevelUp, QuestReady, BindRightSkill, NpcDialogue)}
+_BY_NAME = {cls.__name__: cls for cls in (FloatText, Ring, LevelUp, SkillUp, QuestReady, BindRightSkill, NpcDialogue)}
 
 
 def to_dict(ev):

@@ -29,8 +29,8 @@ def views_of(world):
 class StatusVisualsTest(unittest.TestCase):
     def setUp(self):
         random.seed(1)
-        self.world, self.cleric = create_world(MAP, saves.blank_character("cleric", "Cleric"))
-        self.ally = join_player(self.world, 1, saves.blank_character("ally", "Wizard"), MAP)
+        self.world, self.cleric = create_world(MAP, saves.blank_character("cleric", "Cleric", level=30))
+        self.ally = join_player(self.world, 1, saves.blank_character("ally", "Wizard", level=30), MAP)
         self.world.game_state.monsters.clear()
         self.ally.hero.x, self.ally.hero.y = self.cleric.hero.x + 60, self.cleric.hero.y
 
@@ -83,7 +83,8 @@ class OverTheNetworkTest(unittest.TestCase):
     def test_both_remote_screens_converge(self):
         from game.net.client import RemoteHost
         from game.net.server import HostServer
-        srv = HostServer(MAP, "Cleric", seed=1, port=0, tick_rate=60).start()
+        srv = HostServer(MAP, "Cleric", seed=1, port=0, tick_rate=60,
+                         host_character=saves.blank_character("cleric", "Cleric", level=30)).start()
         try:
             a = RemoteHost("127.0.0.1", srv.port, class_name="Cleric")
             b = RemoteHost("127.0.0.1", srv.port, class_name="Fighter")

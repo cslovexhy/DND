@@ -4,6 +4,8 @@ Character progression rules: XP curve and per-class stat growth.
 Pure logic (no pygame) so it can be shared by the player, AI companions and tests.
 """
 
+from game.content.skill_tree import apply_skill_levels
+
 MAX_LEVEL = 30
 XP_BASE = 100  # XP needed for level 2
 
@@ -51,3 +53,4 @@ def set_hero_level(hero, level):
     level = max(1, min(MAX_LEVEL, int(level)))
     apply_level_growth(hero, level - 1)
     hero.level = level
+    apply_skill_levels(hero)   # skills and skill levels follow the character level (see content/skill_tree.py)

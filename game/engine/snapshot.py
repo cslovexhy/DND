@@ -86,7 +86,8 @@ def make_snapshot(world, player_id=0):
         "move_path": [list(wp) for wp in player.move_path[:8]],
         "frostbolt_channeling": player.frostbolt_channeling,
         "frostbolt_channel_timer": player.frostbolt_channel_timer,
-        "abilities": [{"key": k, "name": a.name, "remaining": a.remaining, "ready": a.is_ready()}
+        "abilities": [{"key": k, "name": a.name, "remaining": a.remaining, "ready": a.is_ready(),
+                       "level": a.level, "max_level": a.max_level, "range": a.range}
                       for k, a in hero.abilities.items()],
         "player_id": player.player_id,
         "quests": _quests(player),

@@ -30,7 +30,7 @@ def run_recording(rec):
     """Replay a recording; returns the RESULT line (same format as a headless run)."""
     random.seed(rec["seed"])
     cls = rec["class_name"]
-    char = saves.blank_character(cls.lower(), cls)
+    char = saves.blank_character(cls.lower(), cls, level=rec.get("level", 1))
     world, _player = create_world(rec["map"], char, autopilot=True, auto_companion=True, pp=rec.get("pp", 1))
     by_tick = {}
     for c in rec["commands"]:
