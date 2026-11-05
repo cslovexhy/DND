@@ -6,7 +6,7 @@ import unittest
 
 from game import saves
 from game.content.heroes import HERO_CLASSES
-from game.progression import set_hero_level, growth_for, MAX_LEVEL
+from game.progression import set_hero_level, growth_for, hero_max_hp, MAX_LEVEL, HERO_HP
 from game.quests import load_quest_log
 
 
@@ -104,9 +104,25 @@ class ProgressionTest(unittest.TestCase):
             set_hero_level(leveled, 10)
             g = growth_for(cls["class"])
             self.assertEqual(leveled.level, 10)
-            self.assertAlmostEqual(leveled.max_hp, hp0 + 9 * g["hp"])
+            self.assertEqual(hp0, hero_max_hp(cls["class"], 1))
+            self.assertEqual(leveled.max_hp, hero_max_hp(cls["class"], 10))
             self.assertAlmostEqual(leveled.base_damage, dmg0 + 9 * g["damage"])
             self.assertEqual(leveled.hp, leveled.max_hp)
+
+    def test_hero_hp_line(self):
+        self.assertEqual(hero_max_hp("Wizard", 1), 100)
+        self.assertEqual(hero_max_hp("Fighter", 1), 120)
+        self.assertEqual(hero_max_hp("Fighter", MAX_LEVEL), 1270)
+        for cls, (lo, hi) in HERO_HP.items():
+            hps = [hero_max_hp(cls, lv) for lv in range(1, MAX_LEVEL + 1)]
+            self.assertEqual((hps[0], hps[-1]), (lo, hi))
+            self.assertEqual(hps, sorted(hps))
+        h = HERO_CLASSES[0]["create"]("x", 0, 0)
+        set_hero_level(h, 1)
+        h.level = 2                                    # a level-up in the World: level first, then growth
+        from game.progression import apply_level_growth
+        apply_level_growth(h)
+        self.assertEqual(h.max_hp, hero_max_hp("Fighter", 2))
 
     def test_level_clamped(self):
         h = HERO_CLASSES[0]["create"]("x", 0, 0)

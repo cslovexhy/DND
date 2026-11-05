@@ -16,7 +16,7 @@ def boss_of(map_path):
 class SpawnStatsTest(unittest.TestCase):
     def test_boss_room_uses_tuned_ashardalon(self):
         boss = boss_of("data/maps/bossTestRoom.json")
-        self.assertAlmostEqual(boss.max_hp, 242 * 50, places=0)
+        self.assertAlmostEqual(boss.max_hp, 146 * 50, places=0)
 
     def test_other_maps_keep_shared_stats(self):
         boss = boss_of("data/maps/haycock.json")

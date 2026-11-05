@@ -58,8 +58,8 @@ class Ability:
     name: str
     cooldown: float       # seconds (how often you can use this skill)
     remaining: float = 0.0
-    multiplier: float = 1.0   # damage = base_damage * multiplier + flat_bonus (at the CURRENT skill level)
-    flat_bonus: float = 0.0   # flat added damage (current skill level)
+    multiplier: float = 1.0   # "a": damage = a x base_damage + b (at the CURRENT skill level)
+    flat_bonus: float = 0.0   # "b": flat added damage (current skill level)
     radius: float = 0.0  # AoE radius (0 = single target)
     range: float = 50.0  # max range in pixels
     effect: str = ""     # description of special effect (written for the full, level-3 skill)
@@ -67,28 +67,32 @@ class Ability:
     color: tuple = (200, 200, 255)
     is_dash: bool = False       # hero dashes to target on use
     stun_duration: float = 0.0  # applies stun to target (seconds)
-    # Skill levels (see content/skill_tree.py). `multiplier` / `flat_bonus` / `range` given at construction are the
-    # level-3 values; set_level() scales them. Level 3 = full strength = the default, so abilities that never call
-    # set_level (monsters, tests) are unchanged.
+    # Skill levels (see content/skill_tree.py). Damage is a x base + b, with a / b per skill level from a_levels /
+    # b_levels (skill level 1, 2, 3); without them `multiplier` / `flat_bonus` are used at every level. Level 3 is the
+    # default, so abilities that never call set_level (monsters, tests) use their level-3 values.
     level: int = 3
     max_level: int = 3
     range_levels: tuple = ()    # optional range per skill level (e.g. Wizard bolts 200 / 230 / 260)
+    a_levels: tuple = ()        # optional "a" per skill level
+    b_levels: tuple = ()        # optional "b" per skill level
 
     def __post_init__(self):
         self.full_multiplier = self.multiplier
         self.full_flat_bonus = self.flat_bonus
+        self.set_level(self.level)
 
     @property
     def power(self) -> float:
-        """Strength of the skill at its current level: 33% / 67% / 100% of the level-3 damage, heal or effect.
-        Skills with a single level always run at full strength."""
+        """Strength of a heal / shield at the current skill level: 33% / 67% / 100% of its level-3 amount.
+        (Damage uses a_levels / b_levels instead.) Skills with a single level always run at full strength."""
         return LEVEL_POWER[self.level] if self.max_level == 3 else 1.0
 
     def set_level(self, level: int):
-        """Scale damage/flat bonus (and range, if it has per-level ranges) to the given skill level."""
+        """Use the a / b (and range, if it has per-level ranges) of the given skill level."""
         self.level = max(1, min(self.max_level, level))
-        self.multiplier = self.full_multiplier * self.power
-        self.flat_bonus = self.full_flat_bonus * self.power
+        i = self.level - 1
+        self.multiplier = self.a_levels[min(i, len(self.a_levels) - 1)] if self.a_levels else self.full_multiplier
+        self.flat_bonus = self.b_levels[min(i, len(self.b_levels) - 1)] if self.b_levels else self.full_flat_bonus
         if self.range_levels:
             self.range = self.range_levels[min(self.level, len(self.range_levels)) - 1]
 
@@ -371,6 +375,10 @@ class Entity:
             return False
         return self.swing_timer <= 0
 
+    def hit_damage(self) -> float:
+        """Damage of one basic attack before buffs/crits (Monster overrides it with a per-hit roll)."""
+        return self.base_damage
+
     def try_basic_attack(self, target: 'Entity') -> Optional[float]:
         """Swing weapon at target. Returns damage dealt or None."""
         if not self.can_swing():
@@ -380,7 +388,7 @@ class Entity:
 
         self.swing_timer = self.weapon_speed
         import random
-        damage = self.base_damage
+        damage = self.hit_damage()
         # Demoralized debuff reduces damage output
         if "Demoralized" in getattr(self, 'buffs', {}):
             damage *= self.buffs["Demoralized"].get("damage_mult", 1.0)
@@ -502,6 +510,15 @@ class Monster(Entity):
         self.enraged = False   # Enrage skill fired: attack damage already multiplied
         self.skill_queue: list = []
         self.say = ""      # a message shown over its head (e.g. "Ashardalon took a deep breath..."), "" = none
+
+    def hit_damage(self) -> float:
+        """Damage of one attack before modifiers: levelled monsters (map monster_levels) roll
+        round(base x 0.9..1.1) per hit; others hit for exactly base_damage."""
+        if getattr(self, "leveled", False):
+            import random
+            from game.content.monsters import DAMAGE_ROLL
+            return round(random.uniform(*DAMAGE_ROLL) * self.base_damage)
+        return self.base_damage
 
     def add_hate(self, hero, amount: float = 0.0):
         """Add `amount` hate for `hero` (0 just puts the hero on the table)."""

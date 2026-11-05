@@ -53,19 +53,48 @@ class ScheduleTest(unittest.TestCase):
 
 
 class PowerTest(unittest.TestCase):
-    def test_damage_is_33_67_100_percent(self):
+    def test_damage_is_a_times_base_plus_b_per_skill_level(self):
         _, full = hero_at("Fighter", MAX_LEVEL)
-        dmg3 = full.hero.abilities["Q"].calc_damage(100.0)
-        ab = full.hero.abilities["Q"]
-        for level, share in ((1, 0.33), (2, 0.67), (3, 1.0)):
-            ab.set_level(level)
-            self.assertAlmostEqual(ab.calc_damage(100.0), dmg3 * share, places=6)
+        charge = full.hero.abilities["R"]
+        got = []
+        for level in (1, 2, 3):
+            charge.set_level(level)
+            got.append(round(charge.calc_damage(100.0), 6))
+        self.assertEqual(got, [133.0, 146.0, 159.0])            # a 1.3/1.4/1.5, b 3/6/9
+        reap = full.hero.abilities["Q"]
+        reap.set_level(1)
+        self.assertAlmostEqual(reap.calc_damage(100.0), 81.0)   # AoE: a 0.8 (all levels), b 1
 
-    def test_flat_bonus_scales_too(self):
-        _, paladin = hero_at("Paladin", MAX_LEVEL)
-        smite = paladin.hero.abilities["Q"]
-        smite.set_level(1)
-        self.assertAlmostEqual(smite.calc_damage(0.0), 30 * 0.33)
+    def test_multi_target_a_below_1_single_target_at_least_1(self):
+        from game.content.heroes import HERO_CLASSES
+        for info in HERO_CLASSES:
+            h = info["create"]("x", 0, 0)
+            for ab in h.abilities.values():
+                if not ab.a_levels:
+                    continue                                    # no damage (buffs, heals, Stealth)
+                if ab.radius > 0:
+                    self.assertTrue(all(a < 1 for a in ab.a_levels), ab.name)
+                else:
+                    self.assertTrue(all(a >= 1 for a in ab.a_levels), ab.name)
+
+    def test_base_damage_by_class_and_level(self):
+        expect = {"Fighter": (10, 4.0), "Cleric": (8, 3.0), "Paladin": (12, 4.5), "Rogue": (4, 1.3),
+                  "Wizard": (9, 3.3)}
+        for cls, (b1, g) in expect.items():
+            for level in (1, 10, 30):
+                _, p = hero_at(cls, level)
+                self.assertAlmostEqual(p.hero.base_damage, b1 + g * (level - 1), msg=f"{cls} L{level}")
+
+    def test_seal_adds_to_smite_a_and_judgement_consumes_it(self):
+        from game.content.skill_tree import smite_damage
+        world, pal = hero_at("Paladin", MAX_LEVEL)
+        h = pal.hero
+        smite = h.abilities["Q"]
+        plain = smite_damage(h, smite)
+        self.assertAlmostEqual(plain, h.base_damage + 3)
+        world.submit(C.Cast("R", 0, 0, None), 0)                # Righteous Seal (level 3: +0.20)
+        world.step(DT)
+        self.assertAlmostEqual(smite_damage(h, smite), 1.2 * h.base_damage + 3)
 
     def test_ranges_only_change_for_wizard_bolts(self):
         for cls in ("Fighter", "Cleric", "Paladin", "Rogue"):

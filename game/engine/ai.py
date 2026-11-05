@@ -392,7 +392,7 @@ def ai_ranged(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None
             # Cast time: freeze in place while shooting
             monster.apply_condition(Condition.IMMOBILIZED, 0.5)
             # Return signal to spawn projectile (damage applied on hit)
-            ranged_dmg = monster.base_damage
+            ranged_dmg = monster.hit_damage()
             if "Demoralized" in getattr(monster, 'buffs', {}):
                 ranged_dmg *= monster.buffs["Demoralized"].get("damage_mult", 1.0)
             return ("ranged_attack_projectile", target, ranged_dmg)

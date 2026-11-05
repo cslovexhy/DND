@@ -21,7 +21,8 @@ from game.engine.pathfinding import astar
 from game.engine.world_map import TILE_SIZE
 
 
-from game.content.skill_tree import wall_shield, renew_total, seal_bonus, holy_light_heal, shout_reduction
+from game.content.skill_tree import (wall_shield, renew_total, seal_bonus, holy_light_heal, shout_reduction,
+                                     smite_damage)
 from game.engine.hero_ai import SUPPORT_RANGE   # px: how far away an ally can be for Wall / Renew / Holy Light
 
 
@@ -524,10 +525,10 @@ class PlayerState:
                 return  # Gated by weapon speed
             ab.use()
             hero.swing_timer = hero.weapon_speed
-            bonus = 1.0 + (hero.buffs.get("Righteous Seal", {}).get("bonus", 0))
-            skill_dmg = ab.calc_damage(hero.base_damage) * bonus
+            sealed = "Righteous Seal" in hero.buffs
+            skill_dmg = smite_damage(hero, ab)     # (a + Seal bonus) x weapon + b
             dmg = clicked_monster.take_damage(skill_dmg, source=hero)
-            color = (255, 230, 100) if bonus > 1.0 else (255, 255, 255)
+            color = (255, 230, 100) if sealed else (255, 255, 255)
             self.world.float_text(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", color)
             call_for_help(clicked_monster, gs.monsters, hero)
             hero.gcd = hero.GCD_DURATION

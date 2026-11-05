@@ -2,10 +2,12 @@
 
 Keys are the spawn-type strings used in data/maps/*.json. Optional flags: boss, unique, ranged,
 condition (on-hit), relentless, hive_mind, respawn_mult, skills (see game/engine/skills.py),
-hp_mult (max HP multiplier for the type, default 1; see monster_hp_mult).
+hp_mult (max HP multiplier for the type, default 1; see monster_hp_mult),
+swing (seconds between attacks, default MONSTER_SWING_TIME; bosses swing 20% faster).
 """
 from game.engine.entities import Condition
 
+MONSTER_SWING_TIME = 2.0   # default seconds between a monster's attacks
 RESPAWN_TIME = 60.0     # seconds before a killed regular mob respawns
 BOSS_RESPAWN_MULT = 10  # bosses take 10x as long (600s) unless SPAWN_STATS sets "respawn_mult"
 
@@ -63,6 +65,14 @@ def monster_hp_mult(stats):
 def hp_for_level(level):
     """Max HP (real points, before pp) of a monster of this level: 50, 75, 100, 125, 150, ..."""
     return MONSTER_HP_LEVEL_1 + MONSTER_HP_PER_LEVEL * (level - 1)
+
+
+def damage_for_level(level):
+    """Average damage per hit (before pp) of a levelled monster: level + 5. Each hit rolls x0.9..x1.1 (rounded)."""
+    return level + 5
+
+
+DAMAGE_ROLL = (0.9, 1.1)    # per-hit random factor for levelled monsters
 
 
 def base_xp_for_level(level):

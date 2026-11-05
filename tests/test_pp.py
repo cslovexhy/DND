@@ -4,7 +4,7 @@ import unittest
 
 from game import saves
 from game.content.difficulty import clamp_pp, damage_multiplier, hp_multiplier, map_title, scaled_xp
-from game.content.monsters import SPAWN_STATS, base_xp_for_level, hp_for_level, monster_hp_mult
+from game.content.monsters import SPAWN_STATS, base_xp_for_level, hp_for_level, monster_hp_mult, damage_for_level
 from game.engine.bootstrap import create_world, join_player
 from game.engine.entities import HP_SCALE, POISON_DPS
 from game.engine.snapshot import make_snapshot
@@ -30,7 +30,7 @@ def base_xp(m):
 
 
 def base_dmg(m):
-    return SPAWN_STATS[m.spawn_type]["dmg"] * HP_SCALE // 2
+    return damage_for_level(m.level) if m.leveled else SPAWN_STATS[m.spawn_type]["dmg"] * HP_SCALE // 2
 
 
 class PpRulesTest(unittest.TestCase):

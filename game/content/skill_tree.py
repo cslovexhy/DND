@@ -66,7 +66,8 @@ def apply_skill_levels(hero) -> list:
 
 # --- effect strengths shared by the cast code and the descriptions -----------------------------------------------
 
-BASE_SEAL_BONUS = 0.25          # Righteous Seal: Smite +25% (level 3)
+SEAL_SMITE_A = (0.10, 0.15, 0.20)   # Righteous Seal: Smite's "a" +0.10 / +0.15 / +0.20 (skill level 1 / 2 / 3)
+JUDGEMENT_SEAL_A = 0.5              # Judgement that consumes the Seal: + 0.5 x weapon damage
 # Demoralizing Shout: enemies deal 90% / 80% / 70% of their damage at skill level 1 / 2 / 3 (user-tuned: the old flat
 # 50% made boss fights too easy), so it does not follow the usual 33/67/100% power curve.
 SHOUT_DAMAGE_MULT = {1: 0.9, 2: 0.8, 3: 0.7}
@@ -86,7 +87,14 @@ def holy_light_heal(ab) -> float:
 
 
 def seal_bonus(ab) -> float:
-    return BASE_SEAL_BONUS * ab.power
+    """Extra Smite "a" (x weapon damage) while Righteous Seal (this ability) is active."""
+    return SEAL_SMITE_A[ab.level - 1] if ab.max_level == 3 else SEAL_SMITE_A[-1]
+
+
+def smite_damage(hero, ab) -> float:
+    """Smite: (a + Seal bonus) x weapon damage + b."""
+    bonus = hero.buffs.get("Righteous Seal", {}).get("bonus", 0.0)
+    return (ab.multiplier + bonus) * hero.base_damage + ab.flat_bonus
 
 
 def shout_reduction(ab) -> float:
@@ -95,8 +103,8 @@ def shout_reduction(ab) -> float:
 
 
 def judgement_seal_bonus(hero, ab) -> float:
-    """Extra damage when Judgement consumes the Righteous Seal (one weapon hit at level 3)."""
-    return hero.base_damage * ab.power
+    """Extra damage when Judgement consumes the Righteous Seal: 0.5 x weapon damage."""
+    return JUDGEMENT_SEAL_A * hero.base_damage
 
 
 # --- what a skill does, in the player's words (shown in the unlock / upgrade popup) -------------------------------
@@ -118,7 +126,8 @@ _DESCRIPTIONS = {
     "Renew": lambda h, a: f"Heals you or an ally within 300 px for {renew_total(h, a):.0f} over 8s. "
                           f"{a.cooldown:g}s cooldown.",
     "Smite": lambda h, a: f"Melee holy strike for {_dmg(h, a):.0f} damage. Stronger while Righteous Seal is active.",
-    "Righteous Seal": lambda h, a: f"Your Smite deals +{seal_bonus(a) * 100:.0f}% for 10s. Judgement consumes the "
+    "Righteous Seal": lambda h, a: f"Your Smite deals +{seal_bonus(a) * h.base_damage:.0f} damage "
+                                   f"(+{seal_bonus(a) * 100:.0f}% of your weapon) for 10s. Judgement consumes the "
                                    f"Seal. {a.cooldown:g}s cooldown.",
     "Judgement": lambda h, a: f"Holy bolt for {_dmg(h, a):.0f} damage up to {a.range:.0f} px away, "
                               f"+{judgement_seal_bonus(h, a):.0f} if it consumes your Seal. {a.cooldown:g}s cooldown.",

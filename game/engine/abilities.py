@@ -5,7 +5,7 @@ Validation (range, LOS, cooldown) is done by the caller. Visuals are reported as
 """
 import random
 
-from game.content.skill_tree import judgement_seal_bonus
+from game.content.skill_tree import judgement_seal_bonus, smite_damage
 from game.engine.ai import aggro_monster, call_for_help
 from game.engine.entities import Projectile
 from game.engine.events import Ring, FloatText
@@ -88,8 +88,7 @@ def smite(world, caster, target, ab):
     """Smite: melee with Seal bonus. Returns damage dealt."""
     ab.use()
     caster.swing_timer = caster.weapon_speed
-    bonus = 1.0 + (caster.buffs.get("Righteous Seal", {}).get("bonus", 0))
-    dmg_amount = ab.calc_damage(caster.base_damage) * bonus
+    dmg_amount = smite_damage(caster, ab)     # (a + Seal bonus) x weapon + b
     dmg = target.take_damage(dmg_amount, source=caster)
     world.float_text(target.x, target.y - 20, f"{dmg:.0f}", (255, 255, 255))
     _aggro_and_call_for_help(world, caster, target)

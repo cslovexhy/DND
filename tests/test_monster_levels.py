@@ -92,6 +92,23 @@ class MonsterLevelTest(unittest.TestCase):
         garrick = next(m for m in world.game_state.monsters if m.name == "Garrick Padfoot")
         self.assertEqual(garrick.max_hp, 300)          # level 5: 150 x 2
 
+    def test_levelled_damage_is_level_plus_5_rolled_per_hit(self):
+        world, _ = northshire()
+        for m in world.game_state.monsters:
+            self.assertEqual(m.base_damage, m.level + 5)
+        m = next(m for m in world.game_state.monsters if m.level == 4)
+        rolls = {m.hit_damage() for _ in range(500)}
+        self.assertTrue(rolls <= {8, 9, 10}, rolls)          # round(9 x 0.9..1.1) = 8.1..9.9 -> 8..10
+        self.assertGreater(len(rolls), 1)                      # it really varies per hit
+
+    def test_default_swing_is_2s_and_bosses_are_20_percent_faster(self):
+        world, _ = northshire()
+        self.assertEqual({m.weapon_speed for m in world.game_state.monsters}, {2.0})
+        random.seed(1)
+        room, _ = create_world("data/maps/bossTestRoom.json", saves.blank_character("t", "Fighter"))
+        boss = next(m for m in room.game_state.monsters if m.is_boss)
+        self.assertAlmostEqual(boss.weapon_speed, 1.6)
+
     def test_maps_without_levels_are_unchanged(self):
         random.seed(1)
         world, _ = create_world("data/maps/haycock.json", saves.blank_character("t", "Fighter"))

@@ -18,7 +18,8 @@ from game.engine import skills
 from game.engine.snapshot import quest_info
 from game.engine.pathfinding import has_line_of_sight
 from game.engine.world_map import TILE_SIZE
-from game.content.monsters import SPAWN_STATS, respawn_delay, hp_for_level, base_xp_for_level, kill_xp, monster_hp_mult
+from game.content.monsters import (SPAWN_STATS, respawn_delay, hp_for_level, base_xp_for_level, kill_xp,
+                                    monster_hp_mult, damage_for_level, MONSTER_SWING_TIME)
 from game.content.skill_tree import apply_skill_levels, describe
 from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_multiplier, scaled_xp
 from game.engine.entities import POISON_DPS
@@ -228,6 +229,8 @@ class World:
             m.level = random.randint(level_range[0], level_range[1])
             m.max_hp = hp_for_level(m.level)
             m.experience = base_xp_for_level(m.level)
+            m.base_damage = damage_for_level(m.level)   # each hit rolls x0.9..x1.1 (Monster.hit_damage)
+        m.weapon_speed = mt.get("swing", MONSTER_SWING_TIME) * (0.8 if is_boss else 1.0)   # bosses swing faster
         m.max_hp *= monster_hp_mult(mt)   # per-type HP multiplier (default 1)
         m.hp = m.max_hp
         self._apply_pp(m)
@@ -412,6 +415,7 @@ class World:
                 hero.xp -= xp_to_next_level(hero.level)
                 hero.level += 1
                 growth = growth_for(hero.class_name)
+                hp_before = hero.max_hp
                 apply_level_growth(hero)  # also full-heals on level-up
                 for key, skill_level, is_new in apply_skill_levels(hero):   # new skill / next skill level (every 2 levels)
                     ab = hero.abilities[key]
@@ -419,7 +423,7 @@ class World:
                                                describe(hero, ab), player.player_id))
                 self.events.append(LevelUp(hero.x, hero.y, player.player_id))
                 self.float_text(hero.x, hero.y - 30,
-                                f"Lv {hero.level}! +{growth['hp']:.0f}HP +{growth['damage']:.0f}dmg", GOLD)
+                                f"Lv {hero.level}! +{hero.max_hp - hp_before:.0f}HP +{growth['damage']:.0f}dmg", GOLD)
 
     # --- projectiles ---
     def update_projectiles(self, dt):
