@@ -38,7 +38,10 @@ from game.net.client import RemoteHost
 from types import SimpleNamespace
 from game.engine.player import PlayerState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
-                                  ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition)
+                                  ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
+                                  UseItem, PickUp)
+from game.content.items import ITEMS, describe as describe_item
+from game.engine.inventory import ROWS as BAG_ROWS, COLS as BAG_COLS
 from game.engine import abilities
 from game.engine.events import FloatText, Ring, LevelUp, SkillUp, QuestReady, BindRightSkill, NpcDialogue
 
@@ -225,12 +228,13 @@ def save_game():
     if world is None:
         # Co-op: the host tells us our progress in every snapshot
         prog = view.you.progress
-        char_data.update({k: prog[k] for k in ("level", "xp", "gold", "kills")})
+        char_data.update({k: prog[k] for k in ("level", "xp", "gold", "kills", "inventory")})
         char_data.setdefault("quests", {})[MAP_ID] = prog["quests"]
         saves.save_character(char_data)
         return
     h = world.hero
-    char_data.update({"level": h.level, "xp": h.xp, "gold": h.gold, "kills": h.kills})
+    char_data.update({"level": h.level, "xp": h.xp, "gold": h.gold, "kills": h.kills,
+                      "inventory": world.players[0].inventory.to_state()})
     char_data.setdefault("quests", {})[MAP_ID] = world.quests.to_state()
     saves.save_character(char_data)
 
@@ -520,6 +524,111 @@ def get_friend_at_screen(sx, sy):
     return None
 
 
+def get_ground_item_at_screen(sx, sy):
+    """Ground item (monster drop) whose icon is under the cursor."""
+    wx = (sx - WIDTH//2) / cam_zoom + hero.x
+    wy = (sy - HEIGHT//2) / cam_zoom + hero.y
+    for g in view.ground_items:
+        if abs(g.x - wx) < TILE_SIZE * 0.45 and abs(g.y - wy) < TILE_SIZE * 0.45:
+            return g
+    return None
+
+
+# === ITEMS: icons, backpack panel ===
+_item_icon_cache = {}
+
+
+def item_icon(item, size):
+    """The item's icon (content/items.py "icon": sheet, col, row) scaled to `size` px (cached)."""
+    key = (item, size)
+    if key not in _item_icon_cache:
+        sheet, col, row = ITEMS[item]["icon"]
+        img = dungeon_img if sheet == "dungeon" else rpg_img      # both copies have 16 px tiles + 1 px gap
+        raw = pygame.Surface((16, 16), pygame.SRCALPHA)
+        raw.blit(img, (0, 0), (col * 17, row * 17, 16, 16))
+        _item_icon_cache[key] = pygame.transform.scale(raw, (size, size))
+    return _item_icon_cache[key]
+
+
+backpack_open = False   # B toggles the backpack
+
+
+class Backpack:
+    """The backpack panel: BAG_ROWS x BAG_COLS slots, item icon + stack count; right-click an item to use it."""
+    SLOT = 44
+    GAP = 4
+    PAD = 12
+    TITLE = 26
+
+    @classmethod
+    def rect(cls):
+        w = cls.PAD * 2 + BAG_COLS * cls.SLOT + (BAG_COLS - 1) * cls.GAP
+        h = cls.PAD * 2 + cls.TITLE + BAG_ROWS * cls.SLOT + (BAG_ROWS - 1) * cls.GAP
+        return pygame.Rect(WIDTH // 2 - w // 2, HEIGHT - 70 - h, w, h)
+
+    @classmethod
+    def slot_center(cls, i):
+        r = cls.rect()
+        return (r.x + cls.PAD + (i % BAG_COLS) * (cls.SLOT + cls.GAP) + cls.SLOT // 2,
+                r.y + cls.PAD + cls.TITLE + (i // BAG_COLS) * (cls.SLOT + cls.GAP) + cls.SLOT // 2)
+
+    @classmethod
+    def slot_at(cls, mx, my):
+        """Slot index under the mouse, or None."""
+        r = cls.rect()
+        x, y = mx - r.x - cls.PAD, my - r.y - cls.PAD - cls.TITLE
+        if x < 0 or y < 0:
+            return None
+        col, row = x // (cls.SLOT + cls.GAP), y // (cls.SLOT + cls.GAP)
+        if col >= BAG_COLS or row >= BAG_ROWS or x % (cls.SLOT + cls.GAP) >= cls.SLOT \
+                or y % (cls.SLOT + cls.GAP) >= cls.SLOT:
+            return None
+        return int(row * BAG_COLS + col)
+
+    @classmethod
+    def draw(cls, screen, inventory):
+        r = cls.rect()
+        panel = pygame.Surface(r.size, pygame.SRCALPHA)
+        panel.fill((20, 20, 30, 235))
+        pygame.draw.rect(panel, GOLD, panel.get_rect(), 2, border_radius=6)
+        panel.blit(big_font.render("Backpack", True, GOLD), (cls.PAD, cls.PAD - 2))
+        hint = font.render("Right-click an item to use it  ·  B to close", True, (150, 150, 170))
+        panel.blit(hint, (r.w - cls.PAD - hint.get_width(), cls.PAD + 4))
+        stacks = {s["slot"]: s for s in inventory}
+        for i in range(BAG_ROWS * BAG_COLS):
+            sx = cls.PAD + (i % BAG_COLS) * (cls.SLOT + cls.GAP)
+            sy = cls.PAD + cls.TITLE + (i // BAG_COLS) * (cls.SLOT + cls.GAP)
+            pygame.draw.rect(panel, (55, 55, 70), (sx, sy, cls.SLOT, cls.SLOT), border_radius=4)
+            pygame.draw.rect(panel, (110, 110, 130), (sx, sy, cls.SLOT, cls.SLOT), 1, border_radius=4)
+            s = stacks.get(i)
+            if s:
+                panel.blit(item_icon(s["item"], cls.SLOT - 8), (sx + 4, sy + 4))
+                n = font.render(str(s["count"]), True, WHITE)
+                shadow = font.render(str(s["count"]), True, (0, 0, 0))
+                nx, ny = sx + cls.SLOT - n.get_width() - 3, sy + cls.SLOT - n.get_height() - 1
+                panel.blit(shadow, (nx + 1, ny + 1))
+                panel.blit(n, (nx, ny))
+        screen.blit(panel, r.topleft)
+        # tooltip for the hovered item
+        mx, my = pygame.mouse.get_pos()
+        slot = cls.slot_at(mx, my)
+        s = stacks.get(slot) if slot is not None else None
+        if s:
+            lines = [ITEMS[s["item"]]["name"]] + textwrap.wrap(describe_item(s["item"]), width=46)
+            surfs = [big_font.render(lines[0], True, GOLD)] + [font.render(l, True, (220, 220, 220)) for l in lines[1:]]
+            tw = max(t.get_width() for t in surfs) + 16
+            th = sum(t.get_height() + 2 for t in surfs) + 12
+            tx, ty = min(mx + 16, WIDTH - tw - 4), max(4, my - th - 8)
+            tip = pygame.Surface((tw, th), pygame.SRCALPHA)
+            tip.fill((10, 10, 15, 240))
+            pygame.draw.rect(tip, (150, 150, 170), tip.get_rect(), 1, border_radius=4)
+            y = 6
+            for t in surfs:
+                tip.blit(t, (8, y))
+                y += t.get_height() + 2
+            screen.blit(tip, (tx, ty))
+
+
 def get_npc_at_screen(sx, sy):
     """Check if a screen click hit an NPC sprite."""
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
@@ -619,7 +728,7 @@ while running:
         dt = clock.tick(60) / 1000.0 * game_speed
 
     if _input_script:
-        _input_script.post_due(_tick, hero, view, view.npcs, WIDTH, HEIGHT, cam_zoom)
+        _input_script.post_due(_tick, hero, view, view.npcs, WIDTH, HEIGHT, cam_zoom, slot_pos=Backpack.slot_center)
     _tick += 1
 
     for event in pygame.event.get():
@@ -631,6 +740,12 @@ while running:
         if event.type == pygame.MOUSEWHEEL:
             cam_zoom = max(CAM_ZOOM_MIN, min(CAM_ZOOM_MAX, cam_zoom + event.y * CAM_ZOOM_STEP))
         if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_b:
+                backpack_open = not backpack_open
+                continue
+            if event.key == pygame.K_ESCAPE and backpack_open:
+                backpack_open = False                  # ESC closes the backpack first
+                continue
             if event.key == pygame.K_ESCAPE:
                 if view.you.frostbolt_channeling:
                     host.send(CancelChannel())  # cancel channel and stop auto-attack
@@ -674,6 +789,12 @@ while running:
             if skill_popups:
                 skill_popups.pop(0)
                 continue
+            # Open backpack: clicks on it never reach the world; right-click an item uses it
+            if backpack_open and Backpack.rect().collidepoint(mx_s, my_s):
+                slot = Backpack.slot_at(mx_s, my_s)
+                if event.button == 3 and slot is not None:
+                    host.send(UseItem(slot))
+                continue
             # If quest popup panel is open, intercept clicks
             if quest_popup_panel and quest_popup_panel.active:
                 quest_popup_panel.handle_click(mx_s, my_s)
@@ -684,6 +805,11 @@ while running:
             shift_held = key_mods() & pygame.KMOD_SHIFT
 
             clicked_id = clicked_monster.eid if clicked_monster else None
+            # Left or right click on a dropped item (and not on a monster): walk there and put it in the backpack
+            clicked_item = get_ground_item_at_screen(mx_s, my_s) if clicked_monster is None else None
+            if clicked_item is not None and event.button in (1, 3) and not (event.button == 1 and shift_held):
+                host.send(PickUp(clicked_item.id))
+                continue
             clicked_friend = get_friend_at_screen(mx_s, my_s)
             friend_id = clicked_friend.eid if clicked_friend else None   # Wall / Renew / Holy Light land on them
 
@@ -829,6 +955,19 @@ while running:
         pygame.draw.circle(overlay, (*z.color, int(30 + 120 * glow)), (zx, zy), zr)
         pygame.draw.circle(overlay, (*z.color, int(110 + 145 * glow)), (zx, zy), zr, max(2, int(5 * cam_zoom)))
         screen.blit(overlay, (0, 0))
+
+    # Ground items (monster drops): icon with a soft shadow and a gentle bob
+    for g in view.ground_items:
+        isz = max(8, int(TILE_SIZE * 0.7 * cam_zoom))
+        gx = int((g.x - cx) * cam_zoom + WIDTH//2) - isz // 2
+        gy = int((g.y - cy) * cam_zoom + HEIGHT//2) - isz // 2
+        if gx < -isz or gx > WIDTH or gy < -isz or gy > HEIGHT:
+            continue
+        bob = int(2 * cam_zoom * math.sin(view.game_time * 3 + g.id))
+        shadow = pygame.Surface((isz, isz // 3), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow, (0, 0, 0, 90), shadow.get_rect())
+        screen.blit(shadow, (gx, gy + isz - isz // 6))
+        screen.blit(item_icon(g.item, isz), (gx, gy + bob))
 
     # Effects
     for e in effects: e.draw(screen, cx, cy)
@@ -1015,10 +1154,26 @@ while running:
     xp_text = f"Lv {hero.level}  XP {hero.xp}/{xp_needed}" if hero.level < MAX_LEVEL else f"Lv {hero.level} MAX"
     screen.blit(font.render(xp_text, True, (200, 180, 255)), (25, 43))
 
-    screen.blit(font.render(f"[F] Potions: {view.you.potions}", True, (200,150,150)), (20,58))
-
-    # Companion health bars (top HUD, below the potion count)
+    pcd = view.you.potion_cooldown
+    potion_text = f"[F] Potions: {view.you.potions}" + (f"  (ready in {pcd:.0f}s)" if pcd > 0 else "")
+    screen.blit(font.render(potion_text + "   [B] Backpack", True, (200,150,150)), (20,58))
     comp_hud_y = 74
+    food = view.you.food
+    if food.get("eating"):
+        e = food["eating"]
+        screen.blit(font.render(f"Eating {ITEMS[e['item']]['name']} ({e['remaining']:.0f}s)", True, (150, 230, 150)),
+                    (20, comp_hud_y))
+        comp_hud_y += 16
+    if food.get("buff"):
+        b = food["buff"]
+        buff = ITEMS[b["item"]].get("buff", {})
+        parts = [f"+{v * 100:g}% {'damage' if k == 'damage_pct' else 'max HP'}" for k, v in buff.items()]
+        m_, s_ = divmod(int(b["remaining"]), 60)
+        screen.blit(font.render(f"Well Fed: {', '.join(parts)} ({m_}:{s_:02d})", True, (255, 220, 140)),
+                    (20, comp_hud_y))
+        comp_hud_y += 16
+
+    # Companion health bars (top HUD, below the potion/food lines)
     for comp in view.companions:
         if comp.owner_id != view.you.player_id:
             continue          # the HUD lists only your own companions
@@ -1110,6 +1265,10 @@ while running:
     # Quest popup panel (detailed accept/turn-in panel)
     if quest_popup_panel and quest_popup_panel.active:
         quest_popup_panel.draw(screen)
+
+    # Backpack (B)
+    if backpack_open:
+        Backpack.draw(screen, view.you.inventory)
 
     # Skill unlocked / upgraded popup (first in the queue)
     if skill_popups:

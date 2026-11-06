@@ -7,6 +7,7 @@ Controls (WoW-style):
   Left-click = Select target / Cast ability at location
   1, 2, 3 = Abilities
   F = Health potion
+  B = Backpack (right-click an item to use it; click a dropped item to pick it up)
   ESC = Back to character select (progress is saved)
 """
 import pygame

@@ -39,6 +39,15 @@ def _entity(e, kind, ctl=None):
     return d
 
 
+def _food(hero):
+    """The hero's food state for the HUD: the meal being eaten and the food buff (item, seconds left)."""
+    out = {}
+    for key, buff in (("eating", hero.buffs.get("Eating")), ("buff", hero.buffs.get("Well Fed"))):
+        if buff:
+            out[key] = {"item": buff.get("item"), "remaining": buff["remaining"]}
+    return out
+
+
 def quest_info(q):
     """Static description of a quest (for dialogue panels)."""
     return {"quest_id": q.quest_id, "title": q.title, "description": q.description,
@@ -82,6 +91,9 @@ def make_snapshot(world, player_id=0):
     you = {
         "hero_id": hero.eid,
         "potions": player.potions,
+        "potion_cooldown": player.potion_cooldown,
+        "inventory": player.inventory.to_state(),
+        "food": _food(hero),
         "ai_enabled": player.ai_enabled,
         "selected_target_id": player.selected_target.eid if player.selected_target is not None else None,
         "move_path": [list(wp) for wp in player.move_path[:8]],
@@ -93,8 +105,10 @@ def make_snapshot(world, player_id=0):
         "player_id": player.player_id,
         "quests": _quests(player),
         "progress": {"level": hero.level, "xp": hero.xp, "gold": hero.gold, "kills": hero.kills,
-                     "quests": player.quests.to_state()},   # what this player's machine saves
+                     "quests": player.quests.to_state(),
+                     "inventory": player.inventory.to_state()},   # what this player's machine saves
     }
+    ground_items = [{"id": g.item_id, "item": g.item, "x": g.x, "y": g.y} for g in world.ground_items]
     hazards = [{"kind": z.kind, "x": z.x, "y": z.y, "radius": z.radius, "elapsed": z.elapsed,
                 "remaining": z.remaining, "duration": z.duration, "cycles": z.cycles, "color": list(z.color)}
                for z in world.hazards]
@@ -108,5 +122,6 @@ def make_snapshot(world, player_id=0):
         "entities": entities,
         "projectiles": projectiles,
         "hazards": hazards,                 # ground zones such as a boss' Deep Breath
+        "ground_items": ground_items,       # monster drops anyone can pick up
         "you": you,
     }

@@ -8,7 +8,8 @@ A script is a JSON list of events keyed by simulation tick (one tick = one headl
   {"tick": 20, "type": "click", "button": 3, "at": {"dx": 100, "dy": 0}}   # offset from the hero (world px)
   {"tick": 30, "type": "click", "button": 3, "at": [1200, 900]}            # absolute world position
 
-`at` may also be "nearest_npc", "nearest_ally" (other player / companion) or "hero". The events are posted as real pygame events, so the
+`at` may also be "nearest_npc", "nearest_ally" (other player / companion), "hero", "nearest_item" (a ground
+item / monster drop) or {"backpack_slot": N} (that slot of the open backpack panel, on screen). The events are posted as real pygame events, so the
 normal input code path is exercised exactly as if a human had clicked.
 """
 import json
@@ -37,6 +38,10 @@ class InputScript:
             friends = [f for f in getattr(game_state, "allies", []) + getattr(game_state, "companions", []) if f.alive]
             f = min(friends, key=lambda f: hero.distance_to(f)) if friends else None
             return (f.x, f.y) if f else (hero.x, hero.y)
+        if at == "nearest_item":
+            items = getattr(game_state, "ground_items", [])
+            g = min(items, key=lambda g: (g.x - hero.x) ** 2 + (g.y - hero.y) ** 2) if items else None
+            return (g.x, g.y) if g else (hero.x, hero.y)
         if at == "nearest_npc":
             n = min(npcs, key=lambda n: hero.distance_to(n)) if npcs else None
             return (n.x, n.y) if n else (hero.x, hero.y)
@@ -44,8 +49,9 @@ class InputScript:
             return hero.x + at.get("dx", 0), hero.y + at.get("dy", 0)
         return at[0], at[1]
 
-    def post_due(self, tick, hero, game_state, npcs, width, height, cam_zoom):
-        """Post every event scheduled for this tick as pygame events."""
+    def post_due(self, tick, hero, game_state, npcs, width, height, cam_zoom, slot_pos=None):
+        """Post every event scheduled for this tick as pygame events. `slot_pos(i)` -> screen (x, y) of backpack
+        slot i (the client's panel layout)."""
         while self.next_idx < len(self.events) and self.events[self.next_idx]["tick"] <= tick:
             e = self.events[self.next_idx]
             self.next_idx += 1
@@ -57,9 +63,12 @@ class InputScript:
             elif kind == "key":
                 pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=getattr(pygame, "K_" + e["key"])))
             elif kind == "click":
-                wx, wy = self._resolve(e["at"], hero, game_state, npcs)
-                sx = int((wx - hero.x) * cam_zoom + width // 2)
-                sy = int((wy - hero.y) * cam_zoom + height // 2)
+                if isinstance(e["at"], dict) and "backpack_slot" in e["at"]:
+                    sx, sy = slot_pos(e["at"]["backpack_slot"])
+                else:
+                    wx, wy = self._resolve(e["at"], hero, game_state, npcs)
+                    sx = int((wx - hero.x) * cam_zoom + width // 2)
+                    sy = int((wy - hero.y) * cam_zoom + height // 2)
                 pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(sx, sy), button=e["button"]))
             else:
                 raise ValueError(f"unknown input script event type: {kind}")

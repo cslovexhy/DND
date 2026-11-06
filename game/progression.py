@@ -74,10 +74,15 @@ def apply_level_growth(hero, levels=1):
     hero.level). Full-heals."""
     growth = growth_for(hero.class_name)
     hero.base_damage += growth["damage"] * levels
+    base = getattr(hero, "base_max_hp", hero.max_hp)
     if hero.class_name in HERO_HP:
-        hero.max_hp = hero_max_hp(hero.class_name, hero.level)
+        base = hero_max_hp(hero.class_name, hero.level)
     else:
-        hero.max_hp += growth["hp"] * levels
+        base += growth["hp"] * levels
+    hero.base_max_hp = base
+    hero.max_hp = base
+    if hasattr(hero, "refresh_max_hp"):
+        hero.refresh_max_hp()             # food buff (+max HP%)
     hero.hp = hero.max_hp
 
 

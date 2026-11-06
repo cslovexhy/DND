@@ -40,7 +40,8 @@ def join_player(world, player_id, char_data, map_path, autopilot=False):
     sx, sy = world.world_map.get_start_pos()
     x, y = world.find_walkable_nearby(sx, sy, radius=60)
     hero, quests = _make_hero(char_data, map_id_for(map_path), x, y)
-    player = PlayerState(world, hero, ai_enabled=autopilot, quests=quests, name=char_data["name"])
+    player = PlayerState(world, hero, ai_enabled=autopilot, quests=quests, name=char_data["name"],
+                         inventory=char_data.get("inventory"))
     world.add_player(player_id, player)
     return player
 
@@ -63,9 +64,11 @@ def sanitize_character(data):
     quests = data.get("quests", {})
     if not isinstance(quests, dict):
         raise ValueError("bad quests")
+    from game.engine.inventory import Inventory
+    inventory = Inventory.from_state(data.get("inventory")).to_state()   # raises ValueError if malformed
     return {"name": name, "class_name": cls, "level": num("level", 1, MAX_LEVEL),
             "xp": num("xp", 0, 10 ** 9), "gold": num("gold", 0, 10 ** 9), "kills": num("kills", 0, 10 ** 9),
-            "quests": quests}
+            "quests": quests, "inventory": inventory}
 
 
 def create_world(map_path, char_data, debug=False, autopilot=False, auto_companion=False, hooks=None, pp=1):
@@ -92,7 +95,7 @@ def create_world(map_path, char_data, debug=False, autopilot=False, auto_compani
     world.on_companion_spawned = hooks.get("companion")
     world.on_npc_spawned = hooks.get("npc")
 
-    player = PlayerState(world, hero, ai_enabled=autopilot)
+    player = PlayerState(world, hero, ai_enabled=autopilot, inventory=char_data.get("inventory"))
     world.add_player(0, player)   # local player (id 0)
 
     if auto_companion and world.available_companions:

@@ -8,6 +8,7 @@ Schema:
 {
   "name": "heskan", "class_name": "Wizard",
   "level": 16, "xp": 367, "gold": 112440, "kills": 757,
+  "inventory": [{"slot": 0, "item": "health_potion", "count": 3}],   # backpack stacks (engine/inventory.py)
   "quests": {                       # quest progression is per character AND per map
     "northshire": {
       "completed": ["quest_id", ...],
@@ -21,6 +22,8 @@ Pure logic (no pygame) so it can be unit tested.
 import json
 import os
 import re
+
+from game.content.items import STARTING_INVENTORY
 
 SAVE_DIR = os.path.join("data", "saves")
 MAX_NAME_LEN = 12
@@ -51,6 +54,7 @@ def blank_character(name, class_name, level=1):
         "name": name, "class_name": class_name,
         "level": level, "xp": 0, "gold": 0, "kills": 0,
         "quests": {},
+        "inventory": [dict(s) for s in STARTING_INVENTORY],   # backpack (engine/inventory.py): 3 Health Potions
     }
 
 
@@ -68,6 +72,10 @@ def _migrate(data, name):
             cur = data.pop("current_quest_id", None)
             active = [cur] if cur else []
         data["quests"] = {"northshire": {"completed": completed, "active": active, "progress": {}}}
+        changed = True
+    if "inventory" not in data:
+        # Before the backpack every session started with 3 potions: start existing characters with that.
+        data["inventory"] = [dict(s) for s in STARTING_INVENTORY]
         changed = True
     for key, default in (("level", 1), ("xp", 0), ("gold", 0), ("kills", 0)):
         if key not in data:

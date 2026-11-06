@@ -65,6 +65,7 @@ class ClientView:
         self.monsters = []
         self.npcs = []
         self.projectiles = []
+        self.ground_items = []    # monster drops: id, item, x, y
         self.hazards = []         # ground zones (Deep Breath): kind, x, y, radius, remaining, duration, color
         self.you = None
         self.tick = 0
@@ -113,6 +114,7 @@ class ClientView:
         self.allies = allies
         self.projectiles = [ProjectileView(p, self.entities.get(p["target_id"])) for p in snap["projectiles"]]
         self.hazards = [SimpleNamespace(**h) for h in snap.get("hazards", [])]
+        self.ground_items = [SimpleNamespace(**g) for g in snap.get("ground_items", [])]
         you = dict(snap["you"])
         you["abilities"] = {a["key"]: AbilityView(a) for a in you["abilities"]}
         you["ability_keys"] = list(you["abilities"])

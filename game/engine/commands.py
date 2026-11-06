@@ -55,6 +55,18 @@ class UsePotion:
 
 
 @dataclass
+class UseItem:
+    """Use the item in this backpack slot (right-click it in the open backpack)."""
+    slot: int
+
+
+@dataclass
+class PickUp:
+    """Pick up a ground item (click its icon): walk to it, then put it in the backpack."""
+    item_id: int
+
+
+@dataclass
 class ToggleAutopilot:
     pass
 
@@ -86,7 +98,7 @@ class HoldPosition:
 # --- (de)serialization: commands are plain data, so they can be logged and sent over a wire ---
 _BY_NAME = {cls.__name__: cls for cls in (
     MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion, ToggleAutopilot, ToggleCompanion,
-    CancelChannel, BindLeftSkill, HoldPosition)}
+    CancelChannel, BindLeftSkill, HoldPosition, UseItem, PickUp)}
 
 
 def to_dict(cmd):

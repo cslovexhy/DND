@@ -423,6 +423,32 @@ class Hero(Entity):
         self.skill_levels = None
         self.all_abilities = None   # every ability of the class, locked ones included
 
+        # Max HP before the food buff (set by progression.apply_level_growth); max_hp = base x (1 + food bonus)
+        self.base_max_hp = self.max_hp
+
+    # --- food buff ("Well Fed", content/items.py): +damage% and/or +max HP% ---
+    def _food_buff(self):
+        return self.buffs.get("Well Fed", {})
+
+    @property
+    def damage_bonus(self) -> float:
+        """Multiplier on all damage this hero deals (1.0 without a food buff)."""
+        return 1.0 + self._food_buff().get("damage_pct", 0.0)
+
+    def refresh_max_hp(self):
+        """Recompute max_hp from base_max_hp and the food buff. Gaining max HP also adds it to current HP; losing it
+        only caps current HP."""
+        new_max = int(round(self.base_max_hp * (1.0 + self._food_buff().get("max_hp_pct", 0.0))))
+        gained = new_max - self.max_hp
+        self.max_hp = new_max
+        self.hp = min(new_max, self.hp + max(0, gained))
+
+    def update(self, dt: float):
+        fed = "Well Fed" in self.buffs
+        super().update(dt)
+        if fed and "Well Fed" not in self.buffs:
+            self.refresh_max_hp()        # the food buff ran out
+
     def use_ability(self, key: str, targets: list['Entity'],
                     target_pos: tuple = None) -> list[tuple[str, float]]:
         """Use an ability (consumes a swing). Returns list of (target_name, damage_dealt)."""
@@ -530,7 +556,8 @@ class Monster(Entity):
         return max(listed, key=lambda c: self.hate[c], default=None)
 
     def take_damage(self, raw_damage: float, ignore_armor: bool = False, source: 'Entity' = None) -> float:
-        dealt = super().take_damage(raw_damage, ignore_armor, source)
+        bonus = getattr(source, "damage_bonus", 1.0)     # a hero's food buff
+        dealt = super().take_damage(raw_damage * bonus, ignore_armor, source)
         if source is not None and dealt > 0:
             self.add_hate(source, dealt)
         return dealt

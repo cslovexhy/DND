@@ -7,6 +7,7 @@ Anything the player should see is reported through self.events (see engine/event
 import heapq
 import itertools
 import random
+from dataclasses import dataclass
 
 from game.content.heroes import HERO_CLASSES, COMPANION_NAMES
 from game.engine.ai import (generate_patrol_route, setup_monster_aggro, aggro_monster, call_for_help,
@@ -23,6 +24,16 @@ from game.content.monsters import (SPAWN_STATS, respawn_delay, hp_for_level, bas
 from game.content.skill_tree import apply_skill_levels, describe
 from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_multiplier, scaled_xp
 from game.engine.entities import POISON_DPS
+from game.content.items import roll_drops
+
+
+@dataclass
+class GroundItem:
+    """An item lying on the map (a monster dropped it); anyone can pick it up."""
+    item_id: int     # own id space (not an entity id)
+    item: str        # content/items.py key
+    x: float
+    y: float
 from game.progression import (MAX_LEVEL, xp_to_next_level, apply_level_growth, set_hero_level, growth_for)
 
 COMPANION_ID_BASE = 1000           # player ids of AI companions start here (humans get 0, 1, 2, ...)
@@ -54,6 +65,8 @@ class World:
         self.on_companion_spawned = None
         self.on_npc_spawned = None
         self.npcs = []
+        self.ground_items = []     # GroundItem: monster drops waiting to be picked up
+        self._next_item_id = itertools.count(1)
         # Entity registry (stable ids for commands/network) and command queue
         self._next_eid = itertools.count(1)
         self.entities = {}
@@ -319,6 +332,28 @@ class World:
         return interacted
 
     # --- respawning ---
+    # --- ground items (monster drops) ---
+    def drop_item(self, item, x, y):
+        g = GroundItem(next(self._next_item_id), item, x, y)
+        self.ground_items.append(g)
+        return g
+
+    def ground_item(self, item_id):
+        return next((g for g in self.ground_items if g.item_id == item_id), None) if item_id is not None else None
+
+    def remove_ground_item(self, g):
+        if g in self.ground_items:
+            self.ground_items.remove(g)
+
+    def roll_monster_drops(self, m):
+        """A monster died: roll its drops (content/items.DROP_TABLE) and lay them where it fell."""
+        drops = roll_drops(m.level, random)
+        for i, item in enumerate(drops):
+            x, y = m.x + (i - (len(drops) - 1) / 2) * 14, m.y   # one drop where it fell; several side by side
+            if self.is_wall(x, y):
+                x, y = m.x, m.y
+            self.drop_item(item, x, y)
+
     def queue_respawn(self, m):
         """Queue a killed monster's spawn point for respawn (bosses just take much longer)."""
         if hasattr(m, 'spawn_point') and m.spawn_point:
@@ -405,6 +440,7 @@ class World:
                         if just_completed:
                             self.events.append(QuestReady(aq.title, player.player_id))
                 m.experience = 0
+                self.roll_monster_drops(m)
                 # Queue for respawn (every monster that came from a spawn point; bosses just take much longer)
                 self.queue_respawn(m)
 
@@ -504,9 +540,10 @@ class World:
         hero = player.hero
         hero.x, hero.y = self.world_map.get_start_pos()
         hero.alive = True
-        hero.hp = hero.max_hp * self.RESPAWN_HP_PCT
         hero.conditions = []          # e.g. poison would kill again
-        hero.buffs = {}
+        hero.buffs = {}               # incl. the food buff and a meal being eaten
+        hero.refresh_max_hp()
+        hero.hp = hero.max_hp * self.RESPAWN_HP_PCT
         hero.absorb_shield = 0
         hero.stealthed = False
         hero.chill_visual = 0.0

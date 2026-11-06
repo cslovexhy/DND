@@ -13,7 +13,10 @@ from game.engine import abilities
 from game.engine.ai import aggro_monster, call_for_help, drop_from_hate, AggroState
 from game.engine.entities import Condition, Projectile
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
-                                  ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition)
+                                  ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
+                                  UseItem, PickUp)
+from game.engine.inventory import Inventory
+from game.content.items import ITEMS, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT
 from game.engine.events import Ring, BindRightSkill, GOLD
 from game.engine.hero_ai import create_hero_ai
 from game.content.heroes import HERO_CLASSES
@@ -27,11 +30,15 @@ from game.engine.hero_ai import SUPPORT_RANGE   # px: how far away an ally can b
 
 
 class PlayerState:
-    def __init__(self, world, hero, ai_enabled=False, potions=3, quests=None, name=None, owner=None):
+    PICKUP_RANGE = 40   # px: how close the hero must be to pick an item up
+
+    def __init__(self, world, hero, ai_enabled=False, potions=3, quests=None, name=None, owner=None,
+                 inventory=None):
         self.world = world
         self.hero = hero
         # Companion mode: an AI-driven hero that fights for (and follows) the `owner` player. It uses exactly the
-        # same casting / movement / autopilot code as a player; potions=None means it never runs out.
+        # same casting / movement / autopilot code as a player; potions=None means it never runs out (no backpack
+        # needed). Players carry their potions in the backpack (`inventory`: saved state, None = starting backpack).
         self.owner = owner
         self.player_id = 0               # set by World.add_player
         self.name = name or hero.name
@@ -46,7 +53,10 @@ class PlayerState:
         # Movement / targeting
         self.move_path = []
         self.selected_target = None
-        self.potions = potions
+        self.unlimited_potions = potions is None
+        self.inventory = Inventory.from_state(inventory)
+        self.potion_cooldown = 0.0       # seconds until the next Health Potion
+        self.pickup_target = None        # ground item id we're walking to (PickUp)
         # Client choices that affect auto-attack (sent as BindLeftSkill / HoldPosition commands)
         self.left_ab_key = next(iter(hero.abilities), None)
         self.hold_position = False
@@ -77,14 +87,68 @@ class PlayerState:
         if not self.is_companion:
             self.world.events.append(BindRightSkill(key, self.player_id))
 
+    @property
+    def potions(self):
+        """Health Potions left (None = unlimited, companions)."""
+        return None if self.unlimited_potions else self.inventory.count("health_potion")
+
     def _potion_ready(self):
-        return self.potions is None or self.potions > 0
+        return self.potion_cooldown <= 0 and (self.unlimited_potions or self.potions > 0)
 
     def _use_potion(self):
-        if self.potions is not None:
-            self.potions -= 1
-        heal = self.hero.heal(150)
+        if not self.unlimited_potions and not self.inventory.take("health_potion"):
+            return
+        self.potion_cooldown = POTION_COOLDOWN
+        heal = self.hero.heal(ITEMS["health_potion"]["heal"])
         self.world.float_text(self.hero.x, self.hero.y - 30, f"+{heal:.0f}", (100, 255, 100))
+
+    # --- backpack items ---
+    def use_item(self, slot):
+        """Use one item from a backpack slot: the Health Potion heals now (shared cooldown), food heals over
+        FOOD_DURATION and may give the food buff (replacing any other)."""
+        hero = self.hero
+        item = self.inventory.item_at(slot)
+        if item is None:
+            return
+        info = ITEMS[item]
+        if info["kind"] == "potion":
+            if self.potion_cooldown > 0:
+                self.world.float_text(hero.x, hero.y - 30, f"Potion ready in {self.potion_cooldown:.0f}s",
+                                      (255, 150, 100))
+            elif hero.hp >= hero.max_hp:
+                self.world.float_text(hero.x, hero.y - 30, "Already at full health", (200, 200, 200))
+            else:
+                self.inventory.take_from_slot(slot)
+                self.potion_cooldown = POTION_COOLDOWN
+                heal = hero.heal(info["heal"])
+                self.world.float_text(hero.x, hero.y - 30, f"+{heal:.0f}", (100, 255, 100))
+            return
+        self.inventory.take_from_slot(slot)
+        # the meal: heal over time (a new meal replaces the one being eaten)
+        hero.buffs[FOOD_HOT] = {"remaining": FOOD_DURATION, "hot_per_sec": info["heal"] / FOOD_DURATION,
+                                "item": item}
+        if info.get("buff"):
+            # one food buff at a time: the new one replaces the old
+            hero.buffs[FOOD_BUFF] = {"remaining": info["buff_duration"], "item": item, **info["buff"]}
+            hero.refresh_max_hp()
+        self.world.float_text(hero.x, hero.y - 30, f"{info['name']}!", (255, 220, 140))
+
+    def _try_pickup(self):
+        """Walking to a ground item: take it once in reach (stop if it is gone or the backpack is full)."""
+        item = self.world.ground_item(self.pickup_target)
+        if item is None:
+            self.pickup_target = None
+            return
+        hero = self.hero
+        if (item.x - hero.x) ** 2 + (item.y - hero.y) ** 2 > self.PICKUP_RANGE ** 2:
+            return
+        self.pickup_target = None
+        self.move_path = []
+        if self.inventory.add(item.item):
+            self.world.remove_ground_item(item)
+            self.world.float_text(hero.x, hero.y - 30, f"+{ITEMS[item.item]['name']}", (255, 220, 140))
+        else:
+            self.world.float_text(hero.x, hero.y - 30, "Backpack full!", (255, 150, 100))
 
     # --- commands (the client's only way to act; see engine/commands.py) ---
     def _live_monster(self, eid):
@@ -173,10 +237,28 @@ class PlayerState:
             self.selected_target = None
             self.ambush_target = None
             self.pending_cast = None
+            self.pickup_target = None
+        elif isinstance(cmd, UseItem):
+            if not self.is_companion:
+                self.use_item(cmd.slot)
+        elif isinstance(cmd, PickUp):
+            item = world.ground_item(cmd.item_id)
+            if item is None or self.is_companion:
+                return
+            if self.frostbolt_channeling:
+                self._stop_channel()
+            self.pickup_target = item.item_id
+            self.selected_target = None
+            self.pending_cast = None
+            self.ambush_target = None
+            self._try_pickup()
+            if self.pickup_target is not None:       # not in reach yet: walk there
+                self.move_path = self._path(hero.x, hero.y, item.x, item.y)
         elif isinstance(cmd, SelectTarget):
             m = self._live_monster(cmd.target_id)
             if m is None:
                 return
+            self.pickup_target = None
             # Click enemy = select + walk to attack range. LOS check — can't target what you can't see
             if not world.check_los(hero.x, hero.y, m.x, m.y):
                 world.float_text(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100))
@@ -610,6 +692,9 @@ class PlayerState:
         """Frostbolt channel completion, path-following movement and the dash animation."""
         hero = self.hero
         gs = self.world.game_state
+        self.potion_cooldown = max(0.0, self.potion_cooldown - dt)
+        if self.pickup_target is not None:
+            self._try_pickup()
         # Frostbolt channel completion
         if self.frostbolt_channeling:
             self.frostbolt_channel_timer -= dt
