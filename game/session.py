@@ -480,7 +480,7 @@ class SkillPopupPanel:
         lvl = font.render(f"Character level {ev.hero_level}", True, (180, 180, 180))
         panel.blit(lvl, (self.WIDTH // 2 - lvl.get_width() // 2, y))
         y += 26
-        name = big_font.render(f"[{ev.key}] {ev.name}  —  Level {ev.skill_level} / {ev.max_level}", True, WHITE)
+        name = big_font.render(f"[{ev.key}] {ev.name}  —  Lv.{ev.skill_level}", True, WHITE)
         panel.blit(name, (self.PAD, y))
         y += 22
         for line in self.lines:
@@ -1226,7 +1226,7 @@ while running:
         slot_label = ""
         if is_left: slot_label = "[L] "
         if is_right: slot_label = "[R] "
-        screen.blit(font.render(f"{slot_label}[{i+1}] {ab.name} Lv{ab.level}/{ab.max_level} {cd}", True, WHITE), (24, ab_y+3))
+        screen.blit(font.render(f"{slot_label}[{i+1}] {ab.name} Lv.{ab.level} {cd}", True, WHITE), (24, ab_y+3))
         ab_y += 24
 
     # Skill bar at bottom
@@ -1237,13 +1237,13 @@ while running:
     left_color = (180, 130, 50) if left_ab.is_ready() else (80, 60, 30)
     pygame.draw.rect(screen, left_color, (WIDTH//2 - 180, bar_y, 160, 30), 0, 4)
     pygame.draw.rect(screen, (220, 170, 60), (WIDTH//2 - 180, bar_y, 160, 30), 2, 4)
-    screen.blit(font.render(f"L: {left_ab.name} Lv{left_ab.level}/{left_ab.max_level}", True, WHITE), (WIDTH//2 - 175, bar_y + 8))
+    screen.blit(font.render(f"L: {left_ab.name} Lv.{left_ab.level}", True, WHITE), (WIDTH//2 - 175, bar_y + 8))
     # Right skill
     right_ab = view.you.abilities[ability_keys[right_skill_idx]]
     right_color = (50, 50, 140) if right_ab.is_ready() else (30, 30, 70)
     pygame.draw.rect(screen, right_color, (WIDTH//2 + 20, bar_y, 160, 30), 0, 4)
     pygame.draw.rect(screen, (80, 80, 200), (WIDTH//2 + 20, bar_y, 160, 30), 2, 4)
-    screen.blit(font.render(f"R: {right_ab.name} Lv{right_ab.level}/{right_ab.max_level}", True, WHITE), (WIDTH//2 + 25, bar_y + 8))
+    screen.blit(font.render(f"R: {right_ab.name} Lv.{right_ab.level}", True, WHITE), (WIDTH//2 + 25, bar_y + 8))
 
     screen.blit(font.render(MAP_TITLE, True, BLUE), (WIDTH-160, 20))
     if _host_server is not None:
