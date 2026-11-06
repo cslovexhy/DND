@@ -4,6 +4,7 @@ Keys are the spawn-type strings used in data/maps/*.json. Optional flags: boss, 
 condition (on-hit), relentless, hive_mind, respawn_mult, skills (see game/engine/skills.py),
 hp_mult (max HP multiplier for the type, default 1; see monster_hp_mult),
 swing (seconds between attacks, default MONSTER_SWING_TIME; bosses swing 20% faster).
+Every type also has a category (MONSTER_CATEGORY: humanoid / beast / demon) that decides its loot.
 """
 from game.engine.entities import Condition
 
@@ -43,6 +44,29 @@ SPAWN_STATS = {
     "garrick_padfoot": {"name": "Garrick Padfoot", "hp": 4, "ac": 15, "speed": 5, "atk": 8, "dmg": 2, "xp": 30, "unique": True, "respawn_mult": 3,
                         "hp_mult": 2},
 }
+
+
+# --- Monster categories (loot rules, see content/items.py): humanoids carry money, beasts drop more food ----------
+HUMANOID, BEAST, DEMON = "humanoid", "beast", "demon"
+MONSTER_CATEGORY = {
+    # humanoids: people and the people-like races
+    "kobold_dragonshield": HUMANOID, "orc_smasher": HUMANOID, "orc_archer": HUMANOID, "duergar_guard": HUMANOID,
+    "human_cultist": HUMANOID, "garrick_padfoot": HUMANOID, "meerak": HUMANOID,     # Meerak: kobold chieftain
+    "margrath": HUMANOID,                                                             # duergar captain
+    "karash": HUMANOID, "vecna": HUMANOID,                                            # Vecna: a lich (undead mage)
+    # beasts: animals, and dragons (no other category fits them better)
+    "snake": BEAST, "grey_wolf": BEAST, "rage_drake": BEAST, "ashardalon": BEAST,
+    # demons: fiends, plus the aberrations and Upside Down creatures
+    "legion_devil": DEMON, "demogorgon": DEMON, "demodog": DEMON, "demobat": DEMON,
+    "gibbering_mouther": DEMON, "grell": DEMON, "otyugh": DEMON, "bellax": DEMON,  # Bellax: a gauth (beholder-kin)
+}
+for _key, _stats in SPAWN_STATS.items():
+    _stats["category"] = MONSTER_CATEGORY[_key]       # KeyError = a new monster type without a category
+
+
+def humanoid_money(level, rng):
+    """Bronze a humanoid of this level drops: round(max(5, level x 8 - 40) x 0.8..1.2)."""
+    return int(round(max(5, level * 8 - 40) * rng.uniform(0.8, 1.2)))
 
 
 # --- Monster levels ---------------------------------------------------------------------------------------------

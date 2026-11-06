@@ -20,7 +20,8 @@ from game.engine.snapshot import quest_info
 from game.engine.pathfinding import has_line_of_sight
 from game.engine.world_map import TILE_SIZE
 from game.content.monsters import (SPAWN_STATS, respawn_delay, hp_for_level, base_xp_for_level, kill_xp,
-                                    monster_hp_mult, damage_for_level, MONSTER_SWING_TIME)
+                                    monster_hp_mult, damage_for_level, MONSTER_SWING_TIME, humanoid_money,
+                                    HUMANOID)
 from game.content.skill_tree import apply_skill_levels, describe
 from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_multiplier, scaled_xp
 from game.engine.entities import POISON_DPS
@@ -236,7 +237,7 @@ class World:
         m.unique = mt.get("unique", False)  # one-of-a-kind minion: name shown, but respawns/leashes like a normal mob
         if mt.get("condition"):
             m.on_hit_condition = mt["condition"]
-        m.gold_value = mt["xp"]       # gold rolls use the hand-tuned value (levels change only HP and XP)
+        m.category = mt["category"]   # humanoid / beast / demon: decides money and food drops
         level_range = self.world_map.data.get("monster_levels", {}).get(sp.type)
         m.leveled = level_range is not None
         if m.leveled:                 # this map gives the type a level range: HP and XP follow the rolled level
@@ -349,7 +350,7 @@ class World:
 
     def roll_monster_drops(self, m):
         """A monster died: roll its drops (content/items.DROP_TABLE) and lay them where it fell."""
-        drops = roll_drops(m.level, random)
+        drops = roll_drops(m.level, random, getattr(m, "category", None))
         for i, item in enumerate(drops):
             x, y = m.x + (i - (len(drops) - 1) / 2) * 14, m.y   # one drop where it fell; several side by side
             if self.is_wall(x, y):
@@ -432,10 +433,13 @@ class World:
                     # leveled monsters give less XP to heroes above their level (none from 6 levels up)
                     xp = kill_xp(m.experience, hero.level, m.level) if getattr(m, "leveled", False) else m.experience
                     hero.xp += xp
-                    hero.gold += random.randint(10, 30) * getattr(m, "gold_value", m.base_experience)
+                    # only humanoids carry money (each player gets their own roll)
+                    coins = humanoid_money(m.level, random) if getattr(m, "category", None) == HUMANOID else 0
+                    hero.gold += coins
                     hero.kills += 1
                     if player.player_id == 0 or len(self.human_players) == 1:
-                        self.float_text(m.x, m.y + 10, f"+{xp}xp", GOLD)
+                        loot = f" +{money.format_short(coins)}" if coins else ""
+                        self.float_text(m.x, m.y + 10, f"+{xp}xp{loot}", GOLD)
                     # Quest kill tracking
                     for aq, just_completed in player.quests.record_kill(m.name):
                         self.float_text(hero.x, hero.y - 50, aq.get_progress_text(), (200, 200, 255))

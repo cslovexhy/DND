@@ -93,20 +93,18 @@ class PpMonstersTest(unittest.TestCase):
                     self.assertTrue(m.alive)
                     self.assert_scaled(m, pp)
 
-    def test_kill_awards_scaled_xp_but_base_gold(self):
+    def test_kill_awards_scaled_xp_but_unscaled_money(self):
         for pp in (1, 8):
             with self.subTest(pp=pp):
                 w = world(pp)
                 hero = w.hero
-                m = w.game_state.monsters[0]
-                base = SPAWN_STATS[m.spawn_type]["xp"]
+                m = next(m for m in w.game_state.monsters if m.category == "humanoid")
                 m.take_damage(m.max_hp * 100, ignore_armor=True)
                 hero.xp = hero.gold = 0
                 w.process_kills()
-                self.assertEqual(hero.xp, scaled_xp(base, pp))   # level-ups happen later, in process_level_ups
-                self.assertGreaterEqual(hero.gold, 10 * base)
-                self.assertLessEqual(hero.gold, 30 * base)   # gold not scaled by pp
-                self.assertIn(f"+{scaled_xp(base, pp)}xp", [e.text for e in w.events])
+                self.assertEqual(hero.xp, scaled_xp(base_xp(m), pp))   # level-ups happen later, in process_level_ups
+                self.assertTrue(4 <= hero.gold <= 6, hero.gold)          # money (bronze) not scaled by pp
+                self.assertTrue(any(e.text.startswith(f"+{scaled_xp(base_xp(m), pp)}xp") for e in w.events))
 
     def test_scaled_damage_is_what_actually_hits(self):
         w = world(8)

@@ -32,12 +32,20 @@ DROP_TABLE = [
     ("sushi_plate",   0.01, 4, 10),
 ]
 
+BEAST_FOOD_MULT = 3      # beasts (monsters.MONSTER_CATEGORY) drop food 3x as often (they carry no money)
+
 STARTING_INVENTORY = [{"slot": 0, "item": "health_potion", "count": 3}]
 
 
-def roll_drops(monster_level, rng):
-    """Items a monster of this level drops (each DROP_TABLE row rolls once with `rng`, e.g. the random module)."""
-    return [item for item, chance, lo, hi in DROP_TABLE if lo <= monster_level <= hi and rng.random() < chance]
+def drop_chance(item, base_chance, category):
+    return base_chance * BEAST_FOOD_MULT if category == "beast" and ITEMS[item]["kind"] == "food" else base_chance
+
+
+def roll_drops(monster_level, rng, category=None):
+    """Items a monster of this level and category drops (each DROP_TABLE row rolls once with `rng`, e.g. the
+    random module)."""
+    return [item for item, chance, lo, hi in DROP_TABLE
+            if lo <= monster_level <= hi and rng.random() < drop_chance(item, chance, category)]
 
 
 def describe(item_id):

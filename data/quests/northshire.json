@@ -23,7 +23,7 @@
         }
       ],
       "rewards_xp": 250,
-      "rewards_gold": 50,
+      "rewards_gold": 25,
       "npc_id": "marshal_mcbride",
       "level_req": 1,
       "prerequisites": [
@@ -41,7 +41,7 @@
         }
       ],
       "rewards_xp": 350,
-      "rewards_gold": 75,
+      "rewards_gold": 38,
       "npc_id": "marshal_mcbride",
       "level_req": 3,
       "prerequisites": [
@@ -59,7 +59,7 @@
         }
       ],
       "rewards_xp": 450,
-      "rewards_gold": 100,
+      "rewards_gold": 50,
       "npc_id": "marshal_mcbride",
       "level_req": 4,
       "prerequisites": [
@@ -77,7 +77,7 @@
         }
       ],
       "rewards_xp": 250,
-      "rewards_gold": 50,
+      "rewards_gold": 25,
       "npc_id": "eagan_peltskinner",
       "level_req": 2,
       "prerequisites": [
@@ -95,7 +95,7 @@
         }
       ],
       "rewards_xp": 375,
-      "rewards_gold": 75,
+      "rewards_gold": 38,
       "npc_id": "deputy_willem",
       "level_req": 2,
       "prerequisites": [
@@ -113,7 +113,7 @@
         }
       ],
       "rewards_xp": 450,
-      "rewards_gold": 100,
+      "rewards_gold": 50,
       "npc_id": "deputy_willem",
       "level_req": 4,
       "prerequisites": [
@@ -131,7 +131,7 @@
         }
       ],
       "rewards_xp": 350,
-      "rewards_gold": 75,
+      "rewards_gold": 38,
       "npc_id": "milly_osworth",
       "level_req": 4,
       "prerequisites": [

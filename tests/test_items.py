@@ -192,7 +192,7 @@ class DropTest(unittest.TestCase):
         m = next(m for m in world.game_state.monsters if m.level >= 4)
         import game.engine.world as W
         orig = W.roll_drops
-        W.roll_drops = lambda level, rng: ["roast_chicken"]
+        W.roll_drops = lambda *a: ["roast_chicken"]
         try:
             m.take_damage(10 ** 6, source=p.hero)
             world.process_kills()
@@ -220,6 +220,61 @@ class DropTest(unittest.TestCase):
         world.step(DT)
         self.assertIn(g, world.ground_items)
         self.assertEqual(p.inventory.count("sushi_plate"), 0)
+
+
+class LootByCategoryTest(unittest.TestCase):
+    def test_every_monster_has_a_category_and_northshire_is_humanoids_and_beasts(self):
+        from game.content.monsters import SPAWN_STATS
+        self.assertTrue(all(s["category"] in ("humanoid", "beast", "demon") for s in SPAWN_STATS.values()))
+        cats = {k: SPAWN_STATS[k]["category"] for k in
+                ("human_cultist", "kobold_dragonshield", "garrick_padfoot", "grey_wolf", "snake")}
+        self.assertEqual(cats, {"human_cultist": "humanoid", "kobold_dragonshield": "humanoid",
+                                "garrick_padfoot": "humanoid", "grey_wolf": "beast", "snake": "beast"})
+
+    def test_humanoid_money_formula(self):
+        from game.content.monsters import humanoid_money
+        self.assertEqual(humanoid_money(1, FixedUniform(1.0)), 5)          # max(5, 8 - 40) = 5
+        self.assertEqual(humanoid_money(4, FixedUniform(1.0)), 5)
+        self.assertEqual(humanoid_money(10, FixedUniform(1.0)), 40)        # 10 x 8 - 40
+        self.assertEqual(humanoid_money(10, FixedUniform(0.8)), 32)
+        self.assertEqual(humanoid_money(10, FixedUniform(1.2)), 48)
+        rng = random.Random(3)
+        self.assertTrue(all(4 <= humanoid_money(3, rng) <= 6 for _ in range(200)))
+
+    def test_beasts_drop_food_3x_but_not_more_potions(self):
+        rng = FixedRng(0.025)                    # between 1% and 3%
+        self.assertEqual(roll_drops(5, rng, "beast"), ["bread", "drumstick", "roast_chicken", "sushi_plate"])
+        self.assertEqual(roll_drops(5, rng, "humanoid"), [])
+        self.assertEqual(roll_drops(5, rng, "demon"), [])
+        self.assertEqual(roll_drops(5, FixedRng(0.005), "beast")[0], "health_potion")   # still 1%
+
+    def test_only_humanoids_give_money(self):
+        random.seed(4)
+        world, p = create_world(MAP, saves.blank_character("t", "Fighter", level=1))
+        mobs = world.game_state.monsters
+        for category in ("beast", "humanoid"):
+            m = next(m for m in mobs if m.alive and m.category == category)
+            before = p.hero.gold
+            m.take_damage(10 ** 6, source=p.hero)
+            world.process_kills()
+            got = p.hero.gold - before
+            if category == "beast":
+                self.assertEqual(got, 0)
+            else:
+                self.assertTrue(4 <= got <= 6, got)                    # level 1..4 humanoid: 5 x 0.8..1.2
+
+    def test_quest_money_was_halved(self):
+        from game.quests import load_quest_log
+        log = load_quest_log("northshire")
+        self.assertEqual(sorted(q.rewards_gold for q in log.quests.values()), [0, 25, 25, 38, 38, 38, 50, 50])
+
+
+class FixedUniform:
+    def __init__(self, value):
+        self.value = value
+
+    def uniform(self, lo, hi):
+        return self.value
 
 
 class SaveTest(unittest.TestCase):
