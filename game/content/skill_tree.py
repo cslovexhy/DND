@@ -14,8 +14,9 @@ LEVEL_STEP = 2   # a new skill or skill level every this many character levels
 
 # One entry per step: the ability key that gets a new level. The first entry is the starting skill.
 SKILL_SCHEDULE = {
-    #           L1   L2   L4   L6   L8   L10  L12  L14  L16
-    "Fighter": ["Q", "R", "Q", "E", "R", "Q", "E", "R", "E"],
+    # Fighter: Q Strike, R Charge, F Heroic Strike, E Demoralizing Shout, G Cleave (unlocks at L8, after Charge+Shout)
+    #           L1   L2   L4   L6   L8   L10  L12  L14  L16  L18  L20  L22  L24  L26  L28
+    "Fighter": ["Q", "R", "F", "E", "G", "Q", "F", "R", "E", "G", "Q", "F", "R", "E", "G"],
     "Cleric":  ["Q", "R", "Q", "E", "R", "Q", "E", "R", "E"],
     #           L1   L2   L4   L6   L8   L10  L12  L14  L16  L18  L20  L22
     "Paladin": ["Q", "R", "E", "Q", "F", "R", "E", "Q", "F", "R", "E", "F"],
@@ -114,8 +115,11 @@ def _dmg(hero, ab):
 
 
 _DESCRIPTIONS = {
-    "Reaping Strike": lambda h, a: f"Sweeps every enemy within {a.radius:.0f} px for {_dmg(h, a):.0f} damage. "
-                                   f"Use it at will.",
+    "Strike": lambda h, a: f"Melee attack for {_dmg(h, a):.0f} damage. Use it at will.",
+    "Heroic Strike": lambda h, a: f"Your next Strike or Cleave deals +{a.flat_bonus:g} damage to its target and "
+                                  f"makes {a.threat_mult * 100:.0f}% threat. {a.cooldown:g}s cooldown.",
+    "Cleave": lambda h, a: f"Hits your target and the nearest enemies next to you ({a.max_targets} in total) for "
+                           f"{_dmg(h, a):.0f} damage each. {a.cooldown:g}s cooldown.",
     "Charge": lambda h, a: f"Dash to an enemy up to {a.range:.0f} px away: {_dmg(h, a):.0f} damage and a "
                            f"{a.stun_duration:g}s stun. {a.cooldown:g}s cooldown.",
     "Demoralizing Shout": lambda h, a: f"Enemies within {a.radius:.0f} px deal {shout_reduction(a) * 100:.0f}% less "

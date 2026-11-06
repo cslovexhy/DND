@@ -75,6 +75,10 @@ class Ability:
     range_levels: tuple = ()    # optional range per skill level (e.g. Wizard bolts 200 / 230 / 260)
     a_levels: tuple = ()        # optional "a" per skill level
     b_levels: tuple = ()        # optional "b" per skill level
+    # Threat: hate a hit adds = damage dealt x threat_mult (never changes the damage itself)
+    threat_mult: float = 1.0
+    max_targets_levels: tuple = ()   # optional cap on targets hit per skill level (Cleave 2 / 3 / 4)
+    heroic: bool = False        # an attack that the Heroic Strike buff empowers (Fighter Strike, Cleave)
 
     def __post_init__(self):
         self.full_multiplier = self.multiplier
@@ -95,6 +99,13 @@ class Ability:
         self.flat_bonus = self.b_levels[min(i, len(self.b_levels) - 1)] if self.b_levels else self.full_flat_bonus
         if self.range_levels:
             self.range = self.range_levels[min(self.level, len(self.range_levels)) - 1]
+
+    @property
+    def max_targets(self):
+        """Most targets this skill hits at its level (None = no cap)."""
+        if not self.max_targets_levels:
+            return None
+        return self.max_targets_levels[min(self.level, len(self.max_targets_levels)) - 1]
 
     def calc_damage(self, base_damage: float) -> float:
         """Calculate skill damage from hero's base weapon damage."""
@@ -122,6 +133,7 @@ class Projectile:
     radius: float = 6.0        # visual radius
     alive: bool = True
     source: 'Entity' = None    # who fired it (for aggro)
+    threat: float = 1.0        # threat modifier of the skill that fired it
 
     def update(self, dt: float):
         if not self.alive or not self.target or not self.target.alive:
@@ -133,7 +145,7 @@ class Projectile:
         if dist < 15:
             # Hit! Returns (damage_dealt, target) so caller can handle aggro
             self.alive = False
-            dmg = self.target.take_damage(self.damage, source=self.source)
+            dmg = self.target.take_damage(self.damage, source=self.source, threat=self.threat)
             return (dmg, self.target)
         move = min(self.speed * dt, dist)
         self.x += (dx / dist) * move
@@ -270,9 +282,10 @@ class Entity:
 
         self.facing_left = dx < 0
 
-    def take_damage(self, raw_damage: float, ignore_armor: bool = False, source: 'Entity' = None) -> float:
+    def take_damage(self, raw_damage: float, ignore_armor: bool = False, source: 'Entity' = None,
+                    threat: float = 1.0) -> float:
         """Apply damage after armor reduction. Shield absorbs first. Returns actual damage dealt.
-        `source` is who dealt it (only Monster uses it, to build its hate table)."""
+        `source` is who dealt it and `threat` the skill's threat modifier (only Monster uses them: hate table)."""
         if not self.alive:
             return 0
 
@@ -464,8 +477,22 @@ class Hero(Entity):
         ab.use()
         self.swing_timer = self.weapon_speed  # Skill consumes a swing
         skill_damage = ab.calc_damage(self.base_damage)
+        # Heroic Strike: the next empowered attack hits its (first) target harder and with more threat
+        hs = self.buffs.pop("Heroic Strike", None) if ab.heroic else None
 
-        if ab.radius > 0:
+        def hit(t, first):
+            bonus = hs["bonus"] if (hs and first) else 0.0
+            threat = ab.threat_mult * (hs["threat"] if (hs and first) else 1.0)
+            return t.take_damage(skill_damage + bonus, source=self, threat=threat)
+
+        if ab.max_targets:
+            # Capped melee sweep (Cleave): the first target, then the nearest others, all within `radius` of us
+            first = targets[0] if targets else None
+            near = [t for t in targets if t.alive and self.distance_to(t) <= ab.radius]
+            near.sort(key=lambda t: (t is not first, self.distance_to(t)))
+            for i, t in enumerate(near[:ab.max_targets]):
+                hits.append((t.name, hit(t, i == 0)))
+        elif ab.radius > 0:
             # AoE - check all targets in radius
             center_x = target_pos[0] if target_pos else self.x
             center_y = target_pos[1] if target_pos else self.y
@@ -476,15 +503,13 @@ class Hero(Entity):
                 dx = t.x - center_x
                 dy = t.y - center_y
                 if math.sqrt(dx*dx + dy*dy) <= ab.radius:
-                    dmg = t.take_damage(skill_damage, source=self)
-                    hits.append((t.name, dmg))
+                    hits.append((t.name, hit(t, not hits)))
         else:
             # Single target - closest in range
             in_range = [t for t in targets if t.alive and self.distance_to(t) <= ab.range]
             if in_range:
                 target = min(in_range, key=lambda t: self.distance_to(t))
-                dmg = target.take_damage(skill_damage, source=self)
-                hits.append((target.name, dmg))
+                hits.append((target.name, hit(target, True)))
 
         return hits
 
@@ -555,11 +580,12 @@ class Monster(Entity):
         listed = [c for c in candidates if c in self.hate]
         return max(listed, key=lambda c: self.hate[c], default=None)
 
-    def take_damage(self, raw_damage: float, ignore_armor: bool = False, source: 'Entity' = None) -> float:
+    def take_damage(self, raw_damage: float, ignore_armor: bool = False, source: 'Entity' = None,
+                    threat: float = 1.0) -> float:
         bonus = getattr(source, "damage_bonus", 1.0)     # a hero's food buff
         dealt = super().take_damage(raw_damage * bonus, ignore_armor, source)
         if source is not None and dealt > 0:
-            self.add_hate(source, dealt)
+            self.add_hate(source, dealt * threat)        # threat modifier: more hate, same damage
         return dealt
 
 

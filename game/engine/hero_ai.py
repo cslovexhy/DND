@@ -288,7 +288,7 @@ class FighterAI(HeroAI):
     Fighter AI strategy:
     - Charge into ranged enemies or distant packs
     - Demoralizing Shout first whenever an enemy in its radius is not Demoralized
-    - Use Reaping Strike as bread-and-butter
+    - Heroic Strike then Strike as bread-and-butter; Cleave with 2+ enemies in melee
     - Stay in melee range of target
     - Pop potion below 40% HP
     """
@@ -372,20 +372,29 @@ class FighterAI(HeroAI):
                 )
             return action
 
-        # 4. Reaping Strike (Q) if in melee range and 2+ enemies nearby and LOS
         ab_q = self.hero.abilities.get("Q")
-        if ab_q and ab_q.is_ready() and dist <= ab_q.range and enemies_in_melee >= 2 and self.has_los(self.target):
-            action["use_ability"] = "Q"
-            action["ability_target_pos"] = (self.hero.x, self.hero.y)
+        in_melee = ab_q is not None and dist <= ab_q.range and self.has_los(self.target)
+
+        # 4. Heroic Strike (F) in melee: empowers the next Strike / Cleave (instant, no swing used)
+        ab_f = self.hero.abilities.get("F")
+        if ab_f and ab_f.is_ready() and in_melee and "Heroic Strike" not in self.hero.buffs:
+            action["use_ability"] = "F"
             return action
 
-        # 5. Reaping Strike on single target in range and LOS
-        if ab_q and ab_q.is_ready() and dist <= ab_q.range and self.has_los(self.target):
-            action["use_ability"] = "Q"
-            action["ability_target_pos"] = (self.hero.x, self.hero.y)
+        # 5. Cleave (G) when 2+ enemies are in melee
+        ab_g = self.hero.abilities.get("G")
+        if ab_g and ab_g.is_ready() and in_melee and enemies_in_melee >= 2:
+            action["use_ability"] = "G"
+            action["ability_target_monster"] = self.target
             return action
 
-        # 6. Move toward target (to get in range or get LOS)
+        # 6. Strike (Q): the basic attack
+        if ab_q and ab_q.is_ready() and in_melee:
+            action["use_ability"] = "Q"
+            action["ability_target_monster"] = self.target
+            return action
+
+        # 7. Move toward target (to get in range or get LOS)
         action["move_to"] = self.melee_move_to(alive, self.target.x, self.target.y)
 
         return action

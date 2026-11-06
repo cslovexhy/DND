@@ -61,9 +61,9 @@ class PowerTest(unittest.TestCase):
             charge.set_level(level)
             got.append(round(charge.calc_damage(100.0), 6))
         self.assertEqual(got, [133.0, 146.0, 159.0])            # a 1.3/1.4/1.5, b 3/6/9
-        reap = full.hero.abilities["Q"]
-        reap.set_level(1)
-        self.assertAlmostEqual(reap.calc_damage(100.0), 81.0)   # AoE: a 0.8 (all levels), b 1
+        cleave = full.hero.abilities["G"]
+        cleave.set_level(1)
+        self.assertAlmostEqual(cleave.calc_damage(100.0), 81.0)  # multi-target: a 0.8 (all levels), b 1
 
     def test_multi_target_a_below_1_single_target_at_least_1(self):
         from game.content.heroes import HERO_CLASSES
@@ -168,8 +168,8 @@ class LevelUpTest(unittest.TestCase):
             got += [(e.hero_level, e.key, e.skill_level, e.is_new) for e in world.events if isinstance(e, E.SkillUp)]
             world.events.clear()
             self.assertEqual(player.hero.level, target)
-        # Fighter: R1 (L2), Q2 (L4), E1 (L6), R2 (L8)
-        self.assertEqual(got, [(2, "R", 1, True), (4, "Q", 2, False), (6, "E", 1, True), (8, "R", 2, False)])
+        # Fighter: Charge (L2), Heroic Strike (L4), Demoralizing Shout (L6), Cleave (L8)
+        self.assertEqual(got, [(2, "R", 1, True), (4, "F", 1, True), (6, "E", 1, True), (8, "G", 1, True)])
 
     def test_event_text_and_serialization(self):
         world, player = hero_at("Cleric", 1)

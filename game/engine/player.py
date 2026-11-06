@@ -26,6 +26,7 @@ from game.engine.world_map import TILE_SIZE
 
 from game.content.skill_tree import (wall_shield, renew_total, seal_bonus, holy_light_heal, shout_reduction,
                                      smite_damage)
+HEROIC_STRIKE_WINDOW = 10.0   # seconds a Heroic Strike buff waits for the next Strike / Cleave
 from game.engine.hero_ai import SUPPORT_RANGE   # px: how far away an ally can be for Wall / Renew / Holy Light
 
 
@@ -372,7 +373,7 @@ class PlayerState:
             hero.last_crit = random.random() < hero.crit_chance
             if hero.last_crit:
                 dmg_amount *= hero.crit_multiplier
-            dmg = clicked_monster.take_damage(dmg_amount, source=hero)
+            dmg = clicked_monster.take_damage(dmg_amount, source=hero, threat=ab.threat_mult)
             color = (255, 255, 50) if hero.last_crit else (180, 255, 180)
             text = f"{dmg:.0f}!" if hero.last_crit else f"{dmg:.0f}"
             self.world.float_text(clicked_monster.x, clicked_monster.y - 20, text, color)
@@ -424,7 +425,7 @@ class PlayerState:
             self._bind_right("R")
             # Damage: 5x weapon (no %-of-max-HP bonus: it made boss HP meaningless)
             dmg_amount = ab.calc_damage(hero.base_damage)
-            dmg = clicked_monster.take_damage(dmg_amount, source=hero)
+            dmg = clicked_monster.take_damage(dmg_amount, source=hero, threat=ab.threat_mult)
             self.world.float_text(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", (255, 50, 50))
             self.world.float_text(clicked_monster.x, clicked_monster.y - 40, "AMBUSH!", (255, 50, 50))
             self.world.events.append(Ring(clicked_monster.x, clicked_monster.y, 40, (255, 50, 50)))
@@ -462,7 +463,7 @@ class PlayerState:
             hit_count = 0
             for m in gs.alive_monsters:
                 if hero.distance_to(m) <= ab.radius:
-                    dmg = m.take_damage(dmg_amount, source=hero)
+                    dmg = m.take_damage(dmg_amount, source=hero, threat=ab.threat_mult)
                     frozen = m.apply_condition(Condition.FROZEN, 4.0)
                     self.world.float_text(m.x, m.y - 20, f"{dmg:.0f}", (180, 220, 255))
                     self.world.float_text(m.x, m.y - 35, "FROZEN" if frozen else "IMMUNE", (150, 220, 255))
@@ -552,6 +553,38 @@ class PlayerState:
             self.move_path = []
             return
 
+        # === Fighter: Heroic Strike (self-buff: the next Strike / Cleave hit gets +b damage and more threat) ===
+        if ab.name == "Heroic Strike":
+            ab.use()
+            hero.buffs["Heroic Strike"] = {"remaining": HEROIC_STRIKE_WINDOW, "bonus": ab.flat_bonus,
+                                           "threat": ab.threat_mult}
+            self.world.float_text(hero.x, hero.y - 30, "Heroic Strike!", (255, 160, 80))
+            hero.gcd = hero.GCD_DURATION
+            return
+
+        # === Fighter: Cleave (target + nearest adjacent enemies, capped by skill level) ===
+        if ab.max_targets:
+            target = clicked_monster
+            if target is None:
+                near = [m for m in gs.alive_monsters if hero.distance_to(m) <= ab.radius
+                        and not getattr(m, "stealthed", False)]
+                target = min(near, key=hero.distance_to) if near else None
+            if target is None:
+                self.world.float_text(hero.x, hero.y - 30, "No target!", (255, 150, 100))
+                return
+            if hero.distance_to(target) > ab.range:
+                self.pending_cast = (ab_key, ab, target); self.selected_target = target
+                return
+            others = [m for m in gs.alive_monsters if m is not target and not getattr(m, "stealthed", False)]
+            hits = hero.use_ability(ab_key, [target] + others)
+            if hits:
+                self.world.events.append(Ring(hero.x, hero.y, ab.radius, ab.color))
+                self.world.float_text(target.x, target.y - 20, " ".join(f"{d:.0f}" for _, d in hits), GOLD)
+                call_for_help(target, gs.monsters, hero)
+                hero.gcd = hero.GCD_DURATION
+                self.move_path = []
+            return
+
         # === Quinn special: Righteous Seal (self-buff, no target needed) ===
         if ab.name == "Righteous Seal":
             ab.use()
@@ -609,7 +642,7 @@ class PlayerState:
             hero.swing_timer = hero.weapon_speed
             sealed = "Righteous Seal" in hero.buffs
             skill_dmg = smite_damage(hero, ab)     # (a + Seal bonus) x weapon + b
-            dmg = clicked_monster.take_damage(skill_dmg, source=hero)
+            dmg = clicked_monster.take_damage(skill_dmg, source=hero, threat=ab.threat_mult)
             color = (255, 230, 100) if sealed else (255, 255, 255)
             self.world.float_text(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", color)
             call_for_help(clicked_monster, gs.monsters, hero)
@@ -706,7 +739,7 @@ class PlayerState:
                     proj_damage = frostbolt.calc_damage(hero.base_damage)   # 100% weapon at skill level 3
                     proj = Projectile(x=hero.x, y=hero.y, target=self.frostbolt_target,
                                       speed=500.0, damage=proj_damage,
-                                      color=(150, 200, 255), source=hero)
+                                      color=(150, 200, 255), source=hero, threat=frostbolt.threat_mult)
                     proj.apply_slow = True  # Flag for slow on hit
                     self.world.projectiles.append(proj)
                 else:
@@ -754,7 +787,9 @@ class PlayerState:
                 if not self.world.is_wall(wx, wy):
                     hero.x, hero.y = wx, wy
                 if self.dash_stun_target and self.dash_stun_target.alive:
-                    dmg = self.dash_stun_target.take_damage(self.dash_damage, source=hero)
+                    charge = next((x for x in hero.abilities.values() if x.is_dash), None)
+                    dmg = self.dash_stun_target.take_damage(self.dash_damage, source=hero,
+                                                            threat=charge.threat_mult if charge else 1.0)
                     self.world.float_text(self.dash_stun_target.x, self.dash_stun_target.y-20, f"{dmg:.0f}", (255, 200, 50))
                     if self.dash_stun_duration > 0 and self.dash_stun_target.alive:
                         stunned = self.dash_stun_target.apply_condition(Condition.STUNNED, self.dash_stun_duration)

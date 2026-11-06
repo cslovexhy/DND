@@ -27,10 +27,10 @@ def create_fighter(name: str, x: float, y: float) -> Hero:
     h.base_damage = 10   # level-1 weapon damage; + per level in progression.GROWTH_RATES
     h.weapon_speed = 1.6  # 1.6s between swings
     h.attack_range = 60
-    # Skills (damage = base_damage * multiplier + flat)
-    h.add_ability("Q", Ability("Reaping Strike", cooldown=0, a_levels=(0.8,), b_levels=(1, 2, 3),
-                               radius=70, range=70,
-                               effect="Melee sweep hitting all adjacent enemies (80% weapon dmg + 1/2/3)",
+    # Skills (damage = a x weapon damage + b)
+    h.add_ability("Q", Ability("Strike", cooldown=0, a_levels=(1.0,), b_levels=(1, 2, 3),
+                               radius=0, range=70, heroic=True,
+                               effect="Basic melee attack (100% weapon dmg + 1/2/3).",
                                power_type="at_will", color=FIGHTER_COLOR))
     h.add_ability("R", Ability("Charge", cooldown=8.0, a_levels=(1.3, 1.4, 1.5), b_levels=(3, 6, 9),
                                radius=0, range=250,
@@ -41,6 +41,16 @@ def create_fighter(name: str, x: float, y: float) -> Hero:
                                radius=120, range=0,
                                effect="Reduces nearby enemies damage by 10/20/30% (skill level 1/2/3) for 10s, slows 3s",
                                power_type="encounter", color=(200, 150, 50)))
+    # Heroic Strike: no damage of its own; a buff that empowers the next Strike / Cleave hit
+    h.add_ability("F", Ability("Heroic Strike", cooldown=4.0, multiplier=0, b_levels=(2, 4, 6), threat_mult=1.5,
+                               radius=0, range=0,
+                               effect="Next Strike or Cleave: +2/4/6 dmg and 150% threat on that target.",
+                               power_type="encounter", color=(255, 120, 60)))
+    h.add_ability("G", Ability("Cleave", cooldown=6.0, a_levels=(0.8,), b_levels=(1, 2, 3),
+                               max_targets_levels=(2, 3, 4), radius=70, range=70, heroic=True,
+                               effect="Hits the target and the nearest enemies next to you, 2/3/4 in total "
+                                      "(80% weapon dmg + 1/2/3).",
+                               power_type="encounter", color=(220, 220, 255)))
     return h
 
 

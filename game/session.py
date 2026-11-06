@@ -789,6 +789,7 @@ while running:
             if event.key == pygame.K_2: right_skill_idx = 1 if len(ability_keys) > 1 else right_skill_idx
             if event.key == pygame.K_3: right_skill_idx = 2 if len(ability_keys) > 2 else right_skill_idx
             if event.key == pygame.K_4: right_skill_idx = 3 if len(ability_keys) > 3 else right_skill_idx
+            if event.key == pygame.K_5: right_skill_idx = 4 if len(ability_keys) > 4 else right_skill_idx
             # Shift+1,2,3 = switch left-click skill
             mods = key_mods()
             if mods & pygame.KMOD_CTRL:

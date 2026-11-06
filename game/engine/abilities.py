@@ -28,7 +28,7 @@ def fire_blast(world, caster, target, ab):
     """Fire Blast: instant ranged nuke. Returns damage dealt."""
     ab.use()
     dmg_amount = ab.calc_damage(caster.base_damage)
-    dmg = target.take_damage(dmg_amount, source=caster)
+    dmg = target.take_damage(dmg_amount, source=caster, threat=ab.threat_mult)
     world.float_text(target.x, target.y - 20, f"{dmg:.0f}", (255, 130, 50))
     world.events.append(Ring(target.x, target.y, 30, (255, 100, 0)))
     _aggro_and_call_for_help(world, caster, target)
@@ -42,7 +42,7 @@ def ranged_projectile(world, caster, target, ab, color, apply_slow=False):
     proj_damage = ab.calc_damage(caster.base_damage)
     proj = Projectile(x=caster.x, y=caster.y, target=target,
                       speed=500.0, damage=proj_damage,
-                      color=color, source=caster)
+                      color=color, source=caster, threat=ab.threat_mult)
     if apply_slow:
         proj.apply_slow = True
     world.projectiles.append(proj)
@@ -57,7 +57,7 @@ def judgement(world, caster, target, ab):
         total_damage += judgement_seal_bonus(caster, ab)    # one weapon hit at skill level 3
         del caster.buffs["Righteous Seal"]
         world.float_text(target.x, target.y - 40, "Seal Consumed!", (255, 200, 50))
-    dmg = target.take_damage(total_damage, source=caster)
+    dmg = target.take_damage(total_damage, source=caster, threat=ab.threat_mult)
     world.float_text(target.x, target.y - 20, f"{dmg:.0f}", (255, 255, 150))
     _aggro_and_call_for_help(world, caster, target)
     return dmg
@@ -78,7 +78,7 @@ def stab(world, caster, target, ab):
     if random.random() < getattr(caster, 'crit_chance', 0.05):
         dmg_amount *= 2.0
         world.float_text(target.x, target.y - 40, "CRIT!", (255, 255, 0))
-    dmg = target.take_damage(dmg_amount, source=caster)
+    dmg = target.take_damage(dmg_amount, source=caster, threat=ab.threat_mult)
     world.float_text(target.x, target.y - 20, f"{dmg:.0f}", (180, 255, 180))
     _aggro_and_call_for_help(world, caster, target)
     return dmg
@@ -89,7 +89,7 @@ def smite(world, caster, target, ab):
     ab.use()
     caster.swing_timer = caster.weapon_speed
     dmg_amount = smite_damage(caster, ab)     # (a + Seal bonus) x weapon + b
-    dmg = target.take_damage(dmg_amount, source=caster)
+    dmg = target.take_damage(dmg_amount, source=caster, threat=ab.threat_mult)
     world.float_text(target.x, target.y - 20, f"{dmg:.0f}", (255, 255, 255))
     _aggro_and_call_for_help(world, caster, target)
     return dmg
