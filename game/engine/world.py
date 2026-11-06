@@ -25,6 +25,7 @@ from game.content.skill_tree import apply_skill_levels, describe
 from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_multiplier, scaled_xp
 from game.engine.entities import POISON_DPS
 from game.content.items import roll_drops
+from game.content import money
 
 
 @dataclass
@@ -307,10 +308,11 @@ class World:
             q = quests.turn_in(qid)
             hero.xp += q.rewards_xp
             hero.gold += q.rewards_gold
-            self.float_text(hero.x, hero.y - 40, f"+{q.rewards_xp}xp +{q.rewards_gold}g", GOLD)
+            self.float_text(hero.x, hero.y - 40, f"+{q.rewards_xp}xp +{money.format_short(q.rewards_gold)}", GOLD)
             self.events.append(NpcDialogue(
                 quest_info(q), "turnin", npc.name,
-                f"Well done! {q.title} complete. Here's your reward: {q.rewards_xp} experience and {q.rewards_gold} gold.",
+                f"Well done! {q.title} complete. Here's your reward: {q.rewards_xp} experience and "
+                f"{money.format_long(q.rewards_gold)}.",
                 voice, pid))
             interacted = True
 

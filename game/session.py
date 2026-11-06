@@ -41,6 +41,7 @@ from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, Ambus
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
                                   UseItem, PickUp)
 from game.content.items import ITEMS, describe as describe_item
+from game.content import money
 from game.engine.inventory import ROWS as BAG_ROWS, COLS as BAG_COLS
 from game.engine import abilities
 from game.engine.events import FloatText, Ring, LevelUp, SkillUp, QuestReady, BindRightSkill, NpcDialogue
@@ -446,7 +447,7 @@ class QuestPopupPanel:
         if self.quest.rewards_xp > 0:
             reward_parts.append(f"+{self.quest.rewards_xp} XP")
         if self.quest.rewards_gold > 0:
-            reward_parts.append(f"+{self.quest.rewards_gold} Gold")
+            reward_parts.append(f"+{money.format_long(self.quest.rewards_gold)}")
         if reward_parts:
             rew_surf = font.render("  " + "   ".join(reward_parts), True, (255, 255, 100))
             panel_surf.blit(rew_surf, (self.padding, y))
@@ -559,11 +560,12 @@ class Backpack:
     GAP = 4
     PAD = 12
     TITLE = 26
+    MONEY = 30      # money row under the slots
 
     @classmethod
     def rect(cls):
         w = cls.PAD * 2 + BAG_COLS * cls.SLOT + (BAG_COLS - 1) * cls.GAP
-        h = cls.PAD * 2 + cls.TITLE + BAG_ROWS * cls.SLOT + (BAG_ROWS - 1) * cls.GAP
+        h = cls.PAD * 2 + cls.TITLE + BAG_ROWS * cls.SLOT + (BAG_ROWS - 1) * cls.GAP + cls.MONEY
         return pygame.Rect(WIDTH // 2 - w // 2, HEIGHT - 70 - h, w, h)
 
     @classmethod
@@ -585,8 +587,27 @@ class Backpack:
             return None
         return int(row * BAG_COLS + col)
 
+    COIN_COLORS = {"gold": ((255, 205, 40), (160, 110, 10)), "silver": ((205, 210, 220), (115, 120, 130)),
+                   "bronze": ((195, 115, 55), (105, 55, 20))}
+
     @classmethod
-    def draw(cls, screen, inventory):
+    def draw_money(cls, surf, right_x, cy, bronze):
+        """Money as 'N (coin)' groups, right-aligned at right_x: gold / silver / bronze coins drawn as circles."""
+        r = 7
+        x = right_x
+        for n, coin in reversed(money.parts(bronze)):
+            fill, edge = cls.COIN_COLORS[coin]
+            x -= r * 2
+            pygame.draw.circle(surf, fill, (x + r, cy), r)
+            pygame.draw.circle(surf, edge, (x + r, cy), r, 2)
+            pygame.draw.circle(surf, (255, 255, 255), (x + r - 2, cy - 3), 2)        # shine
+            t = big_font.render(str(n), True, WHITE)
+            x -= t.get_width() + 4
+            surf.blit(t, (x, cy - t.get_height() // 2 + 1))
+            x -= 12
+
+    @classmethod
+    def draw(cls, screen, inventory, bronze=0):
         r = cls.rect()
         panel = pygame.Surface(r.size, pygame.SRCALPHA)
         panel.fill((20, 20, 30, 235))
@@ -608,6 +629,7 @@ class Backpack:
                 nx, ny = sx + cls.SLOT - n.get_width() - 3, sy + cls.SLOT - n.get_height() - 1
                 panel.blit(shadow, (nx + 1, ny + 1))
                 panel.blit(n, (nx, ny))
+        cls.draw_money(panel, r.w - cls.PAD, r.h - cls.PAD - cls.MONEY // 2 + 4, bronze)
         screen.blit(panel, r.topleft)
         # tooltip for the hovered item
         mx, my = pygame.mouse.get_pos()
@@ -1223,12 +1245,11 @@ while running:
     pygame.draw.rect(screen, (80, 80, 200), (WIDTH//2 + 20, bar_y, 160, 30), 2, 4)
     screen.blit(font.render(f"R: {right_ab.name} Lv{right_ab.level}/{right_ab.max_level}", True, WHITE), (WIDTH//2 + 25, bar_y + 8))
 
-    screen.blit(font.render(f"Kills: {hero.kills}  Gold: {hero.gold}", True, GOLD), (WIDTH-160, 20))
-    screen.blit(font.render(MAP_TITLE, True, BLUE), (WIDTH-160, 40))
+    screen.blit(font.render(MAP_TITLE, True, BLUE), (WIDTH-160, 20))
     if _host_server is not None:
         where = f"Hosting on LAN {NET_ADDRESS}" if NET_LAN else "Hosting (this computer only)"
         screen.blit(font.render(f"{where} · {len(view.allies) + 1}/{_host_server.max_players}", True, BLUE),
-                    (WIDTH-260, 58))
+                    (WIDTH-260, 38))
 
     # Quest HUD (top center)
     quest_hud_y = 10
@@ -1268,7 +1289,7 @@ while running:
 
     # Backpack (B)
     if backpack_open:
-        Backpack.draw(screen, view.you.inventory)
+        Backpack.draw(screen, view.you.inventory, hero.gold)
 
     # Skill unlocked / upgraded popup (first in the queue)
     if skill_popups:
