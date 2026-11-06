@@ -3,9 +3,11 @@ Wrath of Ashardalon — ARPG
 Flow: character select -> map select -> game. ESC steps back one level (game -> character
 select, map select -> character select, character select -> quit).
 Controls (WoW-style):
-  Right-click = Move to location
-  Left-click = Select target / Cast ability at location
-  1, 2, 3 = Abilities
+  W A S D = Walk; left-click the ground also walks there
+  Left-click = Target an enemy or a friend    Tab = Next nearest enemy    Esc = Clear target
+  Right-click = Attack an enemy / talk to an NPC / walk to the ground
+  1..5 = Hotbar skills (on your target, your targeted friend / yourself, or around you)
+  P = Autopilot on/off
   F = Health potion
   B = Backpack (right-click an item to use it; click a dropped item to pick it up)
   ESC = Back to character select (progress is saved)

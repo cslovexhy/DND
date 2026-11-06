@@ -252,9 +252,9 @@ class CompanionTest(unittest.TestCase):
         self.assertLess(comp.distance_to(player.hero), 120)
 
 
-class RightClickOnAllyTest(unittest.TestCase):
-    def test_right_click_on_companion_sends_ally_and_heals_it(self):
-        """Real input path: headless pygame client, Cleric, Renew on the right-click slot, right-click the companion."""
+class TargetAllyTest(unittest.TestCase):
+    def test_target_companion_then_hotbar_renew_heals_it(self):
+        """Real input path: headless pygame client, Cleric: left-click the companion (target), press 3 (Renew)."""
         import json
         import os
         import subprocess
@@ -266,9 +266,9 @@ class RightClickOnAllyTest(unittest.TestCase):
             script = os.path.join(d, "s.json")
             rec = os.path.join(d, "rec.json")
             with open(script, "w") as f:
-                json.dump([{"tick": 0, "type": "key", "key": "TAB"},          # autopilot off
-                           {"tick": 2, "type": "key", "key": "3"},            # right-click skill = Renew
-                           {"tick": 5, "type": "click", "button": 3, "at": "nearest_ally"}], f)
+                json.dump([{"tick": 0, "type": "key", "key": "p"},            # autopilot off
+                           {"tick": 2, "type": "click", "button": 1, "at": "nearest_ally"},   # target the friend
+                           {"tick": 6, "type": "key", "key": "3"}], f)          # hotbar 3 = Renew
             p = subprocess.run([sys.executable, "-m", "game.main", "--headless", "--seed", "3", "--max-time", "1",
                                 "--hero", "1", "--level", "30", "--map", MAP, "--input-script", script, "--record-commands", rec],
                                cwd=root, capture_output=True, text=True, timeout=60)
@@ -282,7 +282,7 @@ class RightClickOnAllyTest(unittest.TestCase):
         random.seed(data["seed"])
         world, _ = create_world(MAP, saves.blank_character("cleric", "Cleric", level=30), autopilot=True, auto_companion=True)
         by_tick = {c["tick"]: c for c in data["commands"]}
-        for tick in range(10):
+        for tick in range(14):
             if tick in by_tick:
                 world.submit(C.from_dict(by_tick[tick]["cmd"]), 0)
             world.step(DT)

@@ -14,7 +14,7 @@ from game.engine.ai import aggro_monster, call_for_help, drop_from_hate, AggroSt
 from game.engine.entities import Condition, Projectile
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
-                                  UseItem, PickUp)
+                                  UseItem, PickUp, SetTarget, MoveDir)
 from game.engine.inventory import Inventory
 from game.content.items import ITEMS, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT
 from game.engine.events import Ring, BindRightSkill, GOLD
@@ -58,6 +58,8 @@ class PlayerState:
         self.inventory = Inventory.from_state(inventory)
         self.potion_cooldown = 0.0       # seconds until the next Health Potion
         self.pickup_target = None        # ground item id we're walking to (PickUp)
+        self.target = None               # WoW-style target (enemy or friendly hero) that hotbar skills use
+        self.move_dir = (0, 0)           # WASD direction being held
         # Client choices that affect auto-attack (sent as BindLeftSkill / HoldPosition commands)
         self.left_ab_key = next(iter(hero.abilities), None)
         self.hold_position = False
@@ -133,6 +135,19 @@ class PlayerState:
             hero.buffs[FOOD_BUFF] = {"remaining": info["buff_duration"], "item": item, **info["buff"]}
             hero.refresh_max_hp()
         self.world.float_text(hero.x, hero.y - 30, f"{info['name']}!", (255, 220, 140))
+
+    def set_target(self, eid):
+        """Target an enemy (visible, alive) or a friendly hero; anything else (None) clears the target.
+        While auto-attacking, a newly targeted enemy is attacked instead."""
+        e = self.world.entity(eid) if eid is not None else None
+        if e is not None and e in self.world.game_state.monsters:
+            if not e.alive or getattr(e, "stealthed", False):
+                e = None
+            elif self.selected_target is not None:
+                self.selected_target = e
+        elif e is not None and not (e.alive and e in self.world.game_state.heroes):
+            e = None
+        self.target = e
 
     def _try_pickup(self):
         """Walking to a ground item: take it once in reach (stop if it is gone or the backpack is full)."""
@@ -239,6 +254,19 @@ class PlayerState:
             self.ambush_target = None
             self.pending_cast = None
             self.pickup_target = None
+        elif isinstance(cmd, SetTarget):
+            self.set_target(cmd.target_id)
+        elif isinstance(cmd, MoveDir):
+            d = (max(-1, min(1, int(cmd.dx))), max(-1, min(1, int(cmd.dy))))
+            self.move_dir = d
+            if d != (0, 0):
+                # walking by keyboard replaces click-to-move / walk-to-target / walk-to-cast
+                if self.frostbolt_channeling:
+                    self._stop_channel()
+                self.move_path = []
+                self.pickup_target = None
+                self.pending_cast = None
+                self.ambush_target = None
         elif isinstance(cmd, UseItem):
             if not self.is_companion:
                 self.use_item(cmd.slot)
@@ -260,6 +288,7 @@ class PlayerState:
             if m is None:
                 return
             self.pickup_target = None
+            self.target = m
             # Click enemy = select + walk to attack range. LOS check — can't target what you can't see
             if not world.check_los(hero.x, hero.y, m.x, m.y):
                 world.float_text(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100))
@@ -726,6 +755,9 @@ class PlayerState:
         hero = self.hero
         gs = self.world.game_state
         self.potion_cooldown = max(0.0, self.potion_cooldown - dt)
+        t = self.target
+        if t is not None and (not t.alive or getattr(t, "stealthed", False)):
+            self.target = None               # the target died or vanished
         if self.pickup_target is not None:
             self._try_pickup()
         # Frostbolt channel completion
@@ -753,6 +785,17 @@ class PlayerState:
                 self.selected_target = None
                 # Remove immobilize early
                 hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
+
+        # WASD: walk in the held direction (slides along walls), like the path walk below
+        if self.move_dir != (0, 0) and not self.dash_active and not (
+                hero.has_condition(Condition.IMMOBILIZED) or hero.has_condition(Condition.STUNNED)
+                or hero.has_condition(Condition.FROZEN)):
+            dx, dy = self.move_dir
+            norm = math.hypot(dx, dy)
+            spd = hero.base_speed * dt * (0.6 if hero.stealthed else 1.0)
+            self._step_toward(hero.x + dx / norm * 100, hero.y + dy / norm * 100, 100, spd)
+            if dx:
+                hero.facing_left = dx < 0
 
         # Smooth movement along path
         if self.move_path and not self.dash_active and not hero.has_condition(Condition.IMMOBILIZED):
@@ -995,7 +1038,7 @@ class PlayerState:
                     ab = hero.abilities[ab_key]
                     if ab.is_ready() and hero.gcd <= 0 and hero.swing_timer <= 0:
                         self.cast_ability(ab_key, ab, self.selected_target.x, self.selected_target.y, self.selected_target)
-                elif not hold_position:
-                    # Out of range and shift NOT held — pathfind toward target
+                elif not hold_position and self.move_dir == (0, 0):
+                    # Out of range (and not steering with WASD / holding Shift) — pathfind toward target
                     if not self.move_path:
                         self.move_path = self._path(hero.x, hero.y, self.selected_target.x, self.selected_target.y)

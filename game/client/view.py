@@ -119,6 +119,7 @@ class ClientView:
         you["abilities"] = {a["key"]: AbilityView(a) for a in you["abilities"]}
         you["ability_keys"] = list(you["abilities"])
         you["selected_target"] = self.entities.get(you["selected_target_id"])
+        you["target"] = self.entities.get(you.get("target_id"))
         q = you["quests"]
         you["quests"] = SimpleNamespace(active=[SimpleNamespace(**a) for a in q["active"]],
                                         any_available=q["any_available"], has_quests=q["has_quests"])

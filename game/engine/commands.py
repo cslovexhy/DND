@@ -19,8 +19,22 @@ class MoveTo:
 
 @dataclass
 class SelectTarget:
-    """Select an enemy: walk into range and auto-attack. Needs line of sight."""
+    """Attack an enemy (right-click it): target it, walk into range and auto-attack. Needs line of sight."""
     target_id: int
+
+
+@dataclass
+class SetTarget:
+    """Target an enemy or a friendly hero without moving (left-click, Tab); None clears the target (Esc).
+    Hotbar skills go to the target. While auto-attacking, a newly targeted enemy becomes the one attacked."""
+    target_id: Optional[int] = None
+
+
+@dataclass
+class MoveDir:
+    """WASD: walk in this direction (each of dx, dy is -1, 0 or 1) until a new MoveDir; (0, 0) stops."""
+    dx: int = 0
+    dy: int = 0
 
 
 @dataclass
@@ -98,7 +112,7 @@ class HoldPosition:
 # --- (de)serialization: commands are plain data, so they can be logged and sent over a wire ---
 _BY_NAME = {cls.__name__: cls for cls in (
     MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion, ToggleAutopilot, ToggleCompanion,
-    CancelChannel, BindLeftSkill, HoldPosition, UseItem, PickUp)}
+    CancelChannel, BindLeftSkill, HoldPosition, UseItem, PickUp, SetTarget, MoveDir)}
 
 
 def to_dict(cmd):

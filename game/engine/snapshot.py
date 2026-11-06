@@ -96,11 +96,12 @@ def make_snapshot(world, player_id=0):
         "food": _food(hero),
         "ai_enabled": player.ai_enabled,
         "selected_target_id": player.selected_target.eid if player.selected_target is not None else None,
+        "target_id": player.target.eid if player.target is not None else None,   # hotbar skills go here
         "move_path": [list(wp) for wp in player.move_path[:8]],
         "frostbolt_channeling": player.frostbolt_channeling,
         "frostbolt_channel_timer": player.frostbolt_channel_timer,
         "abilities": [{"key": k, "name": a.name, "remaining": a.remaining, "ready": a.is_ready(),
-                       "level": a.level, "max_level": a.max_level, "range": a.range}
+                       "level": a.level, "max_level": a.max_level, "range": a.range, "cooldown": a.cooldown}
                       for k, a in hero.abilities.items()],
         "player_id": player.player_id,
         "quests": _quests(player),

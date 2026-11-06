@@ -327,7 +327,7 @@ class RealInputTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             script, rec = os.path.join(d, "s.json"), os.path.join(d, "rec.json")
             with open(script, "w") as f:
-                json.dump([{"tick": 0, "type": "key", "key": "TAB"},           # autopilot off
+                json.dump([{"tick": 0, "type": "key", "key": "p"},           # autopilot off
                            {"tick": 2, "type": "key", "key": "b"},             # open the backpack
                            {"tick": 4, "type": "click", "button": 3, "at": {"backpack_slot": 0}},
                            {"tick": 6, "type": "click", "button": 1, "at": {"backpack_slot": 5}},   # left: nothing
@@ -339,4 +339,4 @@ class RealInputTest(unittest.TestCase):
             self.assertEqual(p.returncode, 0, p.stderr[-1500:])
             cmds = [c["cmd"] for c in replay.load_recording(rec)["commands"]]
         self.assertIn({"type": "UseItem", "slot": 0}, cmds)
-        self.assertFalse([c for c in cmds if c["type"] in ("MoveTo", "SelectTarget", "Cast")])   # panel ate clicks
+        self.assertFalse([c for c in cmds if c["type"] in ("MoveTo", "SelectTarget", "Cast", "SetTarget")])   # panel ate clicks

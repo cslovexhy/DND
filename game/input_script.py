@@ -2,7 +2,8 @@
 
 A script is a JSON list of events keyed by simulation tick (one tick = one headless loop iteration):
 
-  {"tick": 5,  "type": "key",   "key": "TAB"}                      # pygame.K_TAB (toggle autopilot)
+  {"tick": 5,  "type": "key",   "key": "p"}                        # pygame.K_p (toggle autopilot)
+  {"tick": 6,  "type": "key",   "key": "w", "hold": 30}            # hold W for 30 ticks (KEYDOWN, then KEYUP)
   {"tick": 6,  "type": "mods",  "mods": ["shift"]}                 # held modifier keys from now on
   {"tick": 10, "type": "click", "button": 1, "at": "nearest_monster"}
   {"tick": 20, "type": "click", "button": 3, "at": {"dx": 100, "dy": 0}}   # offset from the hero (world px)
@@ -61,7 +62,13 @@ class InputScript:
                 for m in e["mods"]:
                     self.mods |= {"shift": pygame.KMOD_SHIFT, "ctrl": pygame.KMOD_CTRL}[m]
             elif kind == "key":
-                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=getattr(pygame, "K_" + e["key"])))
+                key = getattr(pygame, "K_" + e["key"])
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=key))
+                if e.get("hold"):
+                    self.events.append({"tick": tick + e["hold"], "type": "keyup", "key": e["key"]})
+                    self.events.sort(key=lambda ev: ev["tick"])
+            elif kind == "keyup":
+                pygame.event.post(pygame.event.Event(pygame.KEYUP, key=getattr(pygame, "K_" + e["key"])))
             elif kind == "click":
                 if isinstance(e["at"], dict) and "backpack_slot" in e["at"]:
                     sx, sy = slot_pos(e["at"]["backpack_slot"])

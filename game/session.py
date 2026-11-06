@@ -38,8 +38,8 @@ from game.net.client import RemoteHost
 from types import SimpleNamespace
 from game.engine.player import PlayerState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
-                                  ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
-                                  UseItem, PickUp)
+                                  ToggleAutopilot, ToggleCompanion, CancelChannel, UseItem, PickUp, SetTarget,
+                                  MoveDir)
 from game.content.items import ITEMS, describe as describe_item
 from game.content import money
 from game.engine.inventory import ROWS as BAG_ROWS, COLS as BAG_COLS
@@ -108,7 +108,7 @@ class AoeRing:
 
 def drain_events(events):
     """Turn the simulation's view events into on-screen effects / popups / saves."""
-    global quest_popup_text, quest_popup_timer, quest_popup_color, right_skill_idx, quest_popup_panel
+    global quest_popup_text, quest_popup_timer, quest_popup_color, quest_popup_panel
     for ev in events:
         if not view.is_mine(ev):
             continue   # another player's level-up / quest dialogue
@@ -123,8 +123,7 @@ def drain_events(events):
             if not HEADLESS.enabled:            # scripted test runs have nobody to click the popup away
                 skill_popups.append(SkillPopupPanel(ev))
         elif isinstance(ev, BindRightSkill):
-            if ev.ability_key in ability_keys:
-                right_skill_idx = ability_keys.index(ev.ability_key)
+            pass                                # (old click-binding UI) skills now live on the hotbar
         elif isinstance(ev, NpcDialogue):
             quest_popup_panel = QuestPopupPanel(SimpleNamespace(**ev.quest), mode=ev.mode, npc_name=ev.npc_name)
             speak_text(ev.speech, ev.voice)
@@ -290,10 +289,14 @@ CAM_ZOOM_MIN = CAM_ZOOM_MAX  # no zooming out (was 0.5); raise MAX or lower MIN 
 CAM_ZOOM_STEP = 0.1
 cam_zoom = CAM_ZOOM_MAX
 
-# Skill slots (Diablo 2 style). Skills unlock as the hero levels up, so this list grows during the game.
-ability_keys = view.you.ability_keys  # ["Q"] at level 1 ... ["Q", "R", "E", "F"]
-left_skill_idx = 0    # Index into ability_keys for left-click skill
-right_skill_idx = min(1, len(ability_keys) - 1)   # Index into ability_keys for right-click skill
+# Hotbar (WoW style): skill i is on key i+1 and casts on the current target (enemy skills), the targeted friend or
+# yourself (support skills) or around you (instant skills). Skills unlock as the hero levels up, so this list grows.
+ability_keys = view.you.ability_keys  # internal ability keys in hotbar order, e.g. ["Q"] at level 1
+HOTBAR_KEYS = [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6]
+# WASD walks; held keys are tracked from KEYDOWN/KEYUP (works with scripted input too)
+MOVE_KEYS = {pygame.K_w: (0, -1), pygame.K_s: (0, 1), pygame.K_a: (-1, 0), pygame.K_d: (1, 0)}
+held_move_keys = set()
+_sent_move = (0, 0)
 skill_popups = []     # SkillUpPanel queue: "skill unlocked / upgraded" popups, shown one at a time
 
 
@@ -480,7 +483,8 @@ class SkillPopupPanel:
         lvl = font.render(f"Character level {ev.hero_level}", True, (180, 180, 180))
         panel.blit(lvl, (self.WIDTH // 2 - lvl.get_width() // 2, y))
         y += 26
-        name = big_font.render(f"[{ev.key}] {ev.name}  —  Lv.{ev.skill_level}", True, WHITE)
+        slot = ability_keys.index(ev.key) + 1 if ev.key in ability_keys else "?"
+        name = big_font.render(f"[{slot}] {ev.name}  —  Lv.{ev.skill_level}", True, WHITE)
         panel.blit(name, (self.PAD, y))
         y += 22
         for line in self.lines:
@@ -651,6 +655,81 @@ class Backpack:
             screen.blit(tip, (tx, ty))
 
 
+class Hotbar:
+    """Bottom-centre action bar: one slot per unlocked skill, key 1..N; shows name, level and cooldown.
+    Click a slot (or press its number) to cast."""
+    W, H, GAP = 128, 44, 6
+
+    @classmethod
+    def rects(cls, n):
+        total = n * cls.W + (n - 1) * cls.GAP
+        x0, y = WIDTH // 2 - total // 2, HEIGHT - cls.H - 26     # above the controls help line
+        return [pygame.Rect(x0 + i * (cls.W + cls.GAP), y, cls.W, cls.H) for i in range(n)]
+
+    @classmethod
+    def slot_at(cls, mx, my, n):
+        return next((i for i, r in enumerate(cls.rects(n)) if r.collidepoint(mx, my)), None)
+
+    @classmethod
+    def draw(cls, screen, abilities):
+        for i, (r, ab) in enumerate(zip(cls.rects(len(abilities)), abilities)):
+            ready = ab.is_ready()
+            pygame.draw.rect(screen, (45, 45, 60) if ready else (30, 30, 38), r, border_radius=5)
+            if not ready and getattr(ab, "cooldown", 0) > 0:
+                # cooldown: a dark shade that shrinks as it comes back
+                shade = pygame.Surface((r.w, max(1, int(r.h * min(1.0, ab.remaining / ab.cooldown)))), pygame.SRCALPHA)
+                shade.fill((0, 0, 0, 150))
+                screen.blit(shade, (r.x, r.bottom - shade.get_height()))
+            pygame.draw.rect(screen, GOLD if ready else (110, 110, 130), r, 2, border_radius=5)
+            screen.blit(big_font.render(str(i + 1), True, GOLD), (r.x + 6, r.y + 4))
+            name = ab.name if len(ab.name) <= 15 else ab.name[:14] + "."
+            screen.blit(font.render(name, True, WHITE if ready else (150, 150, 160)), (r.x + 24, r.y + 7))
+            info = f"Lv.{ab.level}" + ("" if ready else f"   {ab.remaining:.1f}s")
+            screen.blit(font.render(info, True, (190, 190, 210)), (r.x + 24, r.y + 25))
+
+
+def cast_hotbar(i):
+    """Cast hotbar skill i: enemy skills go to the targeted enemy, support skills to the targeted friend (or you),
+    instant skills fire around you; the sim decides (out of range = walk into range, no target = message)."""
+    if i >= len(ability_keys):
+        return
+    t = view.you.target
+    enemy = t if t is not None and t.kind == "monster" else None
+    friend = t if t is not None and t.kind in ("hero", "ally", "companion") else None
+    x, y = (t.x, t.y) if t is not None else (hero.x, hero.y)
+    host.send(Cast(ability_keys[i], x, y, enemy.eid if enemy else None, ally_id=friend.eid if friend else None))
+
+
+def _on_screen(e):
+    sx, sy = (e.x - hero.x) * cam_zoom + WIDTH // 2, (e.y - hero.y) * cam_zoom + HEIGHT // 2
+    return 0 <= sx < WIDTH and 0 <= sy < HEIGHT
+
+
+def tab_target():
+    """Tab: target the nearest enemy on screen, or the next one if the nearest is already targeted."""
+    cands = sorted((m for m in view.alive_monsters if not getattr(m, "stealthed", False) and _on_screen(m)),
+                   key=hero.distance_to)
+    if not cands:
+        return
+    cur = view.you.target
+    nxt = cands[(cands.index(cur) + 1) % len(cands)] if cur in cands else cands[0]
+    host.send(SetTarget(nxt.eid))
+
+
+def draw_target_frame(screen, t):
+    """Target frame next to the player's HP bar: name, level, HP (red = enemy, green = friend)."""
+    if t is None:
+        return
+    x, y, w = 240, 18, 206
+    enemy = t.kind == "monster"
+    pygame.draw.rect(screen, HP_BG, (x - 2, y, w, 22))
+    pygame.draw.rect(screen, (60, 20, 20) if enemy else (20, 50, 20), (x, y + 2, w - 4, 18))
+    pct = t.hp / t.max_hp if t.max_hp else 0
+    pygame.draw.rect(screen, HP_RED if enemy else HP_GREEN, (x, y + 2, int((w - 4) * pct), 18))
+    lv = f"Lv {t.level} " if (not enemy or getattr(t, "leveled", False)) else ""
+    screen.blit(font.render(f"{lv}{t.name}  {t.hp:.0f}/{t.max_hp:.0f}", True, WHITE), (x + 5, y + 5))
+
+
 def get_npc_at_screen(sx, sy):
     """Check if a screen click hit an NPC sprite."""
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
@@ -736,8 +815,6 @@ if world is not None:
     world.record_commands = bool(HEADLESS.enabled and HEADLESS.record_commands)
 _tick = 0
 _last_snapshot_at = time.monotonic()    # co-op: when the host last sent us a frame
-_sent_hold = False                      # last HoldPosition / BindLeftSkill values sent to the sim
-_sent_left = ability_keys[0]
 running = True
 return_to_menu = False
 while running:
@@ -761,41 +838,42 @@ while running:
             screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
         if event.type == pygame.MOUSEWHEEL:
             cam_zoom = max(CAM_ZOOM_MIN, min(CAM_ZOOM_MAX, cam_zoom + event.y * CAM_ZOOM_STEP))
+        if event.type == pygame.KEYUP and event.key in MOVE_KEYS:
+            held_move_keys.discard(event.key)
         if event.type == pygame.KEYDOWN:
+            if event.key in MOVE_KEYS:                 # WASD: walk (sent below, once per frame, when it changes)
+                held_move_keys.add(event.key)
+                continue
             if event.key == pygame.K_b:
                 backpack_open = not backpack_open
                 continue
-            if event.key == pygame.K_ESCAPE and backpack_open:
-                backpack_open = False                  # ESC closes the backpack first
-                continue
             if event.key == pygame.K_ESCAPE:
-                if view.you.frostbolt_channeling:
-                    host.send(CancelChannel())  # cancel channel and stop auto-attack
+                # one step back at a time: backpack, channel, target, then the menu
+                if backpack_open:
+                    backpack_open = False
+                elif view.you.frostbolt_channeling:
+                    host.send(CancelChannel())
+                elif view.you.target is not None:
+                    host.send(SetTarget(None))
                 else:
                     running = False
                     return_to_menu = not auto_mode  # ESC -> back to character select
+                continue
             if skill_popups and event.key in (pygame.K_SPACE, pygame.K_RETURN):
                 skill_popups.pop(0)                # close the skill popup
                 continue
             if event.key == pygame.K_TAB:
+                tab_target()                       # next nearest enemy
+            if event.key == pygame.K_p:
                 host.send(ToggleAutopilot())
             # Game speed: +/- to cycle 1x/2x/4x
             if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
                 game_speed = min(game_speed * 2, 4.0)
             if event.key == pygame.K_MINUS:
                 game_speed = max(game_speed / 2, 1.0)
-            # 1,2,3 = switch right-click skill
-            if event.key == pygame.K_1: right_skill_idx = 0
-            if event.key == pygame.K_2: right_skill_idx = 1 if len(ability_keys) > 1 else right_skill_idx
-            if event.key == pygame.K_3: right_skill_idx = 2 if len(ability_keys) > 2 else right_skill_idx
-            if event.key == pygame.K_4: right_skill_idx = 3 if len(ability_keys) > 3 else right_skill_idx
-            if event.key == pygame.K_5: right_skill_idx = 4 if len(ability_keys) > 4 else right_skill_idx
-            # Shift+1,2,3 = switch left-click skill
-            mods = key_mods()
-            if mods & pygame.KMOD_CTRL:
-                if event.key == pygame.K_1: left_skill_idx = 0
-                if event.key == pygame.K_2: left_skill_idx = 1 if len(ability_keys) > 1 else left_skill_idx
-                if event.key == pygame.K_3: left_skill_idx = 2 if len(ability_keys) > 2 else left_skill_idx
+            # 1..5 = hotbar: cast that skill (on the target / on yourself / around you)
+            if event.key in HOTBAR_KEYS:
+                cast_hotbar(HOTBAR_KEYS.index(event.key))
             # Potion
             if event.key == pygame.K_f:
                 host.send(UsePotion())
@@ -806,7 +884,7 @@ while running:
                     host.send(ToggleCompanion(available_companions[ki]["class"]))
                     break
 
-        if event.type == pygame.MOUSEBUTTONDOWN and not view.adventure_failed:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button in (1, 3) and not view.adventure_failed:
             mx_s, my_s = event.pos
             # A skill popup is open: any click closes it
             if skill_popups:
@@ -822,48 +900,41 @@ while running:
             if quest_popup_panel and quest_popup_panel.active:
                 quest_popup_panel.handle_click(mx_s, my_s)
                 continue
+            # Hotbar: click a slot to cast it
+            slot = Hotbar.slot_at(mx_s, my_s, len(ability_keys))
+            if slot is not None:
+                if event.button == 1:
+                    cast_hotbar(slot)
+                continue
             wx = (mx_s - WIDTH//2) / cam_zoom + hero.x
             wy = (my_s - HEIGHT//2) / cam_zoom + hero.y
             clicked_monster = get_monster_at_screen(mx_s, my_s)
-            shift_held = key_mods() & pygame.KMOD_SHIFT
-
-            clicked_id = clicked_monster.eid if clicked_monster else None
-            # Left or right click on a dropped item (and not on a monster): walk there and put it in the backpack
+            clicked_npc = get_npc_at_screen(mx_s, my_s)
+            # A dropped item under the cursor (and no monster): walk there and put it in the backpack
             clicked_item = get_ground_item_at_screen(mx_s, my_s) if clicked_monster is None else None
-            if clicked_item is not None and event.button in (1, 3) and not (event.button == 1 and shift_held):
+            if clicked_item is not None:
                 host.send(PickUp(clicked_item.id))
                 continue
             clicked_friend = get_friend_at_screen(mx_s, my_s)
-            friend_id = clicked_friend.eid if clicked_friend else None   # Wall / Renew / Holy Light land on them
 
-            if event.button == 1:  # Left-click
-                if shift_held:
-                    # Shift+Left = cast LEFT skill
-                    host.send(Cast(ability_keys[left_skill_idx], wx, wy, clicked_id, ally_id=friend_id))
-                elif my_s >= HEIGHT - 55:
-                    # Clicked on skill bar area — switch skills
-                    if mx_s < WIDTH//2:
-                        # Clicked left skill box — cycle left skill
-                        left_skill_idx = (left_skill_idx + 1) % len(ability_keys)
-                    else:
-                        # Clicked right skill box — cycle right skill
-                        right_skill_idx = (right_skill_idx + 1) % len(ability_keys)
-                elif clicked_monster:
-                    host.send(SelectTarget(clicked_id))   # select + walk to attack range
+            if event.button == 1:      # Left-click: target an enemy / friend, or walk to the ground
+                if clicked_monster:
+                    host.send(SetTarget(clicked_monster.eid))
+                elif clicked_friend:
+                    host.send(SetTarget(clicked_friend.eid))
+                elif clicked_npc:
+                    host.send(InteractNpc(clicked_npc.eid))
                 else:
-                    host.send(MoveTo(wx, wy))             # click ground = move
-
-            elif event.button == 3:  # Right-click = cast RIGHT skill or interact with NPC
-                # Check if clicking on an NPC first
-                clicked_npc = get_npc_at_screen(mx_s, my_s)
-                if clicked_npc:
-                    host.send(InteractNpc(clicked_npc.eid))   # talk if in range, else walk to the NPC
-                # Stealth + right-click enemy + Ambush on right slot = queue ambush walk-to
-                elif hero.stealthed and clicked_monster and ability_keys[right_skill_idx] == "E":
-                    host.send(AmbushTarget(clicked_id))
+                    host.send(MoveTo(wx, wy))
+            else:                      # Right-click: attack an enemy, talk to an NPC, or walk to the ground
+                if clicked_monster:
+                    host.send(SelectTarget(clicked_monster.eid))   # target + walk into range + auto-attack
+                elif clicked_npc:
+                    host.send(InteractNpc(clicked_npc.eid))        # talk if in range, else walk to the NPC
+                elif clicked_friend:
+                    host.send(SetTarget(clicked_friend.eid))
                 else:
-                    host.send(Cast(ability_keys[right_skill_idx], wx, wy, clicked_id, fallback_move=True,
-                                   ally_id=friend_id))
+                    host.send(MoveTo(wx, wy))
 
     # --- End screen ---
     if view.adventure_failed:
@@ -885,20 +956,16 @@ while running:
         continue
 
     # --- UPDATE ---
-    # Tell the sim about client choices that affect auto-attack (only when they change)
-    _shift = bool(key_mods() & pygame.KMOD_SHIFT)
-    if _shift != _sent_hold:
-        host.send(HoldPosition(_shift)); _sent_hold = _shift
-    if ability_keys[left_skill_idx] != _sent_left:
-        _sent_left = ability_keys[left_skill_idx]; host.send(BindLeftSkill(_sent_left))
+    # WASD: tell the sim the walking direction (only when it changes)
+    _move = (sum(MOVE_KEYS[k][0] for k in held_move_keys), sum(MOVE_KEYS[k][1] for k in held_move_keys))
+    if _move != _sent_move:
+        host.send(MoveDir(*_move)); _sent_move = _move
 
     snap, events = host.step(dt)   # the client only sees snapshots + events from the host
     if snap is not None:           # a remote host may not have sent a new frame yet
         _last_snapshot_at = time.monotonic()
         view.apply(snap)
         ability_keys = view.you.ability_keys               # a level-up may have unlocked a skill
-        left_skill_idx = min(left_skill_idx, len(ability_keys) - 1)
-        right_skill_idx = min(right_skill_idx, len(ability_keys) - 1)
         MAP_TITLE = map_title(MAP_NAME, view.pp)   # e.g. "Northshire (8pp)" — the host's pp, same for everyone
     view.advance(dt)               # remote play: glide between snapshots
     if NET_MODE == "join" and host.closed and (not auto_mode or "--reconnect" in sys.argv):
@@ -1037,8 +1104,17 @@ while running:
             lv_color = (150, 150, 150) if hero.level - m.level >= 6 else WHITE
             t = font.render(f"Lv {m.level}", True, lv_color)
             screen.blit(t, (sx+sw//2-t.get_width()//2, sy-20))
+        if m is view.you.target:
+            pygame.draw.circle(screen, (255, 70, 60), (sx+sw//2, sy+sh//2), sw//2+5, 2)    # targeted
         if m is view.you.selected_target:
-            pygame.draw.circle(screen, GOLD, (sx+sw//2, sy+sh//2), sw//2+4, 2)
+            pygame.draw.circle(screen, GOLD, (sx+sw//2, sy+sh//2), sw//2+2, 2)             # being attacked
+
+    # Targeted friend (left-click / support skills): green ring
+    _t = view.you.target
+    if _t is not None and _t.kind != "monster" and _t.alive:
+        tr = max(6, int(TILE_SIZE * 0.32 * cam_zoom))
+        pygame.draw.circle(screen, (80, 230, 100), (int((_t.x - cx) * cam_zoom + WIDTH//2),
+                                                    int((_t.y - cy) * cam_zoom + HEIGHT//2)), tr, 2)
 
     # Companions
     for comp in view.companions:
@@ -1209,42 +1285,9 @@ while running:
         screen.blit(font.render(f"{comp.name}{status}", True, WHITE), (22, comp_hud_y + 1))
         comp_hud_y += 16
 
-    # Skill list (left side)
-    ab_y = max(78, comp_hud_y + 4)
-    for i, key in enumerate(ability_keys):
-        ab = view.you.abilities[key]
-        ready = ab.is_ready()
-        is_left = (i == left_skill_idx)
-        is_right = (i == right_skill_idx)
-        if is_right:
-            bg_c = (60, 60, 140)
-        elif is_left:
-            bg_c = (140, 100, 40)
-        else:
-            bg_c = ABILITY_READY if ready else GRAY
-        pygame.draw.rect(screen, bg_c, (20, ab_y, 250, 20))
-        cd = "READY" if ready else f"{ab.remaining:.1f}s"
-        slot_label = ""
-        if is_left: slot_label = "[L] "
-        if is_right: slot_label = "[R] "
-        screen.blit(font.render(f"{slot_label}[{i+1}] {ab.name} Lv.{ab.level} {cd}", True, WHITE), (24, ab_y+3))
-        ab_y += 24
-
-    # Skill bar at bottom
-    bar_y = HEIGHT - 50
-    pygame.draw.rect(screen, (25, 25, 35), (0, bar_y - 5, WIDTH, 55))
-    # Left skill
-    left_ab = view.you.abilities[ability_keys[left_skill_idx]]
-    left_color = (180, 130, 50) if left_ab.is_ready() else (80, 60, 30)
-    pygame.draw.rect(screen, left_color, (WIDTH//2 - 180, bar_y, 160, 30), 0, 4)
-    pygame.draw.rect(screen, (220, 170, 60), (WIDTH//2 - 180, bar_y, 160, 30), 2, 4)
-    screen.blit(font.render(f"L: {left_ab.name} Lv.{left_ab.level}", True, WHITE), (WIDTH//2 - 175, bar_y + 8))
-    # Right skill
-    right_ab = view.you.abilities[ability_keys[right_skill_idx]]
-    right_color = (50, 50, 140) if right_ab.is_ready() else (30, 30, 70)
-    pygame.draw.rect(screen, right_color, (WIDTH//2 + 20, bar_y, 160, 30), 0, 4)
-    pygame.draw.rect(screen, (80, 80, 200), (WIDTH//2 + 20, bar_y, 160, 30), 2, 4)
-    screen.blit(font.render(f"R: {right_ab.name} Lv.{right_ab.level}", True, WHITE), (WIDTH//2 + 25, bar_y + 8))
+    # Hotbar (bottom centre) and target frame (next to your HP bar)
+    Hotbar.draw(screen, [view.you.abilities[k] for k in ability_keys])
+    draw_target_frame(screen, view.you.target)
 
     screen.blit(font.render(MAP_TITLE, True, BLUE), (WIDTH-160, 20))
     if _host_server is not None:
@@ -1302,12 +1345,13 @@ while running:
     screen.blit(font.render(f"FPS: {fps}", True, fps_color), (10, 10))
 
     # Controls help
-    ai_label = "AI: ON (TAB=off)" if view.you.ai_enabled else "TAB=AI"
+    ai_label = "AI: ON (P=off)" if view.you.ai_enabled else "P=AI"
     ai_color = (100, 255, 100) if view.you.ai_enabled else (80, 80, 80)
     speed_label = f" {game_speed:.0f}x (+/-)" if game_speed > 1 else ""
     screen.blit(font.render(ai_label + speed_label, True, ai_color), (WIDTH - 160, HEIGHT - 18))
-    screen.blit(font.render("LClick=Move  Shift+L=LSkill  RClick=RSkill (on an ally = heal/shield them)  1/2/3=Switch  F=Pot"
-                            + ("" if NET_MODE else "  F1-F4=Summon"), True, (70,70,70)), (10, HEIGHT-18))
+    screen.blit(font.render("WASD=Move  LClick=Target  Tab=Next  RClick=Attack  1-5=Skills  F=Potion  B=Bag"
+                            + ("" if NET_MODE else "  F1-F4=Summon"),
+                            True, (70,70,70)), (10, HEIGHT-18))
     if NET_MODE == "join" and time.monotonic() - _last_snapshot_at > 1.0:
         # No word from the host for a while (host busy, asleep or gone): say so instead of looking frozen
         wait = big_font.render("Waiting for the host...", True, GOLD)

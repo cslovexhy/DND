@@ -49,41 +49,41 @@
   },
   "manual_cleric": {
     "deaths": "0",
-    "digest": "f5d2362a5d7e",
+    "digest": "0594e9b46433",
     "hp": "155/155",
-    "kills": "10",
+    "kills": "9",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_fighter": {
     "deaths": "0",
-    "digest": "ee6c87fdc0da",
+    "digest": "f3ee813ec200",
     "hp": "160/160",
-    "kills": "10",
+    "kills": "8",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_paladin": {
     "deaths": "0",
-    "digest": "d3dc5c8fdc52",
-    "hp": "147/158",
-    "kills": "11",
+    "digest": "215a77142eb8",
+    "hp": "158/158",
+    "kills": "10",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_rogue": {
     "deaths": "0",
-    "digest": "a6c7454c71bd",
+    "digest": "48b7e3a14d23",
     "hp": "150/150",
-    "kills": "9",
+    "kills": "8",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_wizard": {
     "deaths": "0",
-    "digest": "3502d7bced4a",
-    "hp": "111/125",
-    "kills": "4",
+    "digest": "ec7ce4e69167",
+    "hp": "47/100",
+    "kills": "7",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
