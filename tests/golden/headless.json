@@ -9,15 +9,15 @@
   },
   "hero0_seed1": {
     "deaths": "0",
-    "digest": "4a9650c2a56d",
-    "hp": "119/120",
+    "digest": "676793653095",
+    "hp": "99/120",
     "kills": "3",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "hero1_seed1": {
     "deaths": "0",
-    "digest": "4c1c4399bf55",
+    "digest": "7100a7aadfad",
     "hp": "120/120",
     "kills": "2",
     "outcome": "TIMEOUT",
@@ -25,23 +25,23 @@
   },
   "hero2_seed1": {
     "deaths": "0",
-    "digest": "90af8c5e5c9b",
-    "hp": "62/120",
+    "digest": "59d76f88cc39",
+    "hp": "65/120",
     "kills": "2",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "hero3_seed1": {
     "deaths": "0",
-    "digest": "a6e4db6f9e74",
-    "hp": "67/120",
+    "digest": "755ce7c86812",
+    "hp": "46/120",
     "kills": "2",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "hero4_seed1": {
     "deaths": "0",
-    "digest": "278c251a863d",
+    "digest": "0b2b6cb18074",
     "hp": "100/100",
     "kills": "3",
     "outcome": "TIMEOUT",
@@ -49,15 +49,15 @@
   },
   "manual_cleric": {
     "deaths": "0",
-    "digest": "0594e9b46433",
+    "digest": "de60c1a54c4b",
     "hp": "155/155",
-    "kills": "9",
+    "kills": "7",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_fighter": {
     "deaths": "0",
-    "digest": "f3ee813ec200",
+    "digest": "162ec94995c8",
     "hp": "160/160",
     "kills": "8",
     "outcome": "TIMEOUT",
@@ -65,33 +65,33 @@
   },
   "manual_paladin": {
     "deaths": "0",
-    "digest": "5a183eeb194a",
-    "hp": "158/158",
-    "kills": "10",
+    "digest": "f90dee2c1f59",
+    "hp": "150/158",
+    "kills": "8",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_rogue": {
     "deaths": "0",
-    "digest": "48b7e3a14d23",
+    "digest": "1b646e292a3b",
     "hp": "150/150",
-    "kills": "8",
+    "kills": "9",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_wizard": {
     "deaths": "0",
-    "digest": "ec7ce4e69167",
-    "hp": "47/100",
-    "kills": "7",
+    "digest": "28bc9de04b9d",
+    "hp": "100/100",
+    "kills": "6",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "northshire_long_respawns": {
-    "deaths": "0",
-    "digest": "1387af6dc7ee",
-    "hp": "128/199",
-    "kills": "30",
+    "deaths": "1",
+    "digest": "af9f4206ae3a",
+    "hp": "124/199",
+    "kills": "15",
     "outcome": "TIMEOUT",
     "time": "200.0s"
   }

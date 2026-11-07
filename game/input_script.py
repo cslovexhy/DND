@@ -10,7 +10,10 @@ A script is a JSON list of events keyed by simulation tick (one tick = one headl
   {"tick": 30, "type": "click", "button": 3, "at": [1200, 900]}            # absolute world position
 
 `at` may also be "nearest_npc", "nearest_ally" (other player / companion), "hero", "nearest_item" (a ground
-item / monster drop) or {"backpack_slot": N} (that slot of the open backpack panel, on screen). The events are posted as real pygame events, so the
+item / monster drop), {"backpack_slot": N} (that slot of the open backpack panel, on screen) or {"hotbar_slot": N}
+(slot N of the hotbar, 0 = the first). A drag presses the left button on one place and releases it on another:
+
+  {"tick": 40, "type": "drag", "from": {"hotbar_slot": 4}, "to": {"hotbar_slot": 1}}   # swap hotbar slots 5 and 2 The events are posted as real pygame events, so the
 normal input code path is exercised exactly as if a human had clicked.
 """
 import json
@@ -50,9 +53,17 @@ class InputScript:
             return hero.x + at.get("dx", 0), hero.y + at.get("dy", 0)
         return at[0], at[1]
 
-    def post_due(self, tick, hero, game_state, npcs, width, height, cam_zoom, slot_pos=None):
-        """Post every event scheduled for this tick as pygame events. `slot_pos(i)` -> screen (x, y) of backpack
-        slot i (the client's panel layout)."""
+    def post_due(self, tick, hero, game_state, npcs, width, height, cam_zoom, slot_pos=None, hotbar_pos=None):
+        """Post every event scheduled for this tick as pygame events. `slot_pos(i)` / `hotbar_pos(i)` -> screen
+        (x, y) of backpack slot i / hotbar slot i (the client's layout)."""
+        def screen_at(at):
+            if isinstance(at, dict) and "backpack_slot" in at:
+                return slot_pos(at["backpack_slot"])
+            if isinstance(at, dict) and "hotbar_slot" in at:
+                return hotbar_pos(at["hotbar_slot"])
+            wx, wy = self._resolve(at, hero, game_state, npcs)
+            return int((wx - hero.x) * cam_zoom + width // 2), int((wy - hero.y) * cam_zoom + height // 2)
+
         while self.next_idx < len(self.events) and self.events[self.next_idx]["tick"] <= tick:
             e = self.events[self.next_idx]
             self.next_idx += 1
@@ -70,12 +81,11 @@ class InputScript:
             elif kind == "keyup":
                 pygame.event.post(pygame.event.Event(pygame.KEYUP, key=getattr(pygame, "K_" + e["key"])))
             elif kind == "click":
-                if isinstance(e["at"], dict) and "backpack_slot" in e["at"]:
-                    sx, sy = slot_pos(e["at"]["backpack_slot"])
-                else:
-                    wx, wy = self._resolve(e["at"], hero, game_state, npcs)
-                    sx = int((wx - hero.x) * cam_zoom + width // 2)
-                    sy = int((wy - hero.y) * cam_zoom + height // 2)
-                pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(sx, sy), button=e["button"]))
+                pos = screen_at(e["at"])
+                pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pos, button=e["button"]))
+                pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=pos, button=e["button"]))
+            elif kind == "drag":
+                pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=screen_at(e["from"]), button=1))
+                pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=screen_at(e["to"]), button=1))
             else:
                 raise ValueError(f"unknown input script event type: {kind}")

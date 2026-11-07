@@ -229,12 +229,14 @@ def save_game():
         # Co-op: the host tells us our progress in every snapshot
         prog = view.you.progress
         char_data.update({k: prog[k] for k in ("level", "xp", "gold", "kills", "inventory")})
+        char_data["hotbar"] = list(globals().get("hotbar_order") or char_data.get("hotbar") or [])
         char_data.setdefault("quests", {})[MAP_ID] = prog["quests"]
         saves.save_character(char_data)
         return
     h = world.hero
     char_data.update({"level": h.level, "xp": h.xp, "gold": h.gold, "kills": h.kills,
                       "inventory": world.players[0].inventory.to_state()})
+    char_data["hotbar"] = list(globals().get("hotbar_order") or char_data.get("hotbar") or [])   # slot layout
     char_data.setdefault("quests", {})[MAP_ID] = world.quests.to_state()
     saves.save_character(char_data)
 
@@ -291,7 +293,11 @@ cam_zoom = CAM_ZOOM_MAX
 
 # Hotbar (WoW style): skill i is on key i+1 and casts on the current target (enemy skills), the targeted friend or
 # yourself (support skills) or around you (instant skills). Skills unlock as the hero levels up, so this list grows.
-ability_keys = view.you.ability_keys  # internal ability keys in hotbar order, e.g. ["Q"] at level 1
+ability_keys = view.you.ability_keys  # the hero's unlocked skills (internal keys, game order), e.g. ["Q"] at level 1
+# The hotbar's slot order: the player drags one slot onto another to swap them; saved with the character
+from game.client.hotbar import merge_order, swap as swap_slots
+hotbar_order = merge_order(char_data.get("hotbar"), ability_keys)
+hotbar_drag = None     # slot index being dragged (left button held on a hotbar slot)
 HOTBAR_KEYS = [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6]
 # WASD walks; held keys are tracked from KEYDOWN/KEYUP (works with scripted input too)
 MOVE_KEYS = {pygame.K_w: (0, -1), pygame.K_s: (0, 1), pygame.K_a: (-1, 0), pygame.K_d: (1, 0)}
@@ -483,7 +489,7 @@ class SkillPopupPanel:
         lvl = font.render(f"Character level {ev.hero_level}", True, (180, 180, 180))
         panel.blit(lvl, (self.WIDTH // 2 - lvl.get_width() // 2, y))
         y += 26
-        slot = ability_keys.index(ev.key) + 1 if ev.key in ability_keys else "?"
+        slot = hotbar_order.index(ev.key) + 1 if ev.key in hotbar_order else "?"
         name = big_font.render(f"[{slot}] {ev.name}  —  Lv.{ev.skill_level}", True, WHITE)
         panel.blit(name, (self.PAD, y))
         y += 22
@@ -671,8 +677,9 @@ class Hotbar:
         return next((i for i, r in enumerate(cls.rects(n)) if r.collidepoint(mx, my)), None)
 
     @classmethod
-    def draw(cls, screen, abilities):
-        for i, (r, ab) in enumerate(zip(cls.rects(len(abilities)), abilities)):
+    def draw(cls, screen, abilities, dragging=None):
+        rects = cls.rects(len(abilities))
+        for i, (r, ab) in enumerate(zip(rects, abilities)):
             ready = ab.is_ready()
             pygame.draw.rect(screen, (45, 45, 60) if ready else (30, 30, 38), r, border_radius=5)
             if not ready and getattr(ab, "cooldown", 0) > 0:
@@ -686,18 +693,26 @@ class Hotbar:
             screen.blit(font.render(name, True, WHITE if ready else (150, 150, 160)), (r.x + 24, r.y + 7))
             info = f"Lv.{ab.level}" + ("" if ready else f"   {ab.remaining:.1f}s")
             screen.blit(font.render(info, True, (190, 190, 210)), (r.x + 24, r.y + 25))
+        if dragging is not None and dragging < len(abilities):
+            mx, my = pygame.mouse.get_pos()
+            over = cls.slot_at(mx, my, len(abilities))
+            if over is not None and over != dragging:          # where it will land
+                pygame.draw.rect(screen, (120, 255, 140), rects[over], 3, border_radius=5)
+            pygame.draw.rect(screen, (255, 255, 255), rects[dragging], 2, border_radius=5)
+            ghost = font.render(abilities[dragging].name, True, GOLD)
+            screen.blit(ghost, (mx + 12, my - 18))                # the skill follows the mouse
 
 
 def cast_hotbar(i):
     """Cast hotbar skill i: enemy skills go to the targeted enemy, support skills to the targeted friend (or you),
     instant skills fire around you; the sim decides (out of range = walk into range, no target = message)."""
-    if i >= len(ability_keys):
+    if i >= len(hotbar_order):
         return
     t = view.you.target
     enemy = t if t is not None and t.kind == "monster" else None
     friend = t if t is not None and t.kind in ("hero", "ally", "companion") else None
     x, y = (t.x, t.y) if t is not None else (hero.x, hero.y)
-    host.send(Cast(ability_keys[i], x, y, enemy.eid if enemy else None, ally_id=friend.eid if friend else None))
+    host.send(Cast(hotbar_order[i], x, y, enemy.eid if enemy else None, ally_id=friend.eid if friend else None))
 
 
 def _on_screen(e):
@@ -827,7 +842,8 @@ while running:
         dt = clock.tick(60) / 1000.0 * game_speed
 
     if _input_script:
-        _input_script.post_due(_tick, hero, view, view.npcs, WIDTH, HEIGHT, cam_zoom, slot_pos=Backpack.slot_center)
+        _input_script.post_due(_tick, hero, view, view.npcs, WIDTH, HEIGHT, cam_zoom, slot_pos=Backpack.slot_center,
+                               hotbar_pos=lambda i: Hotbar.rects(len(hotbar_order))[i].center)
     _tick += 1
 
     for event in pygame.event.get():
@@ -884,6 +900,14 @@ while running:
                     host.send(ToggleCompanion(available_companions[ki]["class"]))
                     break
 
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and hotbar_drag is not None:
+            drop = Hotbar.slot_at(*event.pos, len(hotbar_order))
+            if drop == hotbar_drag:
+                cast_hotbar(drop)                              # a plain click
+            elif drop is not None:
+                hotbar_order = swap_slots(hotbar_order, hotbar_drag, drop)   # e.g. Cleave from 5 to 2
+                save_game()
+            hotbar_drag = None                                 # dropped anywhere else: nothing changes
         if event.type == pygame.MOUSEBUTTONDOWN and event.button in (1, 3) and not view.adventure_failed:
             mx_s, my_s = event.pos
             # A skill popup is open: any click closes it
@@ -900,11 +924,11 @@ while running:
             if quest_popup_panel and quest_popup_panel.active:
                 quest_popup_panel.handle_click(mx_s, my_s)
                 continue
-            # Hotbar: click a slot to cast it
-            slot = Hotbar.slot_at(mx_s, my_s, len(ability_keys))
+            # Hotbar: press on a slot; releasing on the same slot casts it, on another slot swaps the two
+            slot = Hotbar.slot_at(mx_s, my_s, len(hotbar_order))
             if slot is not None:
                 if event.button == 1:
-                    cast_hotbar(slot)
+                    hotbar_drag = slot
                 continue
             wx = (mx_s - WIDTH//2) / cam_zoom + hero.x
             wy = (my_s - HEIGHT//2) / cam_zoom + hero.y
@@ -966,6 +990,7 @@ while running:
         _last_snapshot_at = time.monotonic()
         view.apply(snap)
         ability_keys = view.you.ability_keys               # a level-up may have unlocked a skill
+        hotbar_order = merge_order(hotbar_order, ability_keys)   # ...it goes to the end of the hotbar
         MAP_TITLE = map_title(MAP_NAME, view.pp)   # e.g. "Northshire (8pp)" — the host's pp, same for everyone
     view.advance(dt)               # remote play: glide between snapshots
     if NET_MODE == "join" and host.closed and (not auto_mode or "--reconnect" in sys.argv):
@@ -1286,7 +1311,7 @@ while running:
         comp_hud_y += 16
 
     # Hotbar (bottom centre) and target frame (next to your HP bar)
-    Hotbar.draw(screen, [view.you.abilities[k] for k in ability_keys])
+    Hotbar.draw(screen, [view.you.abilities[k] for k in hotbar_order], dragging=hotbar_drag)
     draw_target_frame(screen, view.you.target)
 
     screen.blit(font.render(MAP_TITLE, True, BLUE), (WIDTH-160, 20))
