@@ -1,0 +1,38 @@
+{
+  "name": "rogue",
+  "class_name": "Rogue",
+  "level": 4,
+  "xp": 169,
+  "gold": 45,
+  "kills": 20,
+  "quests": {
+    "northshire": {
+      "completed": [
+        "a_threat_within",
+        "wolves_across_the_border"
+      ],
+      "active": [
+        "kobold_camp_cleanup",
+        "brotherhood_of_thieves"
+      ],
+      "progress": {
+        "kobold_camp_cleanup": {
+          "Kobold Dragonshield": 4
+        },
+        "brotherhood_of_thieves": {}
+      }
+    }
+  },
+  "inventory": [
+    {
+      "slot": 0,
+      "item": "health_potion",
+      "count": 3
+    }
+  ],
+  "hotbar": [
+    "Q",
+    "R",
+    "E"
+  ]
+}

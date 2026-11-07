@@ -34,5 +34,12 @@
       "active": [],
       "progress": {}
     }
-  }
+  },
+  "inventory": [
+    {
+      "slot": 0,
+      "item": "health_potion",
+      "count": 3
+    }
+  ]
 }

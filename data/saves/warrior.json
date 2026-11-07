@@ -1,0 +1,53 @@
+{
+  "name": "warrior",
+  "class_name": "Fighter",
+  "level": 9,
+  "xp": 192,
+  "gold": 588,
+  "kills": 86,
+  "quests": {
+    "haycock": {
+      "completed": [],
+      "active": [],
+      "progress": {}
+    },
+    "northshire": {
+      "completed": [
+        "a_threat_within",
+        "wolves_across_the_border",
+        "kobold_camp_cleanup",
+        "investigate_echo_ridge",
+        "skirmish_at_echo_ridge",
+        "brotherhood_of_thieves",
+        "millys_harvest",
+        "bounty_on_garrick_padfoot"
+      ],
+      "active": [],
+      "progress": {}
+    }
+  },
+  "inventory": [
+    {
+      "slot": 0,
+      "item": "health_potion",
+      "count": 2
+    },
+    {
+      "slot": 1,
+      "item": "bread",
+      "count": 2
+    },
+    {
+      "slot": 2,
+      "item": "sushi_plate",
+      "count": 1
+    }
+  ],
+  "hotbar": [
+    "Q",
+    "R",
+    "E",
+    "F",
+    "G"
+  ]
+}

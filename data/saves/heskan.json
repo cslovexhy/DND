@@ -2,9 +2,9 @@
   "name": "heskan",
   "class_name": "Wizard",
   "level": 20,
-  "xp": 440,
-  "gold": 193525,
-  "kills": 1205,
+  "xp": 1135,
+  "gold": 197551,
+  "kills": 2129,
   "quests": {
     "northshire": {
       "completed": [
@@ -40,5 +40,37 @@
       "active": [],
       "progress": {}
     }
-  }
+  },
+  "inventory": [
+    {
+      "slot": 0,
+      "item": "health_potion",
+      "count": 10
+    },
+    {
+      "slot": 1,
+      "item": "drumstick",
+      "count": 5
+    },
+    {
+      "slot": 2,
+      "item": "bread",
+      "count": 11
+    },
+    {
+      "slot": 3,
+      "item": "sushi_plate",
+      "count": 1
+    },
+    {
+      "slot": 4,
+      "item": "roast_chicken",
+      "count": 1
+    }
+  ],
+  "hotbar": [
+    "Q",
+    "R",
+    "E"
+  ]
 }

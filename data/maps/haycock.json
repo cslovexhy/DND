@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "width": 40,
   "height": 30,
   "tileset": "kenney_rpg",
@@ -3280,9 +3281,9 @@
             "walkable": true
           },
           {
-            "col": 5,
-            "row": 2,
-            "walkable": true
+            "col": 6,
+            "row": 3,
+            "walkable": false
           },
           {
             "col": 6,
@@ -3486,11 +3487,7 @@
             "row": 3,
             "walkable": false
           },
-          {
-            "col": 6,
-            "row": 3,
-            "walkable": false
-          },
+          null,
           null,
           null,
           null,
@@ -3640,11 +3637,7 @@
             "row": 0,
             "walkable": true
           },
-          {
-            "col": 6,
-            "row": 3,
-            "walkable": false
-          },
+          null,
           null,
           null,
           null,
@@ -3794,11 +3787,7 @@
             "row": 3,
             "walkable": false
           },
-          {
-            "col": 6,
-            "row": 3,
-            "walkable": false
-          },
+          null,
           null,
           null,
           null,

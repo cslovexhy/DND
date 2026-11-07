@@ -2,9 +2,9 @@
   "name": "tarak",
   "class_name": "Rogue",
   "level": 10,
-  "xp": 887,
-  "gold": 33000,
-  "kills": 189,
+  "xp": 937,
+  "gold": 33700,
+  "kills": 190,
   "quests": {
     "northshire": {
       "completed": [
@@ -30,5 +30,12 @@
       "active": [],
       "progress": {}
     }
-  }
+  },
+  "inventory": [
+    {
+      "slot": 0,
+      "item": "health_potion",
+      "count": 3
+    }
+  ]
 }
