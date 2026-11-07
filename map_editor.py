@@ -24,6 +24,7 @@ from copy import deepcopy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from game.engine.map_schema import SCHEMA_VERSION, validate_map   # noqa: E402  (pure, no pygame)
+from game.engine.map_patch import patch_diagonal_gaps   # noqa: E402  (pure, no pygame)
 from game.content.monsters import SPAWN_STATS                      # noqa: E402
 KNOWN_SPAWN_TYPES = set(SPAWN_STATS)
 
@@ -735,6 +736,33 @@ def text_input_prompt(title="Filename:", default="", allow_click_select=False):
         clock.tick(30)
 
 
+def message_box(title, lines):
+    """A modal message in the middle of the screen; any key or click closes it."""
+    title_font = pygame.font.SysFont("monospace", 16, bold=True)
+    body_font = pygame.font.SysFont("monospace", 14)
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return
+            if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+                return
+        box_w = max(420, max((body_font.size(l)[0] for l in lines), default=0) + 40)
+        box_h = 90 + len(lines) * 20
+        box_x, box_y = (SCREEN_W - box_w) // 2, (SCREEN_H - box_h) // 2
+        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        screen.blit(overlay, (0, 0))
+        pygame.draw.rect(screen, (50, 50, 55), (box_x, box_y, box_w, box_h), border_radius=8)
+        pygame.draw.rect(screen, (230, 190, 80), (box_x, box_y, box_w, box_h), 2, border_radius=8)
+        screen.blit(title_font.render(title, True, (255, 215, 90)), (box_x + 20, box_y + 15))
+        for i, line in enumerate(lines):
+            screen.blit(body_font.render(line, True, COL_TEXT), (box_x + 20, box_y + 45 + i * 20))
+        screen.blit(font_sm.render("Press any key or click to continue", True, (140, 140, 140)),
+                    (box_x + 20, box_y + box_h - 28))
+        pygame.display.flip()
+        clock.tick(30)
+
+
 last_filename = ""
 
 
@@ -749,10 +777,23 @@ def save_map():
     last_filename = filename.replace(".json", "")
     path = os.path.join(save_dir, filename)
     data = map_data.to_dict()
+    # Walls that touch only at a corner let players walk diagonally through them: block one open tile of each
+    # such 2x2 block (the editor's own tiles are patched too, so you see the result right away)
+    patched, unfixable = patch_diagonal_gaps(data)
     errors, warnings = validate_map(data, KNOWN_SPAWN_TYPES)
     with open(path, "w") as f:   # always save, so work in progress is never lost
         json.dump(data, f, indent=2)
     print(f"Saved: {path}")
+    if patched or unfixable:
+        lines = [f"Your walls had {len(patched) + len(unfixable)} diagonal gap(s) players could walk through."]
+        if patched:
+            lines.append(f"We patched {len(patched)} (made these tiles unwalkable) and saved:")
+            lines.append("  " + ", ".join(f"({x},{y})" for x, y in patched[:12]) + (" ..." if len(patched) > 12 else ""))
+        if unfixable:
+            lines.append(f"{len(unfixable)} could not be patched (a spawn or NPC stands on every open tile):")
+            lines.append("  " + ", ".join(f"({x},{y})" for x, y in unfixable[:12]))
+        print("  " + "\n  ".join(lines))
+        message_box("Map saved — wall gaps patched", lines)
     for w in warnings[:10]:
         print(f"  warning: {w}")
     if errors:

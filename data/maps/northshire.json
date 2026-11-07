@@ -9737,7 +9737,7 @@
           {
             "col": 0,
             "row": 16,
-            "walkable": true
+            "walkable": false
           },
           {
             "col": 0,
@@ -22177,7 +22177,7 @@
           {
             "col": 21,
             "row": 13,
-            "walkable": true
+            "walkable": false
           }
         ],
         [

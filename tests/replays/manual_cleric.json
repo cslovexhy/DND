@@ -184,7 +184,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 17
+    "target_id": 23
    }
   },
   {
@@ -192,7 +192,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 17
+    "target_id": 23
    }
   },
   {
@@ -200,7 +200,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 17
+    "target_id": 23
    }
   },
   {
@@ -240,8 +240,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 875.2093638981684,
-    "y": 963.1701948441357,
+    "x": 763.7903106009281,
+    "y": 950.9210812679728,
     "target_id": 17,
     "fallback_move": false,
     "ally_id": null
@@ -252,7 +252,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 17
+    "target_id": 19
    }
   },
   {
@@ -260,7 +260,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 17
+    "target_id": 19
    }
   },
   {
@@ -268,7 +268,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 17
+    "target_id": 19
    }
   },
   {
@@ -283,15 +283,16 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 17
+    "target_id": 19
    }
   },
   {
    "tick": 805,
    "player": 0,
    "cmd": {
-    "type": "InteractNpc",
-    "npc_id": 119
+    "type": "MoveTo",
+    "x": 1019.8981108607861,
+    "y": 1351.7128581050877
    }
   },
   {
@@ -299,7 +300,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 17
+    "target_id": 19
    }
   },
   {
@@ -316,9 +317,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 935.16429143191,
-    "y": 858.0347828833349,
-    "target_id": 17,
+    "x": 666.4784129777879,
+    "y": 1307.9002731066878,
+    "target_id": 19,
     "fallback_move": false,
     "ally_id": null
    }
@@ -328,7 +329,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 17
+    "target_id": 19
    }
   },
   {
@@ -376,8 +377,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 847.2385670227682,
-    "y": 1224.2206603587674,
+    "x": 834.3583528479256,
+    "y": 1271.8996455132828,
     "target_id": 19,
     "fallback_move": false,
     "ally_id": null
@@ -389,19 +390,6 @@
    "cmd": {
     "type": "SelectTarget",
     "target_id": 19
-   }
-  },
-  {
-   "tick": 1144,
-   "player": 0,
-   "cmd": {
-    "type": "Cast",
-    "ab_key": "R",
-    "x": 847.2385670227682,
-    "y": 1224.2206603587674,
-    "target_id": 19,
-    "fallback_move": false,
-    "ally_id": null
    }
   },
   {
@@ -432,7 +420,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 20
+    "target_id": 19
    }
   },
   {
@@ -440,8 +428,8 @@
    "player": 0,
    "cmd": {
     "type": "MoveTo",
-    "x": 980.6715052562787,
-    "y": 1303.7815318709709
+    "x": 969.162306245951,
+    "y": 1354.1479394075732
    }
   },
   {
@@ -457,7 +445,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 20
+    "target_id": 19
    }
   },
   {
@@ -466,9 +454,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 1028.7896261308265,
-    "y": 1224.0024908945447,
-    "target_id": 20,
+    "x": 1028.7864602831578,
+    "y": 1224.9061689660268,
+    "target_id": 19,
     "fallback_move": false,
     "ally_id": null
    }
@@ -478,7 +466,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 20
+    "target_id": 19
    }
   },
   {
@@ -487,9 +475,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 1028.7896261308265,
-    "y": 1224.0024908945447,
-    "target_id": 20,
+    "x": 1073.6897441578496,
+    "y": 1224.0101597579296,
+    "target_id": null,
     "fallback_move": false,
     "ally_id": null
    }
@@ -499,7 +487,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 20
+    "target_id": 17
    }
   },
   {
@@ -507,7 +495,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 20
+    "target_id": 17
    }
   },
   {
@@ -522,7 +510,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 20
+    "target_id": 17
    }
   },
   {
@@ -530,7 +518,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 20
+    "target_id": 17
    }
   },
   {
@@ -539,9 +527,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 1073.3654510176768,
-    "y": 1224.0026121344854,
-    "target_id": null,
+    "x": 882.1906918648301,
+    "y": 1068.338040867931,
+    "target_id": 17,
     "fallback_move": false,
     "ally_id": null
    }
@@ -551,7 +539,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 112
+    "target_id": 17
    }
   },
   {
@@ -560,9 +548,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 847.77283137234,
-    "y": 1004.5947207932722,
-    "target_id": 112,
+    "x": 882.1906918648301,
+    "y": 1068.338040867931,
+    "target_id": 17,
     "fallback_move": false,
     "ally_id": null
    }
@@ -572,7 +560,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 112
+    "target_id": 17
    }
   },
   {
@@ -580,7 +568,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 112
+    "target_id": 17
    }
   },
   {
@@ -595,15 +583,16 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 112
+    "target_id": 17
    }
   },
   {
    "tick": 1605,
    "player": 0,
    "cmd": {
-    "type": "InteractNpc",
-    "npc_id": 119
+    "type": "MoveTo",
+    "x": 1014.8580551882939,
+    "y": 1148.9315865175915
    }
   },
   {
@@ -612,9 +601,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 870.3735557316467,
-    "y": 1039.6919605003045,
-    "target_id": 112,
+    "x": 886.466426727782,
+    "y": 1069.264710378456,
+    "target_id": 17,
     "fallback_move": false,
     "ally_id": null
    }
@@ -624,7 +613,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 112
+    "target_id": 17
    }
   },
   {
@@ -633,9 +622,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 916.4412463182992,
-    "y": 1093.0588293966564,
-    "target_id": 112,
+    "x": 939.0089850194014,
+    "y": 1083.064922461913,
+    "target_id": null,
     "fallback_move": false,
     "ally_id": null
    }
@@ -645,7 +634,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 112
+    "target_id": 13
    }
   },
   {
@@ -654,9 +643,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "R",
-    "x": 1013.792730278692,
-    "y": 1171.273047957018,
-    "target_id": null,
+    "x": 608.3382163062289,
+    "y": 1082.0570412122634,
+    "target_id": 13,
     "fallback_move": false,
     "ally_id": null
    }
@@ -689,7 +678,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 13
+    "target_id": 14
    }
   }
  ]

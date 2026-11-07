@@ -282,7 +282,7 @@
           {
             "col": 5,
             "row": 10,
-            "walkable": true
+            "walkable": false
           },
           {
             "col": 5,

@@ -9,15 +9,15 @@
   },
   "hero0_seed1": {
     "deaths": "0",
-    "digest": "676793653095",
-    "hp": "99/120",
+    "digest": "f291c691076b",
+    "hp": "100/120",
     "kills": "3",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "hero1_seed1": {
     "deaths": "0",
-    "digest": "7100a7aadfad",
+    "digest": "ae05e1e35aac",
     "hp": "120/120",
     "kills": "2",
     "outcome": "TIMEOUT",
@@ -25,23 +25,23 @@
   },
   "hero2_seed1": {
     "deaths": "0",
-    "digest": "59d76f88cc39",
-    "hp": "65/120",
+    "digest": "2a7ea02de940",
+    "hp": "68/120",
     "kills": "2",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "hero3_seed1": {
     "deaths": "0",
-    "digest": "755ce7c86812",
-    "hp": "46/120",
+    "digest": "1eec18b55b6e",
+    "hp": "52/120",
     "kills": "2",
     "outcome": "TIMEOUT",
     "time": "30.0s"
   },
   "hero4_seed1": {
     "deaths": "0",
-    "digest": "0b2b6cb18074",
+    "digest": "4bc3da2308f8",
     "hp": "100/100",
     "kills": "3",
     "outcome": "TIMEOUT",
@@ -49,9 +49,9 @@
   },
   "manual_cleric": {
     "deaths": "0",
-    "digest": "de60c1a54c4b",
+    "digest": "c9e8fc4dcd7b",
     "hp": "155/155",
-    "kills": "7",
+    "kills": "6",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
@@ -88,10 +88,10 @@
     "time": "60.0s"
   },
   "northshire_long_respawns": {
-    "deaths": "1",
-    "digest": "af9f4206ae3a",
-    "hp": "124/199",
-    "kills": "15",
+    "deaths": "0",
+    "digest": "6e221bc02fb1",
+    "hp": "235/239",
+    "kills": "25",
     "outcome": "TIMEOUT",
     "time": "200.0s"
   }
