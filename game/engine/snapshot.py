@@ -93,6 +93,7 @@ def make_snapshot(world, player_id=0):
         "potions": player.potions,
         "potion_cooldown": player.potion_cooldown,
         "inventory": player.inventory.to_state(),
+        "trade": world.trade_of(player).view(player) if world.trade_of(player) else None,
         "food": _food(hero),
         "ai_enabled": player.ai_enabled,
         "selected_target_id": player.selected_target.eid if player.selected_target is not None else None,

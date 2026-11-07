@@ -39,7 +39,7 @@ from types import SimpleNamespace
 from game.engine.player import PlayerState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, UseItem, PickUp, SetTarget,
-                                  MoveDir)
+                                  MoveDir, TradeOpen, TradeOffer, TradeTake, TradeAccept, TradeCancel)
 from game.content.items import ITEMS, describe as describe_item
 from game.content import money
 from game.engine.inventory import ROWS as BAG_ROWS, COLS as BAG_COLS
@@ -661,6 +661,81 @@ class Backpack:
             screen.blit(tip, (tx, ty))
 
 
+class TradeWindow:
+    """Trade with another player: your offer (left) and theirs (right), Accept / Cancel. Drag an item from the
+    backpack onto it to offer 1; click an item in your offer to take 1 back."""
+    W, H, PAD, SLOT, GAP, COLS = 470, 230, 12, 40, 4, 5
+
+    @classmethod
+    def rect(cls):
+        bp = Backpack.rect()
+        return pygame.Rect(WIDTH // 2 - cls.W // 2, bp.y - cls.H - 8, cls.W, cls.H)
+
+    @classmethod
+    def _slot_rects(cls, side):
+        r = cls.rect()
+        x0 = r.x + cls.PAD + (0 if side == "mine" else cls.W // 2)
+        y0 = r.y + 58
+        return [pygame.Rect(x0 + (i % cls.COLS) * (cls.SLOT + cls.GAP), y0 + (i // cls.COLS) * (cls.SLOT + cls.GAP),
+                            cls.SLOT, cls.SLOT) for i in range(cls.COLS * 2)]
+
+    @classmethod
+    def buttons(cls):
+        r = cls.rect()
+        y = r.bottom - cls.PAD - 30
+        return {"accept": pygame.Rect(r.x + cls.PAD, y, 110, 30), "cancel": pygame.Rect(r.right - cls.PAD - 110, y, 110, 30)}
+
+    @classmethod
+    def click(cls, trade, mx, my):
+        """A click inside the window: the buttons, or taking an item back from your offer."""
+        b = cls.buttons()
+        if b["accept"].collidepoint(mx, my):
+            host.send(TradeAccept())
+        elif b["cancel"].collidepoint(mx, my):
+            host.send(TradeCancel())
+        else:
+            for rr, s in zip(cls._slot_rects("mine"), trade["mine"]):
+                if rr.collidepoint(mx, my):
+                    host.send(TradeTake(s["item"]))
+
+    @classmethod
+    def draw(cls, screen, trade):
+        r = cls.rect()
+        panel = pygame.Surface(r.size, pygame.SRCALPHA)
+        panel.fill((20, 20, 30, 240))
+        pygame.draw.rect(panel, GOLD, panel.get_rect(), 2, border_radius=6)
+        screen.blit(panel, r.topleft)
+        screen.blit(big_font.render(f"Trade with {trade['partner_name']}", True, GOLD), (r.x + cls.PAD, r.y + 8))
+        for side, label, ok in (("mine", "Your offer", trade["my_accept"]),
+                                ("theirs", f"{trade['partner_name']}'s offer", trade["their_accept"])):
+            x = r.x + cls.PAD + (0 if side == "mine" else cls.W // 2)
+            tick = "  - accepted" if ok else ""
+            screen.blit(font.render(label + tick, True, (120, 255, 140) if ok else (200, 200, 220)), (x, r.y + 38))
+            for rr, s in zip(cls._slot_rects(side), trade[side] + [None] * 10):
+                pygame.draw.rect(screen, (55, 55, 70), rr, border_radius=4)
+                pygame.draw.rect(screen, (110, 110, 130), rr, 1, border_radius=4)
+                if s:
+                    screen.blit(item_icon(s["item"], cls.SLOT - 8), (rr.x + 4, rr.y + 4))
+                    n = font.render(str(s["count"]), True, WHITE)
+                    screen.blit(n, (rr.right - n.get_width() - 3, rr.bottom - n.get_height() - 1))
+        if not trade["mine"]:
+            hint = font.render("Drag items here from your backpack", True, (140, 140, 160))
+            screen.blit(hint, (r.x + cls.PAD, r.y + 152))
+        if trade["message"]:
+            msg = font.render(trade["message"], True, (255, 140, 100))
+            screen.blit(msg, (r.centerx - msg.get_width() // 2, r.bottom - cls.PAD - 52))
+        for name, rr in cls.buttons().items():
+            on = name == "accept" and trade["my_accept"]
+            pygame.draw.rect(screen, (40, 110, 50) if on else (60, 60, 75), rr, border_radius=5)
+            pygame.draw.rect(screen, GOLD, rr, 1, border_radius=5)
+            t = font.render("Accept" if name == "accept" else "Cancel", True, WHITE)
+            screen.blit(t, (rr.centerx - t.get_width() // 2, rr.centery - t.get_height() // 2))
+
+
+bag_drag = None        # backpack slot being dragged (to offer it in a trade)
+_trade_was_open = False
+
+
 class Hotbar:
     """Bottom-centre action bar: one slot per unlocked skill, key 1..N; shows name, level and cooldown.
     Click a slot (or press its number) to cast."""
@@ -743,6 +818,8 @@ def draw_target_frame(screen, t):
     pygame.draw.rect(screen, HP_RED if enemy else HP_GREEN, (x, y + 2, int((w - 4) * pct), 18))
     lv = f"Lv {t.level} " if (not enemy or getattr(t, "leveled", False)) else ""
     screen.blit(font.render(f"{lv}{t.name}  {t.hp:.0f}/{t.max_hp:.0f}", True, WHITE), (x + 5, y + 5))
+    if t.kind == "ally":
+        screen.blit(font.render("T = Trade", True, (200, 200, 150)), (x + 2, y + 25))
 
 
 def get_npc_at_screen(sx, sy):
@@ -863,9 +940,15 @@ while running:
             if event.key == pygame.K_b:
                 backpack_open = not backpack_open
                 continue
+            if event.key == pygame.K_t:
+                t = view.you.target
+                host.send(TradeOpen(t.eid if t is not None and t.kind == "ally" else None))   # trade with that player
+                continue
             if event.key == pygame.K_ESCAPE:
-                # one step back at a time: backpack, channel, target, then the menu
-                if backpack_open:
+                # one step back at a time: trade, backpack, channel, target, then the menu
+                if view.you.trade:
+                    host.send(TradeCancel())
+                elif backpack_open:
                     backpack_open = False
                 elif view.you.frostbolt_channeling:
                     host.send(CancelChannel())
@@ -900,6 +983,10 @@ while running:
                     host.send(ToggleCompanion(available_companions[ki]["class"]))
                     break
 
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and bag_drag is not None:
+            if view.you.trade and TradeWindow.rect().collidepoint(event.pos):
+                host.send(TradeOffer(bag_drag))                # 1 of that item, not the whole stack
+            bag_drag = None
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and hotbar_drag is not None:
             drop = Hotbar.slot_at(*event.pos, len(hotbar_order))
             if drop == hotbar_drag:
@@ -915,10 +1002,16 @@ while running:
                 skill_popups.pop(0)
                 continue
             # Open backpack: clicks on it never reach the world; right-click an item uses it
+            if view.you.trade and TradeWindow.rect().collidepoint(mx_s, my_s):
+                if event.button == 1:
+                    TradeWindow.click(view.you.trade, mx_s, my_s)
+                continue
             if backpack_open and Backpack.rect().collidepoint(mx_s, my_s):
                 slot = Backpack.slot_at(mx_s, my_s)
                 if event.button == 3 and slot is not None:
                     host.send(UseItem(slot))
+                elif event.button == 1 and slot is not None and any(s["slot"] == slot for s in view.you.inventory):
+                    bag_drag = slot                            # drag it (onto the trade window)
                 continue
             # If quest popup panel is open, intercept clicks
             if quest_popup_panel and quest_popup_panel.active:
@@ -1356,9 +1449,19 @@ while running:
     if quest_popup_panel and quest_popup_panel.active:
         quest_popup_panel.draw(screen)
 
-    # Backpack (B)
+    # Backpack (B), trade window, an item being dragged
+    if view.you.trade and not _trade_was_open:
+        backpack_open = True                                   # a trade opened: show the backpack to drag from
+    _trade_was_open = bool(view.you.trade)
     if backpack_open:
         Backpack.draw(screen, view.you.inventory, hero.gold)
+    if view.you.trade:
+        TradeWindow.draw(screen, view.you.trade)
+    if bag_drag is not None:
+        stack = next((s for s in view.you.inventory if s["slot"] == bag_drag), None)
+        if stack:
+            gx, gy = pygame.mouse.get_pos()
+            screen.blit(item_icon(stack["item"], 32), (gx - 16, gy - 16))
 
     # Skill unlocked / upgraded popup (first in the queue)
     if skill_popups:

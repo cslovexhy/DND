@@ -14,7 +14,8 @@ from game.engine.ai import aggro_monster, call_for_help, drop_from_hate, AggroSt
 from game.engine.entities import Condition, Projectile
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
-                                  UseItem, PickUp, SetTarget, MoveDir)
+                                  UseItem, PickUp, SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake,
+                                  TradeAccept, TradeCancel)
 from game.engine.inventory import Inventory
 from game.content.items import ITEMS, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT
 from game.engine.events import Ring, BindRightSkill, GOLD
@@ -149,6 +150,30 @@ class PlayerState:
             e = None
         self.target = e
 
+    AUTOPILOT_FOOD_RANGE = 200   # px: a player's autopilot goes for food lying this close (companions never do)
+
+    def _autopilot_food(self):
+        """Autopilot (players only): go pick up food lying within AUTOPILOT_FOOD_RANGE. True while doing so."""
+        world, hero = self.world, self.hero
+        if self.pickup_target is not None and world.ground_item(self.pickup_target) is not None:
+            return True                                   # already on the way (_try_pickup takes it in reach)
+        skip = self.__dict__.setdefault("_unreachable_items", set())
+        foods = sorted((g for g in world.ground_items
+                        if ITEMS[g.item]["kind"] == "food" and g.item_id not in skip
+                        and (g.x - hero.x) ** 2 + (g.y - hero.y) ** 2 <= self.AUTOPILOT_FOOD_RANGE ** 2
+                        and self.inventory.can_add(g.item)),
+                       key=lambda g: (g.x - hero.x) ** 2 + (g.y - hero.y) ** 2)
+        for g in foods:
+            near = (g.x - hero.x) ** 2 + (g.y - hero.y) ** 2 <= self.PICKUP_RANGE ** 2
+            path = [] if near else self._path(hero.x, hero.y, g.x, g.y)
+            if near or path:
+                self.pickup_target = g.item_id
+                self.move_path = path
+                self._try_pickup()
+                return True
+            skip.add(g.item_id)                           # behind a wall: don't search for it every frame
+        return False
+
     def _try_pickup(self):
         """Walking to a ground item: take it once in reach (stop if it is gone or the backpack is full)."""
         item = self.world.ground_item(self.pickup_target)
@@ -270,6 +295,19 @@ class PlayerState:
         elif isinstance(cmd, UseItem):
             if not self.is_companion:
                 self.use_item(cmd.slot)
+        elif isinstance(cmd, TradeOpen):
+            world.open_trade(self, cmd.hero_id)
+        elif isinstance(cmd, (TradeOffer, TradeTake)):
+            trade = world.trade_of(self)
+            if trade is not None:
+                if isinstance(cmd, TradeOffer):
+                    trade.offer(self, cmd.slot)
+                else:
+                    trade.take(self, cmd.item)
+        elif isinstance(cmd, TradeAccept):
+            world.accept_trade(self)
+        elif isinstance(cmd, TradeCancel):
+            world.cancel_trade(self)
         elif isinstance(cmd, PickUp):
             item = world.ground_item(cmd.item_id)
             if item is None or self.is_companion:
@@ -860,6 +898,8 @@ class PlayerState:
         # === HERO AI (when enabled) ===
         if not (self.ai_enabled and not self.dash_active):
             return None
+        if not self.is_companion and self._autopilot_food():
+            return None                  # walking to food: that comes first
         ai_action = self.hero_ai.update(gs.alive_monsters, dt, self.world.is_wall)
 
         # Debug log

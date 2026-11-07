@@ -19,6 +19,15 @@ class Inventory:
     def count(self, item):
         return sum(s["count"] for s in self.slots if s and s["item"] == item)
 
+    def can_add(self, item):
+        """True if `item` fits: it has a stack already, or there is an empty slot."""
+        return any(s is None or s["item"] == item for s in self.slots)
+
+    def copy(self):
+        inv = Inventory()
+        inv.slots = [dict(s) if s else None for s in self.slots]
+        return inv
+
     def item_at(self, slot):
         return self.slots[slot]["item"] if 0 <= slot < SIZE and self.slots[slot] else None
 

@@ -26,6 +26,7 @@ from game.content.skill_tree import apply_skill_levels, describe
 from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_multiplier, scaled_xp
 from game.engine.entities import POISON_DPS
 from game.content.items import roll_drops
+from game.engine.trade import Trade
 from game.content import money
 
 
@@ -68,6 +69,7 @@ class World:
         self.on_npc_spawned = None
         self.npcs = []
         self.ground_items = []     # GroundItem: monster drops waiting to be picked up
+        self.trades = {}           # player_id -> Trade (both traders map to the same one), see engine/trade.py
         self._next_item_id = itertools.count(1)
         # Entity registry (stable ids for commands/network) and command queue
         self._next_eid = itertools.count(1)
@@ -106,6 +108,9 @@ class World:
 
     def remove_player(self, player_id):
         """A player left: remove their hero and their companions from the world."""
+        player = self.players.get(player_id)
+        if player is not None:
+            self.cancel_trade(player)             # the other trader's window closes
         player = self.players.pop(player_id, None)
         if player is None:
             return
@@ -335,6 +340,41 @@ class World:
         return interacted
 
     # --- respawning ---
+    # --- trading between players (engine/trade.py) ---
+    def trade_of(self, player):
+        return self.trades.get(player.player_id)
+
+    def open_trade(self, player, hero_id):
+        """Open a trade between `player` and the player whose hero is `hero_id` (humans only)."""
+        other = self.player_for_hero(self.entity(hero_id)) if hero_id is not None else None
+        if other is None or other is player or other.is_companion or player.is_companion:
+            self.float_text(player.hero.x, player.hero.y - 30, "Target another player to trade", (255, 150, 100))
+            return None
+        for p in (player, other):
+            self.cancel_trade(p)
+        trade = Trade(player, other)
+        self.trades[player.player_id] = self.trades[other.player_id] = trade
+        return trade
+
+    def cancel_trade(self, player):
+        trade = self.trades.get(player.player_id)
+        if trade is None:
+            return
+        for p in trade.players:
+            self.trades.pop(p.player_id, None)
+
+    def accept_trade(self, player):
+        trade = self.trades.get(player.player_id)
+        if trade is None:
+            return
+        if trade.accept(player):
+            for p in trade.players:
+                self.float_text(p.hero.x, p.hero.y - 30, "Trade complete!", (120, 255, 140))
+                self.trades.pop(p.player_id, None)
+        elif trade.message:
+            for p in trade.players:
+                self.float_text(p.hero.x, p.hero.y - 30, trade.message, (255, 150, 100))
+
     # --- ground items (monster drops) ---
     def drop_item(self, item, x, y):
         g = GroundItem(next(self._next_item_id), item, x, y)

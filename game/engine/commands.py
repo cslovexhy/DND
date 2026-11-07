@@ -81,6 +81,34 @@ class PickUp:
 
 
 @dataclass
+class TradeOpen:
+    """Start trading with another player (their hero's id): both get a trade window."""
+    hero_id: int
+
+
+@dataclass
+class TradeOffer:
+    """Offer 1 of the item in this backpack slot (drag it onto the trade window)."""
+    slot: int
+
+
+@dataclass
+class TradeTake:
+    """Take 1 of this item back out of your offer."""
+    item: str
+
+
+@dataclass
+class TradeAccept:
+    pass
+
+
+@dataclass
+class TradeCancel:
+    pass
+
+
+@dataclass
 class ToggleAutopilot:
     pass
 
@@ -112,7 +140,8 @@ class HoldPosition:
 # --- (de)serialization: commands are plain data, so they can be logged and sent over a wire ---
 _BY_NAME = {cls.__name__: cls for cls in (
     MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion, ToggleAutopilot, ToggleCompanion,
-    CancelChannel, BindLeftSkill, HoldPosition, UseItem, PickUp, SetTarget, MoveDir)}
+    CancelChannel, BindLeftSkill, HoldPosition, UseItem, PickUp, SetTarget, MoveDir, TradeOpen, TradeOffer,
+    TradeTake, TradeAccept, TradeCancel)}
 
 
 def to_dict(cmd):
