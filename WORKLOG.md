@@ -839,3 +839,35 @@ How to play together: `docs/playing_together.md`. Testing: `docs/automated_testi
 - Performance: pathfinding is ~half of game time. Skipping far monsters in `count_enemies_in_range` cut ~40%
   but changed AI decisions via the path-distance cache, so it was dropped; a cache-neutral version is TBD.
 - Not tested yet: a second physical machine, Windows `run.bat`, guest/isolated Wi-Fi.
+
+## Session 15 — Party AI, leveling, items, WoW-style controls, trading
+
+### Done
+- **Party AI**: shared engaged-mob pool, everyone focuses the lowest-HP engaged mob; melee heroes in a party no
+  longer kite (Paladin ran around instead of fighting). Fighter AI shouts first whenever an enemy in range isn't
+  Demoralized.
+- **Bosses**: Ashardalon enrage at 50% (+50% attack damage); per-spawn stat overrides; boss room tuned (146 board HP).
+- **Progression**: skills unlock / level 1-3 every 2 character levels (popup, "Lv.N"); class base damage + skill
+  a x base + b; XP curve 100 then x(1 + max(5%, 50% - L x 2%)); monster levels per map (HP 50 + 25/level x
+  hp_mult, damage level+5 +-10%, XP 10/level, less XP when out-leveled); 2 s monster swings; hero HP 120 -> old L30.
+- **Items**: backpack (B, 4x10, stacks), Health Potion (120, 90 s CD), Bread / Drumstick / Roast Chicken / Sushi
+  (heal over 20 s, one "Well Fed" buff), drops by level and category (humanoids drop money, beasts 3x food),
+  money in gold/silver/bronze, player-to-player trading (T), autopilot picks up nearby food.
+- **Controls**: WoW style — WASD, left-click target, right-click attack, Tab, hotbar 1-5 (drag to swap, saved),
+  P autopilot, auto-attack after any attack skill. Fighter kit: Strike, Charge, Heroic Strike, Shout, Cleave;
+  threat modifier on every skill.
+- **Maps**: editor finds and patches diagonal wall gaps on save; shipped maps patched.
+- **Fixes**: auto-attack stopped after one swing; traded items lost when two windows on one Mac shared saves
+  (Play now re-reads the character from disk; the backpack is saved whenever it changes).
+
+### Notes / Follow-ups
+- **Map creation workflow (next big bottleneck).** Goldshire (auto-generated) isn't good enough. Goal: the user
+  provides a real map image + a Wowhead zone link, and the agent generates the map, NPCs and quests. Doesn't
+  have to be 100% automated, but needs a reasonable, streamlined interactive workflow (e.g. agree the layout /
+  regions and landmarks first, then terrain + walls, then spawns with levels, NPCs, quest chain; review each step
+  in the editor). Asset choice may be a limit (Kenney RPG / dungeon sheets). To design later.
+- Heals/shields and potions are fixed amounts (not scaled by level); Stealth's 2 s cooldown lets the Rogue Ambush
+  almost nonstop; poison is still a flat 10 DPS; Goldshire / Church / Haycock / Upside Down have no monster levels.
+- Food buff is shown as top-left text; top-right buff icons were discussed, not done.
+- Trading UI between two real clients has no automated test (sim rules are tested).
+- Optional: refuse to open a character that is already open in another game window on the same computer.
