@@ -1,4 +1,4 @@
-"""Trading between players (engine/trade.py) and the player autopilot picking up nearby food."""
+"""Trading between players (engine/trade.py) and the player autopilot picking up nearby dropped items."""
 import random
 import tempfile
 import unittest
@@ -117,13 +117,24 @@ class TradeTest(unittest.TestCase):
             self.assertEqual(C.from_dict(C.to_dict(cmd)), cmd)
 
 
-class AutopilotFoodTest(unittest.TestCase):
+class AutopilotPickupTest(unittest.TestCase):
     def setup(self, offset):
         random.seed(1)
         w, p = create_world(MAP, saves.blank_character("t", "Fighter", level=5), autopilot=True)
         w.game_state.monsters.clear()
         g = w.drop_item("bread", p.hero.x + offset, p.hero.y)
         return w, p, g
+
+    def test_picks_up_any_item_not_just_food(self):
+        random.seed(1)
+        w, p = create_world(MAP, saves.blank_character("t", "Fighter", level=5), autopilot=True)
+        w.game_state.monsters.clear()
+        w.drop_item("health_potion", p.hero.x + 120, p.hero.y)
+        for _ in range(30 * 5):
+            w.step(DT)
+            if not w.ground_items:
+                break
+        self.assertEqual(p.inventory.count("health_potion"), 4)        # 3 starting + the one picked up
 
     def test_picks_up_food_within_200(self):
         w, p, g = self.setup(150)

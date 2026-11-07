@@ -150,20 +150,20 @@ class PlayerState:
             e = None
         self.target = e
 
-    AUTOPILOT_FOOD_RANGE = 200   # px: a player's autopilot goes for food lying this close (companions never do)
+    AUTOPILOT_PICKUP_RANGE = 200   # px: a player's autopilot picks up any item lying this close (companions never do)
 
-    def _autopilot_food(self):
-        """Autopilot (players only): go pick up food lying within AUTOPILOT_FOOD_RANGE. True while doing so."""
+    def _autopilot_pickup(self):
+        """Autopilot (players only): go pick up any dropped item within AUTOPILOT_PICKUP_RANGE. True while doing so."""
         world, hero = self.world, self.hero
         if self.pickup_target is not None and world.ground_item(self.pickup_target) is not None:
             return True                                   # already on the way (_try_pickup takes it in reach)
         skip = self.__dict__.setdefault("_unreachable_items", set())
-        foods = sorted((g for g in world.ground_items
-                        if ITEMS[g.item]["kind"] == "food" and g.item_id not in skip
-                        and (g.x - hero.x) ** 2 + (g.y - hero.y) ** 2 <= self.AUTOPILOT_FOOD_RANGE ** 2
+        items = sorted((g for g in world.ground_items
+                        if g.item_id not in skip
+                        and (g.x - hero.x) ** 2 + (g.y - hero.y) ** 2 <= self.AUTOPILOT_PICKUP_RANGE ** 2
                         and self.inventory.can_add(g.item)),
                        key=lambda g: (g.x - hero.x) ** 2 + (g.y - hero.y) ** 2)
-        for g in foods:
+        for g in items:
             near = (g.x - hero.x) ** 2 + (g.y - hero.y) ** 2 <= self.PICKUP_RANGE ** 2
             path = [] if near else self._path(hero.x, hero.y, g.x, g.y)
             if near or path:
@@ -898,8 +898,8 @@ class PlayerState:
         # === HERO AI (when enabled) ===
         if not (self.ai_enabled and not self.dash_active):
             return None
-        if not self.is_companion and self._autopilot_food():
-            return None                  # walking to food: that comes first
+        if not self.is_companion and self._autopilot_pickup():
+            return None                  # walking to a dropped item: that comes first
         ai_action = self.hero_ai.update(gs.alive_monsters, dt, self.world.is_wall)
 
         # Debug log
