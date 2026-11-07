@@ -305,9 +305,15 @@ class PlayerState:
             ab = hero.abilities.get(cmd.ab_key)
             if ab is None:
                 return
+            enemy = self._live_monster(cmd.target_id)
+            # WoW: attacking an enemy with a skill (e.g. the basic attack on key 1) starts auto-attacking it
+            attack = enemy is not None and ab.target_kind == "enemy" and not self.ai_enabled
+            if attack:
+                self.target = enemy
             if ab.is_ready():
-                self.cast_ability(cmd.ab_key, ab, cmd.x, cmd.y, self._live_monster(cmd.target_id),
-                                  ally=self._friendly(cmd.ally_id))
+                self.cast_ability(cmd.ab_key, ab, cmd.x, cmd.y, enemy, ally=self._friendly(cmd.ally_id))
+            if attack and enemy.alive:
+                self.selected_target = enemy      # (casting clears it; keep attacking afterwards)
             elif cmd.fallback_move:
                 # Skill on cooldown — just move instead
                 self.move_path = self._path(hero.x, hero.y, cmd.x, cmd.y)
@@ -1037,7 +1043,10 @@ class PlayerState:
                     ab_key = left_ab_key
                     ab = hero.abilities[ab_key]
                     if ab.is_ready() and hero.gcd <= 0 and hero.swing_timer <= 0:
-                        self.cast_ability(ab_key, ab, self.selected_target.x, self.selected_target.y, self.selected_target)
+                        target = self.selected_target
+                        self.cast_ability(ab_key, ab, target.x, target.y, target)
+                        if target.alive and self.selected_target is None:
+                            self.selected_target = target     # casting clears it; auto-attack keeps going
                 elif not hold_position and self.move_dir == (0, 0):
                     # Out of range (and not steering with WASD / holding Shift) — pathfind toward target
                     if not self.move_path:

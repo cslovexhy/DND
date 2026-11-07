@@ -79,6 +79,9 @@ class Ability:
     threat_mult: float = 1.0
     max_targets_levels: tuple = ()   # optional cap on targets hit per skill level (Cleave 2 / 3 / 4)
     heroic: bool = False        # an attack that the Heroic Strike buff empowers (Fighter Strike, Cleave)
+    # What the skill is aimed at: "enemy" (casting it at an enemy also starts auto-attacking it), "ally" (a friend or
+    # yourself) or "self" (fires on the spot: buffs, shouts, novas)
+    target_kind: str = "enemy"
 
     def __post_init__(self):
         self.full_multiplier = self.multiplier

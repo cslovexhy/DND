@@ -85,6 +85,46 @@ class HotbarRoutingTest(unittest.TestCase):
         self.assertNotIn("Renew", p.hero.buffs)
 
 
+class AutoAttackTest(unittest.TestCase):
+    def _hits_after_one_cast(self, cls, key, seconds=6):
+        w, p = world1(cls)
+        m = min(w.game_state.monsters, key=lambda x: p.hero.distance_to(x))
+        del w.game_state.monsters[1:]
+        w.game_state.monsters[0:1] = [m]
+        m.x, m.y = p.hero.x + 50, p.hero.y
+        m.spawn_x, m.spawn_y = m.x, m.y
+        m.hp = m.max_hp = 10 ** 6
+        m.regen_rate_combat = m.regen_rate_ooc = 0.0
+        m.swing_timer = 10 ** 6
+        w.submit(C.SetTarget(m.eid), 0); w.step(DT)
+        w.submit(C.Cast(key, m.x, m.y, m.eid), 0)            # press the skill once
+        hits = 0
+        last = m.hp
+        for _ in range(int(seconds / DT)):
+            w.step(DT)
+            if m.hp < last:
+                hits += 1
+            last = m.hp
+        return p, m, hits
+
+    def test_basic_attack_once_keeps_attacking(self):
+        p, m, hits = self._hits_after_one_cast("Fighter", "Q")   # Strike: 1.6 s swings
+        self.assertIs(p.selected_target, m)
+        self.assertGreaterEqual(hits, 3)
+
+    def test_any_attack_skill_starts_auto_attack(self):
+        p, m, hits = self._hits_after_one_cast("Wizard", "R")    # Fire Blast, then auto Frostbolts
+        self.assertIs(p.selected_target, m)
+        self.assertGreaterEqual(hits, 3)
+
+    def test_self_and_support_skills_do_not(self):
+        w, p = world1("Cleric")
+        m = w.game_state.monsters[0]
+        w.submit(C.Cast("R", m.x, m.y, m.eid), 0)                # Wall: an ally/self skill
+        w.step(DT)
+        self.assertIsNone(p.selected_target)
+
+
 class MoveDirTest(unittest.TestCase):
     def test_wasd_walks_and_stops(self):
         w, p = world1("Fighter")

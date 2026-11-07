@@ -33,8 +33,10 @@ def fighter(level=30, mobs=1):
 
 
 def cast(world, key, target):
+    """One press of a skill, measured alone: stop the auto-attack it starts (these tests count single hits)."""
     world.submit(C.Cast(key, target.x, target.y, target.eid), 0)
     world.step(DT)
+    world.players[0].selected_target = None
 
 
 class ThreatTest(unittest.TestCase):

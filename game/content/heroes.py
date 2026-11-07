@@ -37,12 +37,12 @@ def create_fighter(name: str, x: float, y: float) -> Hero:
                                effect="Dash to target (130/140/150% weapon dmg + 3/6/9, stun 1.5s)",
                                power_type="daily", color=(255, 160, 50),
                                is_dash=True, stun_duration=1.5))
-    h.add_ability("E", Ability("Demoralizing Shout", cooldown=5.0, multiplier=0, flat_bonus=0,
+    h.add_ability("E", Ability("Demoralizing Shout", target_kind="self", cooldown=5.0, multiplier=0, flat_bonus=0,
                                radius=120, range=0,
                                effect="Reduces nearby enemies damage by 10/20/30% (skill level 1/2/3) for 10s, slows 3s",
                                power_type="encounter", color=(200, 150, 50)))
     # Heroic Strike: no damage of its own; a buff that empowers the next Strike / Cleave hit
-    h.add_ability("F", Ability("Heroic Strike", cooldown=4.0, multiplier=0, b_levels=(2, 4, 6), threat_mult=1.5,
+    h.add_ability("F", Ability("Heroic Strike", target_kind="self", cooldown=4.0, multiplier=0, b_levels=(2, 4, 6), threat_mult=1.5,
                                radius=0, range=0,
                                effect="Next Strike or Cleave: +2/4/6 dmg and 150% threat on that target.",
                                power_type="encounter", color=(255, 120, 60)))
@@ -68,11 +68,11 @@ def create_cleric(name: str, x: float, y: float) -> Hero:
                                radius=0, range=200,
                                effect="Ranged bolt (100% weapon dmg + 1/2/3). Fires a projectile.",
                                power_type="at_will", color=CLERIC_COLOR))
-    h.add_ability("R", Ability("Wall", cooldown=15.0, multiplier=0, flat_bonus=0,
+    h.add_ability("R", Ability("Wall", target_kind="ally", cooldown=15.0, multiplier=0, flat_bonus=0,
                                radius=0, range=0,
                                effect="Absorb shield on self. Absorbs potion-amount of damage.",
                                power_type="utility", color=(100, 180, 255)))
-    h.add_ability("E", Ability("Renew", cooldown=16.0, multiplier=0, flat_bonus=0,
+    h.add_ability("E", Ability("Renew", target_kind="ally", cooldown=16.0, multiplier=0, flat_bonus=0,
                                radius=0, range=0,
                                effect="Heal 50% potion-amount over 8s.",
                                power_type="utility", color=(100, 255, 150)))
@@ -92,7 +92,7 @@ def create_paladin(name: str, x: float, y: float) -> Hero:
                                radius=0, range=75,
                                effect="Melee divine strike (100% weapon dmg + 1/2/3). Boosted by Seal.",
                                power_type="at_will", color=PALADIN_COLOR))
-    h.add_ability("R", Ability("Righteous Seal", cooldown=10.0, multiplier=0, flat_bonus=0,
+    h.add_ability("R", Ability("Righteous Seal", target_kind="self", cooldown=10.0, multiplier=0, flat_bonus=0,
                                radius=0, range=0,
                                effect="Buff: Smite +10/15/20% weapon dmg for 10s. Consumed by Judgement.",
                                power_type="utility", color=(255, 220, 80)))
@@ -100,7 +100,7 @@ def create_paladin(name: str, x: float, y: float) -> Hero:
                                radius=0, range=250,
                                effect="Ranged holy bolt (120/130/140% weapon + 2/4/6). Consumes Seal for +50% weapon dmg.",
                                power_type="daily", color=(255, 255, 150)))
-    h.add_ability("F", Ability("Holy Light", cooldown=30.0, multiplier=0, flat_bonus=0,
+    h.add_ability("F", Ability("Holy Light", target_kind="ally", cooldown=30.0, multiplier=0, flat_bonus=0,
                                radius=0, range=0,
                                effect="Channel 2s: heal 150 HP. Immobilizes during cast.",
                                power_type="utility", color=(255, 255, 220)))
@@ -121,7 +121,7 @@ def create_rogue(name: str, x: float, y: float) -> Hero:
                                radius=0, range=55,
                                effect="Fast melee strike (100% weapon dmg + 0.5/1/1.5).",
                                power_type="at_will", color=ROGUE_COLOR))
-    h.add_ability("R", Ability("Stealth", cooldown=2.0, multiplier=0, flat_bonus=0,
+    h.add_ability("R", Ability("Stealth", target_kind="self", cooldown=2.0, multiplier=0, flat_bonus=0,
                                radius=0, range=0,
                                effect="Go invisible. 60% move speed. Mobs can't see you. Attack breaks stealth.",
                                power_type="utility", color=(100, 180, 100), max_level=1))   # nothing to scale
@@ -150,7 +150,7 @@ def create_wizard(name: str, x: float, y: float) -> Hero:
                                radius=0, range=260,
                                effect="Instant ranged fire bolt (120/130/140% weapon dmg + 2/4/6).",
                                power_type="daily", color=(255, 130, 50), range_levels=WIZARD_BOLT_RANGES))
-    h.add_ability("E", Ability("Frost Nova", cooldown=12.0, a_levels=(0.4,), b_levels=(1, 2, 3),
+    h.add_ability("E", Ability("Frost Nova", target_kind="self", cooldown=12.0, a_levels=(0.4,), b_levels=(1, 2, 3),
                                radius=120, range=0,
                                effect="AoE freeze around self. 4s freeze + 40% weapon dmg + 1/2/3.",
                                power_type="daily", color=(180, 220, 255)))
