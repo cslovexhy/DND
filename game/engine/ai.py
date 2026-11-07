@@ -5,7 +5,10 @@ Aggro rules:
 - Monsters start IDLE (not aggroed)
 - SENSE RANGE: monster detects hero within this radius → aggro
 - CALL FOR HELP: when attacked, monsters within call_range also aggro
-- LEASH RANGE: if hero moves too far from spawn, monster resets
+- LEASH: a monster further than leash_range from its spawn gives up (walks home and resets) once it has gone
+  LEASH_TIME seconds without combat. Taking damage from a hero, or landing a hit, restarts that timer, so a hero
+  who keeps hitting it keeps it fighting (it used to reset the instant it crossed the line, then re-aggro on the
+  next hit, then reset again: ping-pong).
 - LINKED GROUPS: optional, pull one = pull all in group
 - HATE: every monster keeps a hate table (Monster.hate). 1 hate per damage dealt to it, 0.8 per HP a healer heals or
   shields on a hero already on its table; healing such a friend also puts the healer on the table. Every aggroed
@@ -39,6 +42,7 @@ class AggroState:
 
 
 HEAL_HATE_PER_HP = 0.8   # hate per HP healed or shielded (damage is 1 hate per point)
+LEASH_TIME = 5.0         # seconds without combat (beyond leash range) before a monster gives up
 
 
 def release_aggro(monster):
@@ -192,7 +196,8 @@ def check_aggro(monster: Monster, heroes: list[Hero], all_monsters: list[Monster
         dx = monster.x - monster.spawn_x
         dy = monster.y - monster.spawn_y
         exempt = monster.is_boss or getattr(monster, 'relentless', False)
-        if not exempt and math.sqrt(dx*dx + dy*dy) > monster.leash_range:
+        if (not exempt and math.sqrt(dx*dx + dy*dy) > monster.leash_range
+                and getattr(monster, "since_combat", 0.0) >= LEASH_TIME):
             release_aggro(monster)
         return
 
@@ -227,6 +232,7 @@ def aggro_monster(monster: Monster, target: Hero, all_monsters: list[Monster]):
     monster.aggro_state = AggroState.AGGROED
     monster.aggro_target = target
     monster.add_hate(target)
+    monster.since_combat = 0.0
 
     # Break stealth if hero is stealthed and detected
     if getattr(target, 'stealthed', False):
@@ -351,6 +357,7 @@ def ai_melee(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None)
     if in_range:
         dmg = monster.try_basic_attack(target)
         if dmg is not None:
+            monster.since_combat = 0.0          # it reached someone: the leash timer starts over
             if monster.on_hit_condition:
                 cond, dur = monster.on_hit_condition
                 target.apply_condition(cond, dur,
@@ -434,6 +441,7 @@ def ai_boss(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None):
     if in_range:
         dmg = monster.try_basic_attack(target)
         if dmg is not None:
+            monster.since_combat = 0.0          # it reached someone: the leash timer starts over
             if monster.on_hit_condition:
                 cond, dur = monster.on_hit_condition
                 target.apply_condition(cond, dur,
@@ -529,7 +537,9 @@ def run_monster_ai(monster: Monster, heroes: list[Hero], dt: float,
     if not hasattr(monster, 'aggro_state'):
         setup_monster_aggro(monster)
 
-    # Check aggro
+    # Check aggro (the leash timer counts time without combat while aggroed)
+    if monster.aggro_state == AggroState.AGGROED:
+        monster.since_combat = getattr(monster, "since_combat", 0.0) + dt
     check_aggro(monster, heroes, all_monsters or [])
 
     # If resetting, walk back to spawn

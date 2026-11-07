@@ -1,9 +1,9 @@
 {
   "haycock": {
     "deaths": "0",
-    "digest": "320b6fe14b96",
+    "digest": "9819d16adcb0",
     "hp": "120/120",
-    "kills": "4",
+    "kills": "5",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
@@ -57,7 +57,7 @@
   },
   "manual_fighter": {
     "deaths": "0",
-    "digest": "162ec94995c8",
+    "digest": "165da818d8d1",
     "hp": "160/160",
     "kills": "8",
     "outcome": "TIMEOUT",
@@ -65,7 +65,7 @@
   },
   "manual_paladin": {
     "deaths": "0",
-    "digest": "f90dee2c1f59",
+    "digest": "216fb88e013a",
     "hp": "150/158",
     "kills": "8",
     "outcome": "TIMEOUT",
@@ -73,15 +73,15 @@
   },
   "manual_rogue": {
     "deaths": "0",
-    "digest": "1b646e292a3b",
+    "digest": "5f1f85b47dca",
     "hp": "150/150",
-    "kills": "9",
+    "kills": "8",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_wizard": {
     "deaths": "0",
-    "digest": "28bc9de04b9d",
+    "digest": "016df718b874",
     "hp": "100/100",
     "kills": "6",
     "outcome": "TIMEOUT",

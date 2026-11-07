@@ -6,7 +6,7 @@ import unittest
 
 from game import saves
 from game.engine import commands as C
-from game.engine.ai import AggroState, aggro_monster, credit_heal_hate, release_aggro
+from game.engine.ai import AggroState, aggro_monster, credit_heal_hate, release_aggro, LEASH_TIME
 from game.engine.bootstrap import create_world, join_player
 
 MAP = "data/maps/bossTestRoom.json"
@@ -197,6 +197,7 @@ class NormalMobTest(unittest.TestCase):
         world, p0, p1, m = self.mob()
         m.add_hate(p0.hero, 80)
         m.x += 5000
+        m.since_combat = LEASH_TIME             # far past its leash and out of combat long enough
         world.step(DT)
         self.assertEqual(m.aggro_state, AggroState.RESETTING)
         self.assertEqual(m.hate, {})

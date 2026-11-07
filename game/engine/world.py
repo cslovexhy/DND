@@ -530,6 +530,8 @@ class World:
                         self.float_text(hit_target.x, hit_target.y - 35, "SLOWED" if slowed else "IMMUNE", (150, 200, 255))
                 else:
                     # Monster projectile hitting hero
+                    if proj.source is not None:
+                        proj.source.since_combat = 0.0  # it reached someone: the leash timer starts over
                     self.float_text(hit_target.x + random.randint(-10, 10), hit_target.y - 30, f"{dmg:.0f}", HP_RED)
                     # Apply on-hit condition if any
                     on_hit = getattr(proj, 'on_hit_condition', None)

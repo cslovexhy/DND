@@ -562,6 +562,7 @@ class Monster(Entity):
         self.skills: dict = {}
         self.skills_fired: set = set()
         self.enraged = False   # Enrage skill fired: attack damage already multiplied
+        self.since_combat = 0.0   # seconds since it last hit or was hit by a hero (leash timer, engine/ai.py)
         self.skill_queue: list = []
         self.say = ""      # a message shown over its head (e.g. "Ashardalon took a deep breath..."), "" = none
 
@@ -587,6 +588,8 @@ class Monster(Entity):
                     threat: float = 1.0) -> float:
         bonus = getattr(source, "damage_bonus", 1.0)     # a hero's food buff
         dealt = super().take_damage(raw_damage * bonus, ignore_armor, source)
+        if source is not None:
+            self.since_combat = 0.0                      # being hit restarts the leash timer (ai.LEASH_TIME)
         if source is not None and dealt > 0:
             self.add_hate(source, dealt * threat)        # threat modifier: more hate, same damage
         return dealt
