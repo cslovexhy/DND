@@ -556,6 +556,11 @@ def _valid_ipv4(addr):
 
 # ---------------------------------------------------------------- flow
 
+def fresh_character(char):
+    """The character as saved on disk right now (falls back to `char` if the file can't be read)."""
+    return saves.load_character(char["name"]) or char
+
+
 def run_menus(ctx, preset_map=None):
     """Character select -> map select. Returns (char_data, choice) where choice is {"map": path, "pp": n} (solo),
     {"host": path, "pp": n[, "lan": True]} or {"join": True, "address": ip} — or a plain path if preset_map was
@@ -565,6 +570,9 @@ def run_menus(ctx, preset_map=None):
         action, char = character_select(ctx)
         if action == "quit":
             return None
+        # The character list was read when the screen opened; another game window on this computer (e.g. a co-op
+        # session that just ended) may have saved this character since. Play the version on disk, not a stale copy.
+        char = fresh_character(char)
         if preset_map:
             return char, preset_map
         choice = map_select(ctx, char)

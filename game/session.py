@@ -298,6 +298,7 @@ ability_keys = view.you.ability_keys  # the hero's unlocked skills (internal key
 from game.client.hotbar import merge_order, swap as swap_slots
 hotbar_order = merge_order(char_data.get("hotbar"), ability_keys)
 hotbar_drag = None     # slot index being dragged (left button held on a hotbar slot)
+_saved_inventory = None   # backpack as of the last save (saved again as soon as it changes)
 HOTBAR_KEYS = [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6]
 # WASD walks; held keys are tracked from KEYDOWN/KEYUP (works with scripted input too)
 MOVE_KEYS = {pygame.K_w: (0, -1), pygame.K_s: (0, 1), pygame.K_a: (-1, 0), pygame.K_d: (1, 0)}
@@ -1082,6 +1083,12 @@ while running:
     if snap is not None:           # a remote host may not have sent a new frame yet
         _last_snapshot_at = time.monotonic()
         view.apply(snap)
+        # Save whenever the backpack changes (trade, pickup, eating): items must not wait for level-up / quit
+        _inv = view.you.inventory
+        if _inv != _saved_inventory:
+            if _saved_inventory is not None:
+                save_game()
+            _saved_inventory = _inv
         ability_keys = view.you.ability_keys               # a level-up may have unlocked a skill
         hotbar_order = merge_order(hotbar_order, ability_keys)   # ...it goes to the end of the hotbar
         MAP_TITLE = map_title(MAP_NAME, view.pp)   # e.g. "Northshire (8pp)" — the host's pp, same for everyone

@@ -59,5 +59,30 @@ class MenuTest(unittest.TestCase):
         self.assertIsNone(out["back"])
 
 
+FRESH_SCRIPT = r'''
+import os, sys, json, tempfile
+os.environ["SDL_VIDEODRIVER"] = "dummy"; os.environ["SDL_AUDIODRIVER"] = "dummy"
+from game import saves
+saves.SAVE_DIR = tempfile.mkdtemp()
+from game.menus import fresh_character
+stale = saves.blank_character("pal", "Paladin", level=4)
+saves.save_character(stale)
+listed = saves.list_characters()[0]                   # what the character screen read when it opened
+newer = dict(stale, inventory=[{"slot": 1, "item": "sushi_plate", "count": 1}])
+saves.save_character(newer)                           # another window (a co-op session) saved meanwhile
+print(json.dumps(fresh_character(listed)["inventory"]))
+'''
+
+
+class FreshCharacterTest(unittest.TestCase):
+    def test_play_uses_the_save_on_disk_not_the_list_read_earlier(self):
+        """Lost-item bug: a stale copy from the character screen overwrote a co-op save made meanwhile."""
+        p = subprocess.run([sys.executable, "-c", FRESH_SCRIPT], cwd=ROOT, capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        import json
+        self.assertEqual(json.loads(p.stdout.strip().splitlines()[-1]),
+                         [{"slot": 1, "item": "sushi_plate", "count": 1}])
+
+
 if __name__ == "__main__":
     unittest.main()
