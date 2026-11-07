@@ -15,8 +15,8 @@ FOOD_HOT = "Eating"       # hero.buffs key of the meal being eaten (heal over ti
 
 ITEMS = {
     "health_potion": {"name": "Health Potion", "icon": ("dungeon", 7, 9), "kind": "potion", "heal": 120},
-    "bread":         {"name": "Bread", "icon": ("rpg", 55, 13), "kind": "food", "heal": 120},
-    "drumstick":     {"name": "Drumstick", "icon": ("rpg", 56, 12), "kind": "food", "heal": 200},
+    "bread":         {"name": "Bread", "icon": ("rpg", 56, 12), "kind": "food", "heal": 120},
+    "drumstick":     {"name": "Drumstick", "icon": ("rpg", 55, 13), "kind": "food", "heal": 200},
     "roast_chicken": {"name": "Roast Chicken", "icon": ("rpg", 54, 15), "kind": "food", "heal": 300,
                       "buff": {"damage_pct": 0.05, "max_hp_pct": 0.05}, "buff_duration": 600.0},
     "sushi_plate":   {"name": "Sushi Plate", "icon": ("rpg", 56, 13), "kind": "food", "heal": 200,
