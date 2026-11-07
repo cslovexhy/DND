@@ -962,12 +962,14 @@ class PlayerState:
             if hero._ai_repath_timer <= 0 or not self.move_path:
                 self.move_path = self._path(hero.x, hero.y, tx, ty)
                 hero._ai_repath_timer = 0.5
-                # If path is empty and target is nearby, it's unreachable
-                if not self.move_path and self.hero_ai.target and self.hero_ai.target.alive:
-                    dist_to_target = hero.distance_to(self.hero_ai.target)
-                    if dist_to_target < 300:
-                        hero._ai_unreachable.add(id(self.hero_ai.target))
-                        self.hero_ai.target = None  # Force retarget next frame
+                # Walking to the target but no walking path exists (it stands somewhere we can't reach, e.g. a
+                # walled-off patch of the map): remember it, so target picking skips it, and pick another
+                target = self.hero_ai.target
+                if (not self.move_path and target is not None and target.alive
+                        and abs(tx - target.x) < 1 and abs(ty - target.y) < 1
+                        and hero.distance_to(target) > TILE_SIZE):
+                    hero._ai_unreachable.add(target.eid)
+                    self.hero_ai.target = None  # Force retarget next frame
         return ai_action
 
     def follow_owner(self, dt):

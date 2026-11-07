@@ -56,6 +56,9 @@ class HeroAI:
     def __init__(self, hero: Hero):
         self.hero = hero
         self.allies = []  # Set externally to the live list of all party heroes (players + companions, includes self)
+        # Optional: which monsters to go for when nothing is aggroed (e.g. a quest bot's quest mobs); None = any.
+        # Monsters that are already fighting are always fair game.
+        self.target_filter = None
         self.target: Monster = None
         self.dash_request = None  # (target_x, target_y, target_monster, damage, stun_dur)
         self._nav_dungeon = None  # Set externally after creation
@@ -78,8 +81,15 @@ class HeroAI:
                    hasattr(m, 'aggro_state') and m.aggro_state == AggroState.AGGROED]
         if engaged:
             return engaged
-        # Nothing engaged — allow targeting any alive, visible monster (start new pull)
-        return [m for m in monsters if m.alive and not getattr(m, 'stealthed', False)]
+        # Nothing engaged — allow targeting any alive, visible monster we can walk to (start new pull)
+        unreachable = getattr(self.hero, "_ai_unreachable", ())
+        visible = [m for m in monsters if m.alive and not getattr(m, 'stealthed', False)
+                   and m.eid not in unreachable]
+        if self.target_filter is not None:
+            wanted = [m for m in visible if self.target_filter(m)]
+            if wanted:
+                return wanted
+        return visible
 
     def has_los(self, target) -> bool:
         """Check if hero has line of sight to target."""
@@ -856,8 +866,9 @@ class RogueAI(HeroAI):
             action["move_to"] = (self.target.x, self.target.y)
             return action
 
-        # 4. Walk to target if out of range
-        if dist > 50:
+        # 4. Walk to target if out of range, or close but behind a wall (Stab needs line of sight; the walking path
+        #    goes around the wall — standing still here waited forever)
+        if dist > 50 or not self.has_los(self.target):
             action["move_to"] = self.melee_move_to(alive, self.target.x, self.target.y)
             return action
 

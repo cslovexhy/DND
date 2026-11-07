@@ -43,6 +43,7 @@ class AggroState:
 
 HEAL_HATE_PER_HP = 0.8   # hate per HP healed or shielded (damage is 1 hate per point)
 LEASH_TIME = 5.0         # seconds without combat (beyond leash range) before a monster gives up
+EVADE_TIME = 8.0         # a monster walking home that still isn't there after this long teleports to its spawn
 
 
 def release_aggro(monster):
@@ -50,6 +51,7 @@ def release_aggro(monster):
     monster.aggro_state = AggroState.RESETTING
     monster.aggro_target = None
     monster.hate.clear()
+    monster.resetting_for = 0.0
 
 
 def drop_from_hate(monster, hero):
@@ -542,9 +544,13 @@ def run_monster_ai(monster: Monster, heroes: list[Hero], dt: float,
         monster.since_combat = getattr(monster, "since_combat", 0.0) + dt
     check_aggro(monster, heroes, all_monsters or [])
 
-    # If resetting, walk back to spawn
+    # If resetting, walk back to spawn (monsters walk straight, so a wall can block them: then they "evade" home)
     if monster.aggro_state == AggroState.RESETTING:
-        monster.move_toward(monster.spawn_x, monster.spawn_y, dt, collision_fn)
+        monster.resetting_for = getattr(monster, "resetting_for", 0.0) + dt
+        if monster.resetting_for >= EVADE_TIME:
+            monster.x, monster.y = monster.spawn_x, monster.spawn_y
+        else:
+            monster.move_toward(monster.spawn_x, monster.spawn_y, dt, collision_fn)
         return None
 
     # If idle, patrol
