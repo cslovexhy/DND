@@ -150,8 +150,8 @@ def create_rogue(name: str, x: float, y: float) -> Hero:
     # Poison Dagger: no damage of its own; the next Stab poisons its target (b = total poison damage over 5 s).
     # Cooldown = poison duration, so the poison can be kept up nonstop.
     h.add_ability("F", Ability("Poison Dagger", mana_weight=1.0, target_kind="self", cooldown=5.0, multiplier=0,
-                               b_levels=(10, 20, 30), radius=0, range=0,
-                               effect="Next Stab poisons the target: 10/20/30 damage over 5s.",
+                               b_levels=(15, 30, 45), radius=0, range=0,
+                               effect="Next Stab poisons the target: 15/30/45 damage over 5s.",
                                power_type="encounter", color=(120, 220, 80)))
     return h
 

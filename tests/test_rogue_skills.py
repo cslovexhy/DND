@@ -1,5 +1,5 @@
 """Rogue kit: Stealth is out of combat only (it opens a fight with Ambush); Poison Dagger arms the next Stab to poison
-its target for 10/20/30 damage in total over 5 s (ignores armor, counts as the Rogue's threat); unlock order
+its target for 15/30/45 damage in total over 5 s (ignores armor, counts as the Rogue's threat); unlock order
 L2 Poison Dagger, L4 Stealth, L6 Ambush."""
 import random
 import tempfile
@@ -89,7 +89,7 @@ class StealthTest(unittest.TestCase):
 
 class PoisonDaggerTest(unittest.TestCase):
     def test_next_stab_poisons_for_the_skill_level_dps(self):
-        for level, total in ((2, 10), (10, 20), (16, 30)):
+        for level, total in ((2, 15), (10, 30), (16, 45)):
             world, p, m = rogue(level)
             cast(world, "F")
             self.assertIn("Poison Dagger", p.hero.buffs)
