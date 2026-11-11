@@ -15,6 +15,7 @@ This enables:
 import math
 import time
 from game.engine.entities import Hero, Monster, Condition
+from game.engine.ai import is_fighting
 from game.engine.pathfinding import astar, has_line_of_sight
 
 # How far away an ally can be for Wall / Renew / Holy Light. One constant for the cast rule (player.py) and the
@@ -215,11 +216,14 @@ class HeroAI:
         return dist
 
     REST_HP_PCT = 0.80
+    REST_MANA_PCT = 0.50
 
     def should_rest(self, monsters) -> bool:
-        """No aggro and HP below 80%: don't pick targets / start a pull until regenerated."""
+        """No aggro and HP below 80% or mana below 50%: don't pick targets / start a pull until regenerated."""
+        hero = self.hero
         return (self.aggroed_count(monsters) == 0
-                and self.hero.hp < self.hero.max_hp * self.REST_HP_PCT)
+                and (hero.hp < hero.max_hp * self.REST_HP_PCT
+                     or hero.mana < hero.max_mana * self.REST_MANA_PCT))
 
     def aggroed_count(self, monsters) -> int:
         """Number of alive, visible monsters currently aggroed."""
@@ -242,15 +246,25 @@ class HeroAI:
             return min(engaged, key=lambda m: (m.hp, self.path_distance(m)))
         return self._sticky(min(candidates, key=lambda m: self.path_distance(m)), candidates)
 
+    MELEE_KITE_RADIUS = 100   # a lone melee hero only backs off while an aggroed mob is this close
+
     def melee_move_to(self, monsters, tx, ty):
         """Melee movement: walk straight to (tx, ty). Only a lone melee hero (no party) kites, and only when more
-        than one mob is aggroed — then it uses the wizard-style kite position (falls back to straight walk).
+        than one mob is aggroed and one of them is close (MELEE_KITE_RADIUS) — then it uses the wizard-style kite
+        position (falls back to straight walk). Further away it walks back to its target (otherwise a melee hero that
+        backed off, e.g. while out of mana, never re-engaged).
         In a party the others share the aggro, so melee heroes stay on their target and fight."""
-        if not self.in_party() and self.aggroed_count(monsters) > 1:
+        if not self.in_party() and self.aggroed_count(monsters) > 1 and self._aggroed_mob_within(
+                monsters, self.MELEE_KITE_RADIUS):
             kite_pos = self._find_best_kite_position(monsters)
             if kite_pos:
                 return kite_pos
         return (tx, ty)
+
+    def _aggroed_mob_within(self, monsters, radius) -> bool:
+        from game.engine.ai import AggroState
+        return any(m.alive and getattr(m, 'aggro_state', None) == AggroState.AGGROED
+                   and self.hero.distance_to(m) <= radius for m in monsters)
 
     def _sticky(self, best, candidates):
         """Target hysteresis: keep the current target unless the new nearest one is clearly
@@ -415,7 +429,7 @@ class ClericAI(HeroAI):
     Quinn (Cleric) AI — Ranged wand attacker with ally support:
     - Heals first: Wall, else Renew, on the lowest-HP% party member (including self) once below 70%
     - Stay at range (~150-200px) and cast Wanding as auto-attack
-    - Kite away from melee enemies if they get too close
+    - Kite away from melee enemies if they get too close (8-direction kite, like the Wizard)
     - Pop potion below 30% HP
     """
 
@@ -488,15 +502,11 @@ class ClericAI(HeroAI):
                 if kite_pos:
                     action["move_to"] = kite_pos
                     return action
-            if self.target and self.aggroed_count(alive) > 0:
-                dist = self.hero.distance_to(self.target)
-                if dist < 80:
-                    # Move away from target
-                    dx = self.hero.x - self.target.x
-                    dy = self.hero.y - self.target.y
-                    d = math.sqrt(dx * dx + dy * dy)
-                    if d > 0:
-                        action["move_to"] = (self.hero.x + (dx / d) * 100, self.hero.y + (dy / d) * 100)
+            if self.target and self.aggroed_count(alive) > 0 and self.hero.distance_to(self.target) < 80:
+                # Too close: kite (8 directions, as far as possible from every mob nearby, idle ones included)
+                kite_pos = self._find_best_kite_position(alive)
+                if kite_pos:
+                    action["move_to"] = kite_pos
             return action
 
         self.target = self.pick_target(alive)
@@ -526,13 +536,13 @@ class ClericAI(HeroAI):
             action["ability_target_monster"] = self.target
             return action
 
-        # 5. Kite if too close (only once something is aggroed; otherwise body-pull)
+        # 5. Kite if too close (only once something is aggroed; otherwise body-pull): 8 directions, as far as
+        #    possible from every mob nearby, idle ones included (it used to step straight away from the target,
+        #    which dragged the fight in a straight line into the next pack)
         if dist < 80 and self.aggroed_count(alive) > 0:
-            dx = self.hero.x - self.target.x
-            dy = self.hero.y - self.target.y
-            d = math.sqrt(dx * dx + dy * dy)
-            if d > 0:
-                action["move_to"] = (self.hero.x + (dx / d) * 100, self.hero.y + (dy / d) * 100)
+            kite_pos = self._find_best_kite_position(alive)
+            if kite_pos:
+                action["move_to"] = kite_pos
             return action
 
         # 6. Move toward target (to get in range or get LOS).
@@ -775,13 +785,14 @@ class WizardAI(HeroAI):
 
 class RogueAI(HeroAI):
     """
-    Tarak (Rogue) AI — Stealth assassin:
-    - Stealth when no enemies aggroed on hero
-    - Ambush opener from stealth (massive burst)
-    - Stab as bread-and-butter melee
+    Tarak (Rogue) AI — opens from stealth, then poison + daggers:
+    - Out of combat, near its target, with mana for both: Stealth, sneak in, Ambush (the opener)
+    - In combat (Stealth can't be cast then): Poison Dagger whenever ready and the target's poison is about to run
+      out, Stab as bread-and-butter
     - Stay in melee range of target
     - Pop potion below 35% HP
     """
+    STEALTH_OPEN_DIST = 300   # only Stealth when the target is this close (px)
 
     def __init__(self, hero):
         super().__init__(hero)
@@ -848,9 +859,17 @@ class RogueAI(HeroAI):
         if hp_pct < 0.35:
             action["use_potion"] = True
 
-        # 2. Stealth if not already stealthed and CD ready
         ab_r = self.hero.abilities.get("R")
-        if ab_r and ab_r.is_ready() and not self.hero.stealthed and ab_e:   # no Ambush yet: stay visible and Stab
+        ab_q = self.hero.abilities.get("Q")
+        ab_f = self.hero.abilities.get("F")
+
+        # 2. Opener: out of combat, Stealth (then Ambush, below) — only when both are learned and affordable, so it
+        #    never sneaks in without the mana for the hit, and only near the target (stealth walks at 60% speed; mobs
+        #    notice a visible hero from ~180 px). In combat Stealth can't be cast at all.
+        if (ab_r and ab_e and not self.hero.stealthed and ab_r.is_ready() and ab_e.remaining <= 0
+                and dist <= self.STEALTH_OPEN_DIST
+                and self.hero.mana >= ab_r.mana_cost + ab_e.mana_cost
+                and not is_fighting(self.hero, alive)):
             action["use_ability"] = "R"
             return action
 
@@ -872,22 +891,29 @@ class RogueAI(HeroAI):
             action["move_to"] = self.melee_move_to(alive, self.target.x, self.target.y)
             return action
 
-        # 5. Stab in melee — but only if Stealth is on long cooldown
-        #    If Stealth is almost ready (<0.5s), wait for it to cycle into Ambush
-        ab_q = self.hero.abilities.get("Q")
-        if ab_q and ab_q.is_ready() and not self.hero.stealthed and dist <= 55 and self.has_los(self.target):
-            if not ab_r or not ab_e or ab_r.remaining > 0.5:
-                # Stealth on CD — Stab while waiting
-                action["use_ability"] = "Q"
-                action["ability_target_monster"] = self.target
-                return action
-            # else: Stealth almost ready — don't Stab, let it cycle to Stealth→Ambush
+        # 5. Poison Dagger in melee: arms the next Stab — unless that Stab would only overwrite poison that still has
+        #    more than a second to run on this target
+        if (ab_f and ab_f.is_ready() and "Poison Dagger" not in self.hero.buffs and not self.hero.stealthed
+                and self._poison_left(self.target) <= 1.0):
+            action["use_ability"] = "F"
+            return action
 
-        # 6. Basic attack fallback
+        # 6. Stab in melee
+        if ab_q and ab_q.is_ready() and dist <= 55 and self.has_los(self.target):
+            action["use_ability"] = "Q"
+            action["ability_target_monster"] = self.target
+            return action
+
+        # 7. Basic attack fallback
         if not self.hero.stealthed:
             action["basic_attack"] = self.target
 
         return action
+
+    @staticmethod
+    def _poison_left(monster) -> float:
+        """Seconds of poison left on `monster` (0 if none)."""
+        return max((c.duration for c in monster.conditions if c.condition == Condition.POISONED), default=0.0)
 
 
 HERO_AI_CLASSES = {

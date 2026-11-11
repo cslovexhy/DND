@@ -757,7 +757,13 @@ class Hotbar:
         rects = cls.rects(len(abilities))
         for i, (r, ab) in enumerate(zip(rects, abilities)):
             ready = ab.is_ready()
+            no_mana = not getattr(ab, "has_mana", True)
             pygame.draw.rect(screen, (45, 45, 60) if ready else (30, 30, 38), r, border_radius=5)
+            if no_mana:
+                # not enough mana: a blue tint over the whole slot
+                tint = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
+                tint.fill((40, 70, 200, 90))
+                screen.blit(tint, (r.x, r.y))
             if not ready and getattr(ab, "cooldown", 0) > 0:
                 # cooldown: a dark shade that shrinks as it comes back
                 shade = pygame.Surface((r.w, max(1, int(r.h * min(1.0, ab.remaining / ab.cooldown)))), pygame.SRCALPHA)
@@ -767,8 +773,18 @@ class Hotbar:
             screen.blit(big_font.render(str(i + 1), True, GOLD), (r.x + 6, r.y + 4))
             name = ab.name if len(ab.name) <= 15 else ab.name[:14] + "."
             screen.blit(font.render(name, True, WHITE if ready else (150, 150, 160)), (r.x + 24, r.y + 7))
-            info = f"Lv.{ab.level}" + ("" if ready else f"   {ab.remaining:.1f}s")
+            info = f"Lv.{ab.level}"
             screen.blit(font.render(info, True, (190, 190, 210)), (r.x + 24, r.y + 25))
+            # right side: cooldown left while cooling down, otherwise the mana cost (red when you can't pay it)
+            cost = getattr(ab, "mana_cost", 0)
+            if ab.remaining > 0:
+                right = font.render(f"{ab.remaining:.1f}s", True, (190, 190, 210))
+            elif cost:
+                right = font.render(f"{cost:g} MP", True, (255, 120, 120) if no_mana else (140, 180, 255))
+            else:
+                right = None
+            if right is not None:
+                screen.blit(right, (r.right - right.get_width() - 6, r.y + 25))
         if dragging is not None and dragging < len(abilities):
             mx, my = pygame.mouse.get_pos()
             over = cls.slot_at(mx, my, len(abilities))
@@ -1369,19 +1385,27 @@ while running:
     pygame.draw.rect(screen, HP_GREEN, (20,20,int(202*hp_pct),18))
     screen.blit(font.render(f"HP {hero.hp:.0f}/{hero.max_hp}", True, WHITE), (25,23))
 
-    # XP bar (below HP bar)
+    # Mana bar (below HP bar, same size)
+    max_mana = getattr(hero, "max_mana", 0)
+    mana_pct = min(1.0, hero.mana / max_mana) if max_mana else 0.0
+    pygame.draw.rect(screen, HP_BG, (18, 42, 206, 22))
+    pygame.draw.rect(screen, MANA_EMPTY, (20, 44, 202, 18))
+    pygame.draw.rect(screen, MANA_BLUE, (20, 44, int(202 * mana_pct), 18))
+    screen.blit(font.render(f"MP {hero.mana:.0f}/{max_mana}", True, WHITE), (25, 47))
+
+    # XP bar (below mana bar)
     xp_needed = xp_to_next_level(hero.level) if hero.level < MAX_LEVEL else 1
     xp_pct = min(1.0, hero.xp / xp_needed) if hero.level < MAX_LEVEL else 1.0
-    pygame.draw.rect(screen, HP_BG, (18, 42, 206, 12))
-    pygame.draw.rect(screen, (60, 20, 80), (20, 44, 202, 8))
-    pygame.draw.rect(screen, (180, 130, 255), (20, 44, int(202 * xp_pct), 8))
+    pygame.draw.rect(screen, HP_BG, (18, 66, 206, 12))
+    pygame.draw.rect(screen, (60, 20, 80), (20, 68, 202, 8))
+    pygame.draw.rect(screen, (180, 130, 255), (20, 68, int(202 * xp_pct), 8))
     xp_text = f"Lv {hero.level}  XP {hero.xp}/{xp_needed}" if hero.level < MAX_LEVEL else f"Lv {hero.level} MAX"
-    screen.blit(font.render(xp_text, True, (200, 180, 255)), (25, 43))
+    screen.blit(font.render(xp_text, True, (200, 180, 255)), (25, 67))
 
     pcd = view.you.potion_cooldown
     potion_text = f"[F] Potions: {view.you.potions}" + (f"  (ready in {pcd:.0f}s)" if pcd > 0 else "")
-    screen.blit(font.render(potion_text + "   [B] Backpack", True, (200,150,150)), (20,58))
-    comp_hud_y = 74
+    screen.blit(font.render(potion_text + "   [B] Backpack", True, (200,150,150)), (20,82))
+    comp_hud_y = 98
     food = view.you.food
     if food.get("eating"):
         e = food["eating"]

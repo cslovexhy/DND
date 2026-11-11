@@ -212,25 +212,16 @@ class NormalMobTest(unittest.TestCase):
         self.assertEqual(m.aggro_state, AggroState.IDLE)
         self.assertEqual(m.hate, {})
 
-    def test_stealth_drops_the_rogue_but_the_mob_keeps_fighting_the_others(self):
+    def test_stealth_is_refused_while_a_mob_fights_the_rogue(self):
+        """Stealth is out of combat only: it no longer wipes a mob's hate table mid-fight."""
         world, p0, p1, m = self.mob("Rogue")
         m.add_hate(p1.hero, 100)
         m.add_hate(p0.hero, 50)
         world.submit(C.Cast("R", p1.hero.x, p1.hero.y, None), 1)      # Rogue: R = Stealth
         world.step(DT)
-        self.assertTrue(p1.hero.stealthed)
-        self.assertNotIn(p1.hero, m.hate)
+        self.assertFalse(p1.hero.stealthed)
+        self.assertIn(p1.hero, m.hate)
         self.assertEqual(m.aggro_state, AggroState.AGGROED)
-        self.assertIs(m.aggro_target, p0.hero)
-
-    def test_stealth_with_nobody_else_on_the_table_resets_the_mob(self):
-        world, p0, p1, m = self.mob("Rogue")
-        m.hate.clear()
-        m.add_hate(p1.hero, 100)
-        world.submit(C.Cast("R", p1.hero.x, p1.hero.y, None), 1)
-        world.step(DT)
-        self.assertNotEqual(m.aggro_state, AggroState.AGGROED)   # (already at spawn: reset ends at once -> idle)
-        self.assertEqual(m.hate, {})
 
     def test_respawned_hero_is_forgotten_by_mobs(self):
         world, p0, p1, m = self.mob()

@@ -592,6 +592,7 @@ class World:
         hero.buffs = {}               # incl. the food buff and a meal being eaten
         hero.refresh_max_hp()
         hero.hp = hero.max_hp * self.RESPAWN_HP_PCT
+        hero.mana = hero.max_mana
         hero.absorb_shield = 0
         hero.stealthed = False
         hero.chill_visual = 0.0

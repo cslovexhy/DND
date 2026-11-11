@@ -16,6 +16,8 @@ POISON_DPS = 10.0
 # Character scale: 1.0 = same size as map tile, 0.5 = half size. Gameplay constant (not just art):
 # movement speed scales with it so the map feels bigger. The client sizes sprites from it too.
 CHAR_SCALE = 0.5
+# HP and mana regeneration in combat = this share of the out-of-combat rate (user: 10%)
+COMBAT_REGEN_SHARE = 0.1
 # Board game Speed 5-7 → ARPG speed in pixels/sec: 30 px/s per point at CHAR_SCALE 1.0
 SPEED_SCALE = int(30 * CHAR_SCALE)  # speed 5 → 75 px/s, speed 6 → 90 px/s
 
@@ -47,10 +49,7 @@ class ActiveCondition:
     tick_damage: float = 0.0  # damage per second (for Poison)
     source: str = ""
     slow_factor: float = 0.5  # speed multiplier when SLOWED (0.25 = 25% speed)
-
-
-# Skill level -> share of the level-3 (full) damage / heal / effect strength
-LEVEL_POWER = {1: 0.33, 2: 0.67, 3: 1.0}
+    by: object = None         # who applied it (its damage ticks count as theirs: monster hate)
 
 
 @dataclass
@@ -70,11 +69,25 @@ class Ability:
     # Skill levels (see content/skill_tree.py). Damage is a x base + b, with a / b per skill level from a_levels /
     # b_levels (skill level 1, 2, 3); without them `multiplier` / `flat_bonus` are used at every level. Level 3 is the
     # default, so abilities that never call set_level (monsters, tests) use their level-3 values.
+    # Every per-level strength of a skill lives in these tuples (one entry = same value at every level):
+    #   damage skills: a / b of their own hit; buffs: what they add to another skill (Righteous Seal: Smite's a,
+    #   Heroic Strike: next Strike / Cleave b); heals and shields: b = HP healed / absorbed (a = 0);
+    #   effect_levels: any other strength (Demoralizing Shout: enemy damage multiplier; Judgement: extra a when it
+    #   consumes the Seal).
     level: int = 3
     max_level: int = 3
     range_levels: tuple = ()    # optional range per skill level (e.g. Wizard bolts 200 / 230 / 260)
     a_levels: tuple = ()        # optional "a" per skill level
     b_levels: tuple = ()        # optional "b" per skill level
+    effect_levels: tuple = ()   # optional other strength per skill level (see above; read with .effect_value)
+    # Mana: this skill's share of the class' in-combat mana spending (see mana_cost). 0 = free (monsters).
+    mana_weight: float = 0.0
+    # Openers (skills usable only out of combat) don't take part in the in-combat budget: they cost this many seconds
+    # of mana_rate(level) instead (e.g. Ambush 4 s).
+    mana_secs: float = 0.0
+    out_of_combat_only: bool = False   # can't be cast while a monster is fighting you (Stealth)
+    # Who owns this skill (set by Entity.add_ability): is_ready() checks its mana, use() spends it, mana_cost reads it
+    caster: object = field(default=None, repr=False, compare=False)
     # Threat: hate a hit adds = damage dealt x threat_mult (never changes the damage itself)
     threat_mult: float = 1.0
     max_targets_levels: tuple = ()   # optional cap on targets hit per skill level (Cleave 2 / 3 / 4)
@@ -89,10 +102,44 @@ class Ability:
         self.set_level(self.level)
 
     @property
-    def power(self) -> float:
-        """Strength of a heal / shield at the current skill level: 33% / 67% / 100% of its level-3 amount.
-        (Damage uses a_levels / b_levels instead.) Skills with a single level always run at full strength."""
-        return LEVEL_POWER[self.level] if self.max_level == 3 else 1.0
+    def effect_value(self) -> float:
+        """This skill's effect_levels entry at its current level (0.0 if it has none)."""
+        if not self.effect_levels:
+            return 0.0
+        return self.effect_levels[min(self.level, len(self.effect_levels)) - 1]
+
+    @property
+    def mana_gap(self) -> float:
+        """Shortest time between two casts in combat: the cooldown, the weapon swing for at-will attacks, never under
+        the global cooldown."""
+        gap = self.cooldown
+        c = self.caster
+        if c is not None:
+            if self.power_type == "at_will":
+                gap = max(gap, c.weapon_speed)
+            gap = max(gap, getattr(c, "GCD_DURATION", 0.0))
+        return gap
+
+    @property
+    def mana_cost(self) -> float:
+        """Mana one use costs: mana_rate(caster level) x mana_gap x this skill's share of the caster's unlocked skills'
+        mana weights. So casting every unlocked in-combat skill whenever it is ready spends exactly mana_rate(level)
+        per second, for every class (progression.mana_rate); the weights only decide which skills that mana goes to.
+        Openers cost mana_rate(level) x mana_secs instead. Rounded to 0.1 mana (at least 0.1); 0 for free skills."""
+        c = self.caster
+        if c is None or not (self.mana_weight or self.mana_secs):
+            return 0
+        from game.progression import mana_rate
+        if self.mana_secs:
+            return max(0.1, round(mana_rate(c.level) * self.mana_secs, 1))
+        total = sum(a.mana_weight for a in c.abilities.values())
+        if not any(a is self for a in c.abilities.values()):
+            total += self.mana_weight          # a locked skill (not in hero.abilities): price it as if unlocked
+        return max(0.1, round(mana_rate(c.level) * self.mana_gap * self.mana_weight / total, 1))
+
+    def has_mana(self) -> bool:
+        """The caster has enough mana for one use (always True without a caster or a cost)."""
+        return self.caster is None or self.caster.mana >= self.mana_cost
 
     def set_level(self, level: int):
         """Use the a / b (and range, if it has per-level ranges) of the given skill level."""
@@ -115,10 +162,14 @@ class Ability:
         return base_damage * self.multiplier + self.flat_bonus
 
     def is_ready(self) -> bool:
-        return self.remaining <= 0
+        """Off cooldown and the caster can pay the mana cost."""
+        return self.remaining <= 0 and self.has_mana()
 
     def use(self):
+        """Start the cooldown and spend the mana cost (every cast path calls this when the skill really fires)."""
         self.remaining = self.cooldown
+        if self.caster is not None and self.mana_cost:
+            self.caster.mana = max(0.0, self.caster.mana - self.mana_cost)
 
     def update(self, dt: float):
         self.remaining = max(0, self.remaining - dt)
@@ -207,10 +258,16 @@ class Entity:
         self.immune_stun = False
         self.immune_freeze = False
 
-        # Health regeneration
+        # Health regeneration (in combat: COMBAT_REGEN_SHARE of the out-of-combat rate)
         self.in_combat = False  # set externally by game loop
-        self.regen_rate_combat = 0.005     # 0.5% of max HP per second in combat
         self.regen_rate_ooc = 0.02         # 2% of max HP per second out of combat
+        self.regen_rate_combat = self.regen_rate_ooc * COMBAT_REGEN_SHARE    # 0.2% of max HP per second
+
+        # Mana (heroes; progression.hero_max_mana). Monsters have none and their skills cost nothing.
+        self.max_mana = 0
+        self.mana = 0.0
+        self.mana_regen_ooc = 0.02         # 2% of max mana per second out of combat
+        self.mana_regen_combat = self.mana_regen_ooc * COMBAT_REGEN_SHARE    # 0.2% of max mana per second
 
         # Active buffs/debuffs (name -> {remaining: float, ...data})
         self.buffs: dict[str, dict] = {}
@@ -331,14 +388,14 @@ class Entity:
 
     def apply_condition(self, condition: Condition, duration: float,
                         tick_damage: float = 0.0, source: str = "",
-                        slow_factor: float = 0.5):
+                        slow_factor: float = 0.5, by: 'Entity' = None):
         """Apply a condition. Replaces existing condition of same type.
         Returns False (and does nothing) if the entity is immune to it."""
         if getattr(self, CONDITION_IMMUNITY_FLAG[condition]):
             return False
         # Remove existing
         self.conditions = [c for c in self.conditions if c.condition != condition]
-        self.conditions.append(ActiveCondition(condition, duration, tick_damage, source, slow_factor))
+        self.conditions.append(ActiveCondition(condition, duration, tick_damage, source, slow_factor, by))
         return True
 
     def update_conditions(self, dt: float):
@@ -346,7 +403,7 @@ class Entity:
         for cond in self.conditions:
             cond.duration -= dt
             if cond.tick_damage > 0:
-                self.take_damage(cond.tick_damage * dt, ignore_armor=True)
+                self.take_damage(cond.tick_damage * dt, ignore_armor=True, source=cond.by)
         # Remove expired
         self.conditions = [c for c in self.conditions if c.duration > 0]
 
@@ -363,6 +420,10 @@ class Entity:
         if self.alive and self.hp < self.max_hp:
             rate = self.regen_rate_combat if self.in_combat else self.regen_rate_ooc
             self.hp = min(self.max_hp, self.hp + self.max_hp * rate * dt)
+        # Mana regeneration
+        if self.alive and self.mana < self.max_mana:
+            rate = self.mana_regen_combat if self.in_combat else self.mana_regen_ooc
+            self.mana = min(self.max_mana, self.mana + self.max_mana * rate * dt)
         # Tick buff/debuff timers
         for k, v in list(self.buffs.items()):
             v["remaining"] -= dt
@@ -377,6 +438,7 @@ class Entity:
 
     def add_ability(self, key: str, ability: 'Ability'):
         """Add an ability to this entity."""
+        ability.caster = self
         self.abilities[key] = ability
 
     def can_swing(self) -> bool:

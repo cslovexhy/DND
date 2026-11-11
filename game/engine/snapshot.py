@@ -8,6 +8,8 @@ quests...). The client never reads the World directly (design/06 phase 3); over 
 
 SNAPSHOT_VERSION = 1
 
+from game.engine.ai import is_fighting   # noqa: E402  (pure: no pygame)
+
 
 def _conditions(e):
     return [c.condition.name for c in getattr(e, "conditions", [])]
@@ -28,6 +30,7 @@ def _entity(e, kind, ctl=None):
         d["leveled"] = bool(getattr(e, "leveled", False))   # has a real level (map monster_levels): show "Lv N"
     elif kind in ("hero", "ally", "companion"):
         d["class_name"] = e.class_name
+        d["mana"], d["max_mana"] = e.mana, e.max_mana
         d["absorb_shield"] = e.absorb_shield
         d["buffs"] = sorted(e.buffs)
         d["chill_visual"] = getattr(e, "chill_visual", 0.0)
@@ -88,6 +91,7 @@ def make_snapshot(world, player_id=0):
     projectiles = [{"x": p.x, "y": p.y, "color": list(p.color), "radius": p.radius,
                     "target_id": p.target.eid if p.target is not None else None}
                    for p in world.projectiles]
+    fighting = is_fighting(hero, gs.alive_monsters)
     you = {
         "hero_id": hero.eid,
         "potions": player.potions,
@@ -101,8 +105,10 @@ def make_snapshot(world, player_id=0):
         "move_path": [list(wp) for wp in player.move_path[:8]],
         "frostbolt_channeling": player.frostbolt_channeling,
         "frostbolt_channel_timer": player.frostbolt_channel_timer,
-        "abilities": [{"key": k, "name": a.name, "remaining": a.remaining, "ready": a.is_ready(),
-                       "level": a.level, "max_level": a.max_level, "range": a.range, "cooldown": a.cooldown}
+        "abilities": [{"key": k, "name": a.name, "remaining": a.remaining,
+                       "ready": a.is_ready() and not (a.out_of_combat_only and fighting),
+                       "level": a.level, "max_level": a.max_level, "range": a.range, "cooldown": a.cooldown,
+                       "mana_cost": a.mana_cost, "has_mana": a.has_mana()}
                       for k, a in hero.abilities.items()],
         "player_id": player.player_id,
         "quests": _quests(player),

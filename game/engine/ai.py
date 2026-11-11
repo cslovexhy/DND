@@ -54,8 +54,15 @@ def release_aggro(monster):
     monster.resetting_for = 0.0
 
 
+def is_fighting(hero, monsters) -> bool:
+    """`hero` is in combat: an aggroed monster is fighting them (has them as its target or on its hate table).
+    Out-of-combat-only skills (Stealth) are refused then."""
+    return any(m.alive and m.aggro_state == AggroState.AGGROED and (m.aggro_target is hero or hero in m.hate)
+               for m in monsters)
+
+
 def drop_from_hate(monster, hero):
-    """`hero` is no longer a valid target for this monster (stealthed, or fell and respawned elsewhere): take them off
+    """`hero` is no longer a valid target for this monster (fell and respawned elsewhere): take them off
     the hate table. A boss never lets go; any other monster resets if nobody alive is left on its table."""
     monster.hate.pop(hero, None)
     if monster.aggro_target is hero:

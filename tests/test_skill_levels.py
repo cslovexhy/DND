@@ -71,7 +71,9 @@ class PowerTest(unittest.TestCase):
             h = info["create"]("x", 0, 0)
             for ab in h.abilities.values():
                 if not ab.a_levels:
-                    continue                                    # no damage (buffs, heals, Stealth)
+                    continue                                    # no damage (heals, Stealth)
+                if ab.target_kind == "self" and ab.radius == 0:
+                    continue                                    # self-buff: its a is a bonus to another skill
                 if ab.radius > 0:
                     self.assertTrue(all(a < 1 for a in ab.a_levels), ab.name)
                 else:
@@ -95,6 +97,23 @@ class PowerTest(unittest.TestCase):
         world.submit(C.Cast("R", 0, 0, None), 0)                # Righteous Seal (level 3: +0.20)
         world.step(DT)
         self.assertAlmostEqual(smite_damage(h, smite), 1.2 * h.base_damage + 3)
+
+    def test_seal_bonus_per_level_comes_from_its_a_levels(self):
+        from game.content.skill_tree import seal_bonus
+        _, pal = hero_at("Paladin", MAX_LEVEL)
+        seal = pal.hero.abilities["R"]
+        self.assertEqual(seal.a_levels, (0.10, 0.15, 0.20))
+        got = [(seal.set_level(lv), seal_bonus(seal))[1] for lv in (1, 2, 3)]
+        self.assertEqual(got, [0.10, 0.15, 0.20])
+
+    def test_judgement_consuming_seal_adds_half_weapon(self):
+        from game.content.skill_tree import judgement_seal_bonus
+        _, pal = hero_at("Paladin", MAX_LEVEL)
+        h = pal.hero
+        judgement = h.abilities["E"]
+        for lv in (1, 2, 3):
+            judgement.set_level(lv)
+            self.assertAlmostEqual(judgement_seal_bonus(h, judgement), 0.5 * h.base_damage)
 
     def test_ranges_only_change_for_wizard_bolts(self):
         for cls in ("Fighter", "Cleric", "Paladin", "Rogue"):
@@ -150,8 +169,8 @@ class LockedSkillsTest(unittest.TestCase):
 
     def test_rogue_without_ambush_does_not_stealth(self):
         random.seed(1)
-        world, rogue = create_world(MAP, saves.blank_character("r", "Rogue", level=2), autopilot=True)
-        self.assertEqual(list(rogue.hero.abilities), ["Q", "R"])      # Stealth yes, Ambush not yet
+        world, rogue = create_world(MAP, saves.blank_character("r", "Rogue", level=4), autopilot=True)
+        self.assertEqual(list(rogue.hero.abilities), ["Q", "R", "F"])  # Stealth yes, Ambush not yet (L6)
         for _ in range(30 * 30):
             world.step(DT)
             self.assertFalse(rogue.hero.stealthed)

@@ -27,6 +27,41 @@ def hero_max_hp(class_name, level):
     return int(round(lo + (hi - lo) * (level - 1) / (MAX_LEVEL - 1)))
 
 
+# Hero max mana: (level 1, level 30) per class, linear in between (user-set).
+HERO_MANA = {
+    "Fighter": (80, 800),
+    "Cleric":  (120, 1500),
+    "Paladin": (120, 1300),
+    "Rogue":   (100, 1000),
+    "Wizard":  (150, 2000),
+}
+
+
+def hero_max_mana(class_name, level):
+    """Max mana of a hero of this class at this level (rounded to whole mana; 0 for unknown classes)."""
+    if class_name not in HERO_MANA:
+        return 0
+    lo, hi = HERO_MANA[class_name]
+    level = max(1, min(MAX_LEVEL, level))
+    return int(round(lo + (hi - lo) * (level - 1) / (MAX_LEVEL - 1)))
+
+
+# Mana spending (Ability.mana_cost): at every character level, every class casting all its unlocked skills whenever
+# they are ready spends the SAME mana per second, mana_rate(level) = the average class pool / MANA_DRAIN_SECS. The
+# rate is class-independent, so a bigger pool really lasts longer (Wizard 2000 vs Fighter 800 at level 30).
+MANA_DRAIN_SECS = 45.0
+
+
+def ref_mana(level):
+    """Average max mana over the classes at this level (class-independent reference pool)."""
+    return sum(hero_max_mana(c, level) for c in HERO_MANA) / len(HERO_MANA)
+
+
+def mana_rate(level):
+    """Mana per second any class spends at this level when it casts every unlocked skill as soon as it is ready."""
+    return ref_mana(level) / MANA_DRAIN_SECS
+
+
 # Weapon damage growth per level (raw points added to base_damage). "hp" is the average HP gain per level of the
 # HERO_HP line (kept for callers that show it).
 GROWTH_RATES = {
@@ -70,8 +105,8 @@ def xp_to_next_level(level):
 
 
 def apply_level_growth(hero, levels=1):
-    """Add `levels` levels worth of weapon-damage growth and set max HP for hero.level (call AFTER raising
-    hero.level). Full-heals."""
+    """Add `levels` levels worth of weapon-damage growth and set max HP and max mana for hero.level (call AFTER
+    raising hero.level). Full-heals and refills mana."""
     growth = growth_for(hero.class_name)
     hero.base_damage += growth["damage"] * levels
     base = getattr(hero, "base_max_hp", hero.max_hp)
@@ -84,6 +119,9 @@ def apply_level_growth(hero, levels=1):
     if hasattr(hero, "refresh_max_hp"):
         hero.refresh_max_hp()             # food buff (+max HP%)
     hero.hp = hero.max_hp
+    if hero.class_name in HERO_MANA:
+        hero.max_mana = hero_max_mana(hero.class_name, hero.level)
+        hero.mana = hero.max_mana
 
 
 def set_hero_level(hero, level):

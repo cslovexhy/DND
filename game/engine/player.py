@@ -10,7 +10,7 @@ import math
 import random
 
 from game.engine import abilities
-from game.engine.ai import aggro_monster, call_for_help, drop_from_hate, AggroState
+from game.engine.ai import aggro_monster, call_for_help, AggroState, is_fighting
 from game.engine.entities import Condition, Projectile
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
@@ -25,8 +25,8 @@ from game.engine.pathfinding import astar
 from game.engine.world_map import TILE_SIZE
 
 
-from game.content.skill_tree import (wall_shield, renew_total, seal_bonus, holy_light_heal, shout_reduction,
-                                     smite_damage)
+from game.content.skill_tree import (wall_shield, renew_total, seal_bonus, holy_light_heal, shout_damage_mult,
+                                     smite_damage, poison_dps, POISON_DAGGER_SECS, POISON_DAGGER_WINDOW)
 HEROIC_STRIKE_WINDOW = 10.0   # seconds a Heroic Strike buff waits for the next Strike / Cleave
 from game.engine.hero_ai import SUPPORT_RANGE   # px: how far away an ally can be for Wall / Renew / Holy Light
 
@@ -350,6 +350,8 @@ class PlayerState:
                 self.target = enemy
             if ab.is_ready():
                 self.cast_ability(cmd.ab_key, ab, cmd.x, cmd.y, enemy, ally=self._friendly(cmd.ally_id))
+            elif ab.remaining <= 0 and not ab.has_mana():
+                world.float_text(hero.x, hero.y - 30, "Not enough mana!", (120, 160, 255))
             if attack and enemy.alive:
                 self.selected_target = enemy      # (casting clears it; keep attacking afterwards)
             elif cmd.fallback_move:
@@ -421,6 +423,11 @@ class PlayerState:
         if hero.gcd > 0:
             return  # Can't cast anything during GCD
 
+        # Out-of-combat-only skills (Stealth) are refused while a monster is fighting you
+        if ab.out_of_combat_only and is_fighting(hero, gs.alive_monsters):
+            self.world.float_text(hero.x, hero.y - 30, "Can't do that in combat!", (255, 150, 100))
+            return
+
         # === Tarak special: Stab (fast melee, breaks stealth) ===
         if ab.name == "Stab":
             if not clicked_monster:
@@ -450,6 +457,12 @@ class PlayerState:
             color = (255, 255, 50) if hero.last_crit else (180, 255, 180)
             text = f"{dmg:.0f}!" if hero.last_crit else f"{dmg:.0f}"
             self.world.float_text(clicked_monster.x, clicked_monster.y - 20, text, color)
+            # Poison Dagger: this Stab poisons the target (damage over time, counts as the Rogue's for threat)
+            poison = hero.buffs.pop("Poison Dagger", None)
+            if poison and clicked_monster.alive:
+                if clicked_monster.apply_condition(Condition.POISONED, poison["duration"],
+                                                   tick_damage=poison["dps"], source="Poison Dagger", by=hero):
+                    self.world.float_text(clicked_monster.x, clicked_monster.y - 35, "Poisoned!", (120, 220, 80))
             call_for_help(clicked_monster, gs.monsters, hero)
             if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
                 from game.engine.ai import aggro_monster as _aggro
@@ -459,20 +472,25 @@ class PlayerState:
             self.selected_target = clicked_monster  # Keep target for auto-attack
             return
 
-        # === Tarak special: Stealth (go invisible) ===
+        # === Tarak special: Stealth (go invisible; out of combat only, so it opens a fight with Ambush) ===
         if ab.name == "Stealth":
             ab.use()
             hero.stealthed = True
             self.selected_target = None  # Stop auto-attack
             # Auto-bind right-click to Ambush
             self._bind_right("E")
-            # Monsters forget the hero (and reset if nobody else is on their hate table); bosses never let go
-            for m in gs.alive_monsters:
-                if hero in m.hate and not m.is_boss:
-                    drop_from_hate(m, hero)
             self.world.float_text(hero.x, hero.y - 30, "Stealth!", (100, 200, 100))
             hero.gcd = hero.GCD_DURATION
             self.move_path = []
+            return
+
+        # === Tarak: Poison Dagger (self-buff: the next Stab poisons its target) ===
+        if ab.name == "Poison Dagger":
+            ab.use()
+            hero.buffs["Poison Dagger"] = {"remaining": POISON_DAGGER_WINDOW, "dps": poison_dps(ab),
+                                           "duration": POISON_DAGGER_SECS}
+            self.world.float_text(hero.x, hero.y - 30, "Poison Dagger!", (120, 220, 80))
+            hero.gcd = hero.GCD_DURATION
             return
 
         # === Tarak special: Ambush (stealth-only burst) ===
@@ -731,7 +749,7 @@ class PlayerState:
             for m in gs.alive_monsters:
                 if hero.distance_to(m) <= ab.radius:
                     # enemy damage x0.9 / x0.8 / x0.7 (skill level 1 / 2 / 3) for 10s
-                    m.buffs["Demoralized"] = {"remaining": 10.0, "damage_mult": 1.0 - shout_reduction(ab)}
+                    m.buffs["Demoralized"] = {"remaining": 10.0, "damage_mult": shout_damage_mult(ab)}
                     # Slow for 3s
                     m.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.5)
                     self.world.float_text(m.x, m.y - 20, "Demoralized!", (200, 150, 50))

@@ -1,8 +1,8 @@
 """Skill levels (pure; no pygame): which skills a hero has at a given character level, and how strong they are.
 
-Every skill has up to 3 levels. Level 3 is the full-strength skill written in content/heroes.py; level 1 deals/heals
-33% of that and level 2 deals/heals 67% (Ability.power). Ranges never change, except the Wizard's Frostbolt and Fire
-Blast (200 / 230 / 260).
+Every skill has up to 3 levels. All per-level strengths (damage a / b, buff bonuses, heal and shield amounts, other
+effect strengths) are written on the Ability in content/heroes.py (a_levels / b_levels / effect_levels). Ranges never
+change, except the Wizard's Frostbolt and Fire Blast (200 / 230 / 260).
 
 A character starts (level 1) with its at-will attack (Q) at skill level 1. Then, every 2 character levels (2, 4, 6, ...),
 it automatically gets the next step of its class' schedule: a new skill at skill level 1, or the next level of a skill
@@ -20,8 +20,9 @@ SKILL_SCHEDULE = {
     "Cleric":  ["Q", "R", "Q", "E", "R", "Q", "E", "R", "E"],
     #           L1   L2   L4   L6   L8   L10  L12  L14  L16  L18  L20  L22
     "Paladin": ["Q", "R", "E", "Q", "F", "R", "E", "Q", "F", "R", "E", "F"],
-    #           L1   L2   L4   L6   L8   L10  L12     (Stealth has a single level)
-    "Rogue":   ["Q", "R", "E", "Q", "E", "Q", "E"],
+    #           L1   L2   L4   L6   L8   L10  L12  L14  L16  L18   (Stealth has a single level)
+    # Poison Dagger (F) comes first: it is the Rogue's in-combat damage. Stealth + Ambush only open a fight.
+    "Rogue":   ["Q", "F", "R", "E", "Q", "F", "E", "Q", "F", "E"],
     #           L1   L2   L4   L6   L8   L10  L12  L14  L16
     "Wizard":  ["Q", "R", "E", "Q", "R", "E", "Q", "R", "E"],
 }
@@ -66,30 +67,28 @@ def apply_skill_levels(hero) -> list:
 
 
 # --- effect strengths shared by the cast code and the descriptions -----------------------------------------------
-
-SEAL_SMITE_A = (0.10, 0.15, 0.20)   # Righteous Seal: Smite's "a" +0.10 / +0.15 / +0.20 (skill level 1 / 2 / 3)
-JUDGEMENT_SEAL_A = 0.5              # Judgement that consumes the Seal: + 0.5 x weapon damage
-# Demoralizing Shout: enemies deal 90% / 80% / 70% of their damage at skill level 1 / 2 / 3 (user-tuned: the old flat
-# 50% made boss fights too easy), so it does not follow the usual 33/67/100% power curve.
-SHOUT_DAMAGE_MULT = {1: 0.9, 2: 0.8, 3: 0.7}
-BASE_HOLY_LIGHT_HEAL = 150      # Holy Light (level 3)
+# Every per-level number lives on the Ability (a_levels / b_levels / effect_levels in content/heroes.py); these
+# helpers only say how each skill uses them.
 
 
 def wall_shield(hero, ab) -> float:
-    return hero.surge_value * ab.power
+    """Wall: b = damage absorbed."""
+    return ab.flat_bonus
 
 
 def renew_total(hero, ab) -> float:
-    return hero.surge_value * 0.5 * ab.power
+    """Renew: b = total HP healed over its duration."""
+    return ab.flat_bonus
 
 
 def holy_light_heal(ab) -> float:
-    return BASE_HOLY_LIGHT_HEAL * ab.power
+    """Holy Light: b = HP healed."""
+    return ab.flat_bonus
 
 
 def seal_bonus(ab) -> float:
-    """Extra Smite "a" (x weapon damage) while Righteous Seal (this ability) is active."""
-    return SEAL_SMITE_A[ab.level - 1] if ab.max_level == 3 else SEAL_SMITE_A[-1]
+    """Extra Smite "a" (x weapon damage) while Righteous Seal (this ability) is active: the Seal's own a."""
+    return ab.multiplier
 
 
 def smite_damage(hero, ab) -> float:
@@ -98,14 +97,28 @@ def smite_damage(hero, ab) -> float:
     return (ab.multiplier + bonus) * hero.base_damage + ab.flat_bonus
 
 
+def shout_damage_mult(ab) -> float:
+    """Multiplier on the damage of enemies hit by Demoralizing Shout (0.9 / 0.8 / 0.7 by skill level)."""
+    return ab.effect_value
+
+
 def shout_reduction(ab) -> float:
     """Share of enemy damage Demoralizing Shout removes (0.1 / 0.2 / 0.3 by skill level)."""
-    return 1.0 - SHOUT_DAMAGE_MULT[ab.level]
+    return 1.0 - shout_damage_mult(ab)
 
 
 def judgement_seal_bonus(hero, ab) -> float:
-    """Extra damage when Judgement consumes the Righteous Seal: 0.5 x weapon damage."""
-    return JUDGEMENT_SEAL_A * hero.base_damage
+    """Extra damage when Judgement (ab) consumes the Righteous Seal: its effect value (0.5) x weapon damage."""
+    return ab.effect_value * hero.base_damage
+
+
+POISON_DAGGER_SECS = 4.0      # how long the poison from one Poison Dagger Stab lasts
+POISON_DAGGER_WINDOW = 10.0   # seconds the buff waits for the next Stab
+
+
+def poison_dps(ab) -> float:
+    """Poison Dagger: b = poison damage per second (ignores armor) for POISON_DAGGER_SECS."""
+    return ab.flat_bonus
 
 
 # --- what a skill does, in the player's words (shown in the unlock / upgrade popup) -------------------------------
@@ -138,8 +151,11 @@ _DESCRIPTIONS = {
     "Holy Light": lambda h, a: f"Channel for 2s (you cannot move) to heal you or an ally within 300 px for "
                                f"{holy_light_heal(a):.0f}. {a.cooldown:g}s cooldown.",
     "Stab": lambda h, a: f"Fast melee strike for {_dmg(h, a):.0f} damage.",
-    "Stealth": lambda h, a: "Become invisible: monsters lose you, you move at 60% speed, and your next attack "
-                            "breaks it. Opens Ambush.",
+    "Stealth": lambda h, a: "Out of combat only: become invisible, monsters can't see you and you move at 60% "
+                            "speed. Your next attack breaks it. Opens a fight with Ambush.",
+    "Poison Dagger": lambda h, a: f"Your next Stab poisons its target for {poison_dps(a):g} damage per second for "
+                                  f"{POISON_DAGGER_SECS:g}s ({poison_dps(a) * POISON_DAGGER_SECS:g} in total, ignores "
+                                  f"armor). {a.cooldown:g}s cooldown.",
     "Ambush": lambda h, a: f"From stealth, strike for {_dmg(h, a):.0f} damage.",
     "Frostbolt": lambda h, a: f"Channeled bolt for {_dmg(h, a):.0f} damage up to {a.range:.0f} px away; slows the "
                               f"target. You cannot move while channeling.",
@@ -151,6 +167,7 @@ _DESCRIPTIONS = {
 
 
 def describe(hero, ab) -> str:
-    """What the skill does at its current level, with real numbers."""
+    """What the skill does at its current level, with real numbers (and its mana cost)."""
     fn = _DESCRIPTIONS.get(ab.name)
-    return fn(hero, ab) if fn else ab.effect
+    text = fn(hero, ab) if fn else ab.effect
+    return f"{text} Costs {ab.mana_cost:g} mana." if ab.mana_cost else text
