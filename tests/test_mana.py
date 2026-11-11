@@ -171,7 +171,7 @@ class OutOfManaAITest(unittest.TestCase):
         self.assertTrue(h.abilities["R"].is_ready() and h.abilities["E"].remaining <= 0)   # opener available...
         action = p.hero_ai.update(mobs, DT, world.is_wall)
         self.assertEqual(action["use_ability"], "F")       # ...but in combat: Poison Dagger, not Stealth
-        h.buffs["Poison Dagger"] = {"remaining": 10.0, "dps": 30, "duration": 4.0}
+        h.buffs["Poison Dagger"] = {"remaining": 10.0, "dps": 6, "duration": 5.0}
         action = p.hero_ai.update(mobs, DT, world.is_wall)
         self.assertEqual(action["use_ability"], "Q")       # then the Stab that carries the poison
 

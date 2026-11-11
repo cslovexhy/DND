@@ -1,5 +1,5 @@
 """Rogue kit: Stealth is out of combat only (it opens a fight with Ambush); Poison Dagger arms the next Stab to poison
-its target for 10/20/30 damage per second (4 s, ignores armor, counts as the Rogue's threat); unlock order
+its target for 10/20/30 damage in total over 5 s (ignores armor, counts as the Rogue's threat); unlock order
 L2 Poison Dagger, L4 Stealth, L6 Ambush."""
 import random
 import tempfile
@@ -89,7 +89,7 @@ class StealthTest(unittest.TestCase):
 
 class PoisonDaggerTest(unittest.TestCase):
     def test_next_stab_poisons_for_the_skill_level_dps(self):
-        for level, dps in ((2, 10), (10, 20), (16, 30)):
+        for level, total in ((2, 10), (10, 20), (16, 30)):
             world, p, m = rogue(level)
             cast(world, "F")
             self.assertIn("Poison Dagger", p.hero.buffs)
@@ -97,7 +97,7 @@ class PoisonDaggerTest(unittest.TestCase):
             cast(world, "Q", m)
             poison = [c for c in m.conditions if c.condition == Condition.POISONED]
             self.assertEqual(len(poison), 1, level)
-            self.assertEqual(poison[0].tick_damage, dps, level)
+            self.assertAlmostEqual(poison[0].tick_damage * POISON_DAGGER_SECS, total, msg=level)
             self.assertAlmostEqual(poison[0].duration, POISON_DAGGER_SECS, delta=DT * 2)
             self.assertIs(poison[0].by, p.hero)
             self.assertNotIn("Poison Dagger", p.hero.buffs)     # one Stab only
@@ -114,12 +114,12 @@ class PoisonDaggerTest(unittest.TestCase):
 
     def test_poison_damage_ignores_armor_and_is_the_rogues_threat(self):
         world, p, m = rogue()
-        m.apply_condition(Condition.POISONED, POISON_DAGGER_SECS, tick_damage=30, by=p.hero)
+        m.apply_condition(Condition.POISONED, POISON_DAGGER_SECS, tick_damage=30 / POISON_DAGGER_SECS, by=p.hero)
         hp, hate = m.hp, m.hate.get(p.hero, 0.0)
         for _ in range(int(POISON_DAGGER_SECS / DT) + 5):
             world.step(DT)
-        self.assertAlmostEqual(hp - m.hp, 30 * POISON_DAGGER_SECS, delta=2.0)
-        self.assertGreater(m.hate[p.hero] - hate, 30 * POISON_DAGGER_SECS * 0.9)
+        self.assertAlmostEqual(hp - m.hp, 30, delta=1.0)                # 30 in total, no armor
+        self.assertGreater(m.hate[p.hero] - hate, 30 * 0.9)
 
 
 if __name__ == "__main__":

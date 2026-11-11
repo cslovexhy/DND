@@ -112,13 +112,18 @@ def judgement_seal_bonus(hero, ab) -> float:
     return ab.effect_value * hero.base_damage
 
 
-POISON_DAGGER_SECS = 4.0      # how long the poison from one Poison Dagger Stab lasts
+POISON_DAGGER_SECS = 5.0      # how long the poison from one Poison Dagger Stab lasts
 POISON_DAGGER_WINDOW = 10.0   # seconds the buff waits for the next Stab
 
 
-def poison_dps(ab) -> float:
-    """Poison Dagger: b = poison damage per second (ignores armor) for POISON_DAGGER_SECS."""
+def poison_total(ab) -> float:
+    """Poison Dagger: b = total poison damage (ignores armor), dealt evenly over POISON_DAGGER_SECS."""
     return ab.flat_bonus
+
+
+def poison_dps(ab) -> float:
+    """Poison damage per second of one Poison Dagger Stab."""
+    return poison_total(ab) / POISON_DAGGER_SECS
 
 
 # --- what a skill does, in the player's words (shown in the unlock / upgrade popup) -------------------------------
@@ -153,9 +158,8 @@ _DESCRIPTIONS = {
     "Stab": lambda h, a: f"Fast melee strike for {_dmg(h, a):.0f} damage.",
     "Stealth": lambda h, a: "Out of combat only: become invisible, monsters can't see you and you move at 60% "
                             "speed. Your next attack breaks it. Opens a fight with Ambush.",
-    "Poison Dagger": lambda h, a: f"Your next Stab poisons its target for {poison_dps(a):g} damage per second for "
-                                  f"{POISON_DAGGER_SECS:g}s ({poison_dps(a) * POISON_DAGGER_SECS:g} in total, ignores "
-                                  f"armor). {a.cooldown:g}s cooldown.",
+    "Poison Dagger": lambda h, a: f"Your next Stab poisons its target for {poison_total(a):g} damage over "
+                                  f"{POISON_DAGGER_SECS:g}s (ignores armor). {a.cooldown:g}s cooldown.",
     "Ambush": lambda h, a: f"From stealth, strike for {_dmg(h, a):.0f} damage.",
     "Frostbolt": lambda h, a: f"Channeled bolt for {_dmg(h, a):.0f} damage up to {a.range:.0f} px away; slows the "
                               f"target. You cannot move while channeling.",
