@@ -6,7 +6,7 @@
       "title": "A Threat Within",
       "description": "The Stormwind guards are hard pressed to keep the peace here, with so many of us in distant lands and so many threats pressing close. And so we're enlisting the aid of anyone willing to defend their home. If you're here to answer the call, then speak with my superior, Marshal McBride. He's inside the abbey behind me.",
       "objectives": [],
-      "rewards_xp": 50,
+      "rewards_xp": 20,
       "rewards_gold": 0,
       "npc_id": "deputy_willem",
       "level_req": 1,
