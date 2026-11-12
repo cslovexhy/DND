@@ -604,6 +604,7 @@ class World:
         player.target = None
         player.move_dir = (0, 0)
         player.pending_cast = None
+        player.queued_cast = None
         player.ambush_target = None
         player.dash_active = False
         player.dash_path = []

@@ -343,9 +343,10 @@ class Entity:
         self.facing_left = dx < 0
 
     def take_damage(self, raw_damage: float, ignore_armor: bool = False, source: 'Entity' = None,
-                    threat: float = 1.0) -> float:
+                    threat: float = 1.0, flash: bool = True) -> float:
         """Apply damage after armor reduction. Shield absorbs first. Returns actual damage dealt.
-        `source` is who dealt it and `threat` the skill's threat modifier (only Monster uses them: hate table)."""
+        `source` is who dealt it and `threat` the skill's threat modifier (only Monster uses them: hate table).
+        flash=False: no hit flash (damage over time ticks every frame; its own tint shows it instead)."""
         if not self.alive:
             return 0
 
@@ -360,14 +361,16 @@ class Entity:
         if self.absorb_shield > 0:
             if actual <= self.absorb_shield:
                 self.absorb_shield -= actual
-                self.flash_timer = 0.06
+                if flash:
+                    self.flash_timer = 0.06
                 return actual  # All absorbed
             else:
                 actual -= self.absorb_shield
                 self.absorb_shield = 0
 
         self.hp -= actual
-        self.flash_timer = 0.06
+        if flash:
+            self.flash_timer = 0.06
 
         if self.hp <= 0:
             self.hp = 0
@@ -403,7 +406,7 @@ class Entity:
         for cond in self.conditions:
             cond.duration -= dt
             if cond.tick_damage > 0:
-                self.take_damage(cond.tick_damage * dt, ignore_armor=True, source=cond.by)
+                self.take_damage(cond.tick_damage * dt, ignore_armor=True, source=cond.by, flash=False)
         # Remove expired
         self.conditions = [c for c in self.conditions if c.duration > 0]
 
@@ -647,9 +650,9 @@ class Monster(Entity):
         return max(listed, key=lambda c: self.hate[c], default=None)
 
     def take_damage(self, raw_damage: float, ignore_armor: bool = False, source: 'Entity' = None,
-                    threat: float = 1.0) -> float:
+                    threat: float = 1.0, flash: bool = True) -> float:
         bonus = getattr(source, "damage_bonus", 1.0)     # a hero's food buff
-        dealt = super().take_damage(raw_damage * bonus, ignore_armor, source)
+        dealt = super().take_damage(raw_damage * bonus, ignore_armor, source, flash=flash)
         if source is not None:
             self.since_combat = 0.0                      # being hit restarts the leash timer (ai.LEASH_TIME)
         if source is not None and dealt > 0:

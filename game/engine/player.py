@@ -28,6 +28,7 @@ from game.engine.world_map import TILE_SIZE
 from game.content.skill_tree import (wall_shield, renew_total, seal_bonus, holy_light_heal, shout_damage_mult,
                                      smite_damage, poison_dps, POISON_DAGGER_SECS, POISON_DAGGER_WINDOW)
 HEROIC_STRIKE_WINDOW = 10.0   # seconds a Heroic Strike buff waits for the next Strike / Cleave
+CAST_QUEUE_SECS = 1.0         # a skill pressed during the global cooldown waits this long to fire
 from game.engine.hero_ai import SUPPORT_RANGE   # px: how far away an ally can be for Wall / Renew / Holy Light
 
 
@@ -66,6 +67,9 @@ class PlayerState:
         self.hold_position = False
         # Queued ability cast (walk to range then fire): (ab_key, ab, target_monster) or None
         self.pending_cast = None
+        # A Cast pressed during the global cooldown (fires when it ends, see update)
+        self.queued_cast = None
+        self.queued_cast_timer = 0.0
         # Dash animation state (Charge)
         self.dash_path = []      # Charge waypoints (follows a walking path, not a straight line)
         self.dash_target_x = 0.0
@@ -343,6 +347,11 @@ class PlayerState:
             ab = hero.abilities.get(cmd.ab_key)
             if ab is None:
                 return
+            if hero.gcd > 0 and ab.remaining <= 0:
+                # pressed during the global cooldown: queue it, it fires the moment the GCD ends (see update)
+                self.queued_cast = cmd
+                self.queued_cast_timer = CAST_QUEUE_SECS
+                return
             enemy = self._live_monster(cmd.target_id)
             # WoW: attacking an enemy with a skill (e.g. the basic attack on key 1) starts auto-attacking it
             attack = enemy is not None and ab.target_kind == "enemy" and not self.ai_enabled
@@ -467,7 +476,8 @@ class PlayerState:
             if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
                 from game.engine.ai import aggro_monster as _aggro
                 aggro_monster(clicked_monster, hero, gs.monsters)
-            hero.gcd = hero.GCD_DURATION
+            # (no global cooldown: Stab is the auto-attack, paced by the 0.5 s swing. With a GCD on every swing the
+            # Rogue was GCD-locked the whole fight and could not use Poison Dagger or any other skill.)
             self.move_path = []
             self.selected_target = clicked_monster  # Keep target for auto-attack
             return
@@ -817,6 +827,14 @@ class PlayerState:
         hero = self.hero
         gs = self.world.game_state
         self.potion_cooldown = max(0.0, self.potion_cooldown - dt)
+        # A skill pressed during the global cooldown fires as soon as it ends (or is dropped after CAST_QUEUE_SECS)
+        if self.queued_cast is not None:
+            self.queued_cast_timer -= dt
+            if self.queued_cast_timer <= 0:
+                self.queued_cast = None
+            elif hero.gcd <= 0:
+                cmd, self.queued_cast = self.queued_cast, None
+                self.handle(cmd)
         t = self.target
         if t is not None and (not t.alive or getattr(t, "stealthed", False)):
             self.target = None               # the target died or vanished

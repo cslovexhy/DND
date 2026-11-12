@@ -49,7 +49,7 @@
   },
   "manual_cleric": {
     "deaths": "0",
-    "digest": "213982dc57a0",
+    "digest": "100499662e15",
     "hp": "155/155",
     "kills": "6",
     "outcome": "TIMEOUT",
@@ -73,7 +73,7 @@
   },
   "manual_rogue": {
     "deaths": "0",
-    "digest": "011ac6f86709",
+    "digest": "5997b8eaba7d",
     "hp": "150/150",
     "kills": "9",
     "outcome": "TIMEOUT",

@@ -122,5 +122,63 @@ class PoisonDaggerTest(unittest.TestCase):
         self.assertGreater(m.hate[p.hero] - hate, 30 * 0.9)
 
 
+class MidFightTest(unittest.TestCase):
+    def test_poison_dagger_works_while_auto_attacking(self):
+        """Pressing Poison Dagger mid-fight used to do nothing: every Stab (0.5 s swing) started the 0.5 s global
+        cooldown, so the Rogue was GCD-locked until the mob died."""
+        world, p, m = rogue()
+        world.submit(C.Cast("Q", m.x, m.y, m.eid), 0)          # start the fight: Stab + auto-attack
+        for _ in range(60):
+            world.step(DT)
+        self.assertIs(p.selected_target, m)                     # still auto-attacking
+        world.submit(C.Cast("F", p.hero.x, p.hero.y, m.eid), 0)
+        for _ in range(int(1.0 / DT)):                         # within a second the buff is up and spent on a Stab
+            world.step(DT)
+            if m.has_condition(Condition.POISONED):
+                break
+        self.assertTrue(m.has_condition(Condition.POISONED))
+
+    def test_skill_pressed_during_global_cooldown_fires_when_it_ends(self):
+        world, p, m = rogue()
+        p.hero.gcd = 0.3
+        world.submit(C.Cast("F", p.hero.x, p.hero.y, None), 0)
+        world.step(DT)
+        self.assertNotIn("Poison Dagger", p.hero.buffs)          # not yet: GCD
+        for _ in range(int(0.4 / DT)):
+            world.step(DT)
+        self.assertIn("Poison Dagger", p.hero.buffs)             # fired as soon as the GCD ended
+
+    def test_queued_cast_expires(self):
+        world, p, m = rogue()
+        p.hero.gcd = 5.0
+        world.submit(C.Cast("F", p.hero.x, p.hero.y, None), 0)
+        for _ in range(int(1.5 / DT)):
+            world.step(DT)
+        self.assertIsNone(p.queued_cast)
+        p.hero.gcd = 0
+        world.step(DT)
+        self.assertNotIn("Poison Dagger", p.hero.buffs)
+
+
+class DotFlashTest(unittest.TestCase):
+    def test_poison_ticks_do_not_flash_the_target(self):
+        """Every hit flashes the sprite for 0.06 s; poison ticks every frame, so it used to flash nonstop."""
+        world, p, m = rogue()
+        m.apply_condition(Condition.POISONED, 5.0, tick_damage=6, by=p.hero)
+        hp = m.hp
+        for _ in range(10):
+            world.step(DT)
+        self.assertLess(m.hp, hp)
+        self.assertEqual(m.flash_timer, 0)
+
+    def test_poisoned_monster_shows_the_poison_visual(self):
+        from game.client.status_visuals import status_visuals
+        world, p, m = rogue()
+        m.apply_condition(Condition.POISONED, 5.0, tick_damage=6, by=p.hero)
+        snap = make_snapshot(world, 0)
+        mob = next(e for e in snap["entities"] if e["id"] == m.eid)
+        self.assertTrue(status_visuals(type("V", (), mob)).get("poison"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -850,7 +850,7 @@ def get_npc_at_screen(sx, sy):
 
 
 def status_tint(e, s):
-    """Sprite tint for a hero's status (same for every hero, on every screen)."""
+    """Sprite tint for a hero's or monster's status (same on every screen)."""
     fx = status_visuals(e)
     if fx.get("stealth"):
         s = s.copy()
@@ -1215,11 +1215,13 @@ while running:
         if sx < -sw or sx > WIDTH or sy < -sh or sy > HEIGHT: continue
         s = pygame.transform.flip(spr, True, False) if m.facing_left else spr
         s = pygame.transform.scale(s, (sw, sh))
+        s = status_tint(m, s)            # e.g. poisoned: green, same as heroes
+        # (RGB_ADD, not RGBA_ADD: adding alpha turned the sprite's transparent box into a solid rectangle)
         if m.flash_timer > 0:
-            f = s.copy(); f.fill((255,255,255,200), special_flags=pygame.BLEND_RGBA_ADD)
+            f = s.copy(); f.fill((200, 200, 200), special_flags=pygame.BLEND_RGB_ADD)
             screen.blit(f, (sx, sy))
         elif m.has_condition(Condition.FROZEN):
-            f = s.copy(); f.fill((100,150,255,150), special_flags=pygame.BLEND_RGBA_ADD)
+            f = s.copy(); f.fill((100, 150, 255), special_flags=pygame.BLEND_RGB_ADD)
             screen.blit(f, (sx, sy))
             # Ice crystal indicator
             ice_surf = pygame.Surface((sw + 8, sh + 8), pygame.SRCALPHA)
@@ -1227,6 +1229,7 @@ while running:
             screen.blit(ice_surf, (sx - 4, sy - 4))
         else:
             screen.blit(s, (sx, sy))
+        draw_status_effects(m, sx, sy, sw, sh)      # poison ring etc. (monsters have no shield / renew / channel)
         if getattr(m, "say", ""):                                  # e.g. "Ashardalon took a deep breath..."
             msg = font.render(m.say, True, (255, 170, 90))
             shadow = font.render(m.say, True, (40, 10, 10))
@@ -1273,7 +1276,7 @@ while running:
         cs = pygame.transform.scale(cs, (csw, csh))
         cs = status_tint(comp, cs)
         if comp.flash_timer > 0:
-            f = cs.copy(); f.fill((200,50,50,100), special_flags=pygame.BLEND_RGBA_ADD)
+            f = cs.copy(); f.fill((200, 50, 50), special_flags=pygame.BLEND_RGB_ADD)
             screen.blit(f, (csx, csy))
         else:
             screen.blit(cs, (csx, csy))
