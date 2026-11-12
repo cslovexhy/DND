@@ -56,7 +56,8 @@ class ManaPoolTest(unittest.TestCase):
 class ManaCostTest(unittest.TestCase):
     def test_max_burn_is_the_same_mana_rate_for_every_class_at_every_level(self):
         """Casting every unlocked in-combat skill whenever it is ready spends mana_rate(level) per second (up to the
-        0.1-mana rounding of each cost), whatever the class: a bigger pool lasts longer."""
+        0.1-mana rounding of each cost), whatever the class: a bigger pool lasts longer. (A melee hero with only its
+        free weapon attack — level 1 — spends nothing.)"""
         for info in HERO_CLASSES:
             cls = info["class"]
             for level in range(1, MAX_LEVEL + 1):
@@ -64,7 +65,8 @@ class ManaCostTest(unittest.TestCase):
                 abs_ = [ab for ab in p.hero.abilities.values() if not ab.mana_secs]   # in-combat skills
                 burn = sum(ab.mana_cost / ab.mana_gap for ab in abs_)
                 slack = sum(0.05 / ab.mana_gap for ab in abs_)
-                self.assertAlmostEqual(burn, mana_rate(level), delta=slack + 1e-9, msg=f"{cls} L{level}")
+                want = mana_rate(level) if any(ab.mana_weight for ab in abs_) else 0.0
+                self.assertAlmostEqual(burn, want, delta=slack + 1e-9, msg=f"{cls} L{level}")
 
     def test_cost_grows_with_level(self):
         for info in HERO_CLASSES:
@@ -72,18 +74,20 @@ class ManaCostTest(unittest.TestCase):
             _, low = hero_at(cls, 10)
             _, high = hero_at(cls, MAX_LEVEL)
             for key, ab in low.hero.abilities.items():
-                self.assertGreater(high.hero.abilities[key].mana_cost, ab.mana_cost, f"{cls} {ab.name}")
+                if ab.mana_weight or ab.mana_secs:
+                    self.assertGreater(high.hero.abilities[key].mana_cost, ab.mana_cost, f"{cls} {ab.name}")
 
-    def test_melee_basic_attacks_cheap_caster_basic_attacks_dear(self):
-        """Out of mana a melee hero still swings its cheap basic attack; a caster's basic attack is its main cost."""
-        def basic_share(cls):
-            _, p = hero_at(cls, MAX_LEVEL)
-            abs_ = p.hero.abilities
-            return (abs_["Q"].mana_cost / abs_["Q"].mana_gap) / mana_rate(MAX_LEVEL)
+    def test_melee_weapon_attacks_free_caster_basic_attacks_dear(self):
+        """Out of mana a melee hero keeps swinging (Strike / Smite / Stab cost nothing); a caster's basic attack is
+        its main cost, so casters are hit harder when they run dry."""
         for cls in ("Fighter", "Paladin", "Rogue"):
-            self.assertLess(basic_share(cls), 0.15, cls)
+            for level in (1, 10, MAX_LEVEL):
+                _, p = hero_at(cls, level)
+                self.assertEqual(p.hero.abilities["Q"].mana_cost, 0, f"{cls} L{level}")
         for cls in ("Cleric", "Wizard"):
-            self.assertGreater(basic_share(cls), 0.4, cls)
+            _, p = hero_at(cls, MAX_LEVEL)
+            q = p.hero.abilities["Q"]
+            self.assertGreater((q.mana_cost / q.mana_gap) / mana_rate(MAX_LEVEL), 0.4, cls)
 
     def test_rogue_opener_costs_seconds_of_mana_rate(self):
         """Stealth + Ambush only open a fight, so they sit outside the in-combat budget: 1 s and 4 s of mana_rate."""

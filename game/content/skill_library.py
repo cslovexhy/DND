@@ -21,14 +21,14 @@ WIZARD_BOLT_RANGES = (200, 230, 260)
 
 # Mana (Ability.mana_cost): at every character level each class spends the same mana per second when it casts
 # every unlocked in-combat skill as soon as it is ready (progression.mana_rate), so a bigger pool lasts longer.
-# mana_weight splits that spending over the skills: melee basic attacks are cheap (still usable when out of mana),
-# caster basic attacks are dear (casters are punished harder when out of mana). Openers (out of combat only: Rogue
+# mana_weight splits that spending over the skills: melee weapon attacks (Strike, Smite, Stab) are free (melee keep
+# swinging when out of mana; user decision), caster basic attacks are dear (casters are punished harder when OOM). Openers (out of combat only: Rogue
 # Stealth + Ambush) cost mana_secs seconds of mana_rate instead. Tuned with tools/mana_bench.py.
 
 
 # --- Fighter ---------------------------------------------------------------------------------------------------
 def strike():
-    return Ability("Strike", mana_weight=0.3, cooldown=0, a_levels=(1.0,), b_levels=(1, 2, 3),
+    return Ability("Strike", mana_weight=0, cooldown=0, a_levels=(1.0,), b_levels=(1, 2, 3),
                    radius=0, range=70, heroic=True,
                    effect="Basic melee attack (100% weapon dmg + 1/2/3).",
                    power_type="at_will", color=FIGHTER_COLOR)
@@ -94,7 +94,7 @@ def renew():
 
 # --- Paladin ---------------------------------------------------------------------------------------------------
 def smite():
-    return Ability("Smite", mana_weight=0.3, cooldown=0, a_levels=(1.0,), b_levels=(1, 2, 3),
+    return Ability("Smite", mana_weight=0, cooldown=0, a_levels=(1.0,), b_levels=(1, 2, 3),
                    radius=0, range=75,
                    effect="Melee divine strike (100% weapon dmg + 1/2/3). Boosted by Seal.",
                    power_type="at_will", color=PALADIN_COLOR)
@@ -127,7 +127,7 @@ def holy_light():
 
 # --- Rogue -----------------------------------------------------------------------------------------------------
 def stab():
-    return Ability("Stab", mana_weight=0.15, cooldown=0, a_levels=(1.0,), b_levels=(0.5, 1, 1.5),
+    return Ability("Stab", mana_weight=0, cooldown=0, a_levels=(1.0,), b_levels=(0.5, 1, 1.5),
                    radius=0, range=55,
                    effect="Fast melee strike (100% weapon dmg + 0.5/1/1.5).",
                    power_type="at_will", color=ROGUE_COLOR)

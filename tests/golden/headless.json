@@ -89,9 +89,9 @@
   },
   "northshire_long_respawns": {
     "deaths": "0",
-    "digest": "634d024741b6",
-    "hp": "193/199",
-    "kills": "25",
+    "digest": "fe62012e710e",
+    "hp": "209/239",
+    "kills": "26",
     "outcome": "TIMEOUT",
     "time": "200.0s"
   }
