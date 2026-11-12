@@ -145,6 +145,40 @@ class ManaCastTest(unittest.TestCase):
         self.assertEqual(p.hero.mana, p.hero.max_mana)
 
 
+class RegenByLevelTest(unittest.TestCase):
+    """Out-of-combat HP / mana regen: 2% of max per second at L1 -> 1% at L10 -> 0.5% at L30, linear; in combat 10%
+    of that."""
+
+    def test_curve(self):
+        from game.progression import regen_rate
+        for level, want in ((1, 0.02), (4, 0.02 - 0.01 / 3), (10, 0.01), (20, 0.0075), (30, 0.005), (40, 0.005)):
+            self.assertAlmostEqual(regen_rate(level), want, msg=level)
+
+    def test_heroes_get_their_levels_rates(self):
+        from game.progression import regen_rate
+        for level in (1, 10, 30):
+            _, p = hero_at("Fighter", level)
+            h = p.hero
+            self.assertAlmostEqual(h.regen_rate_ooc, regen_rate(level))
+            self.assertAlmostEqual(h.mana_regen_ooc, regen_rate(level))
+            self.assertAlmostEqual(h.regen_rate_combat, regen_rate(level) * 0.1)
+            self.assertAlmostEqual(h.mana_regen_combat, regen_rate(level) * 0.1)
+
+    def test_level_up_lowers_the_rate(self):
+        from game.progression import regen_rate, xp_to_next_level
+        world, p = hero_at("Cleric", 9)
+        p.hero.xp = xp_to_next_level(9)
+        world.step(DT)
+        self.assertEqual(p.hero.level, 10)
+        self.assertAlmostEqual(p.hero.regen_rate_ooc, 0.01)
+
+    def test_monsters_keep_the_flat_rate(self):
+        random.seed(1)
+        world, _ = create_world(MAP, saves.blank_character("t", "Fighter", level=30))
+        m = world.game_state.monsters[0]
+        self.assertEqual((m.regen_rate_ooc, m.regen_rate_combat), (0.02, 0.02 * 0.1))
+
+
 def hero_with_mobs(cls, level, n, dist):
     """A hero and n aggroed, harmless, unkillable mobs standing `dist` px to its right."""
     from game.engine.ai import aggro_monster

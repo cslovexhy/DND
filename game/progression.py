@@ -5,6 +5,7 @@ Pure logic (no pygame) so it can be shared by the player, AI companions and test
 """
 
 from game.content.skill_tree import apply_skill_levels
+from game.engine.entities import COMBAT_REGEN_SHARE
 
 MAX_LEVEL = 30
 XP_BASE = 100  # XP needed for level 2 (see XP_TABLE)
@@ -60,6 +61,30 @@ def ref_mana(level):
 def mana_rate(level):
     """Mana per second any class spends at this level when it casts every unlocked skill as soon as it is ready."""
     return ref_mana(level) / MANA_DRAIN_SECS
+
+
+# Hero HP and mana regeneration out of combat, share of max per second, by character level (user-set, linear):
+# 2% at level 1 -> 1% at level 10 -> 0.5% at level 30 (and beyond). In combat it is COMBAT_REGEN_SHARE of that.
+REGEN_POINTS = ((1, 0.02), (10, 0.01), (30, 0.005))
+
+
+def regen_rate(level):
+    """Out-of-combat HP / mana regeneration (share of max per second) at this character level."""
+    (l0, r0), (l1, r1), (l2, r2) = REGEN_POINTS
+    if level <= l0:
+        return r0
+    if level <= l1:
+        return r0 + (r1 - r0) * (level - l0) / (l1 - l0)
+    if level <= l2:
+        return r1 + (r2 - r1) * (level - l1) / (l2 - l1)
+    return r2
+
+
+def apply_regen_rates(hero):
+    """Set the hero's HP and mana regeneration for its level (in combat = COMBAT_REGEN_SHARE of out of combat)."""
+    ooc = regen_rate(hero.level)
+    hero.regen_rate_ooc = hero.mana_regen_ooc = ooc
+    hero.regen_rate_combat = hero.mana_regen_combat = ooc * COMBAT_REGEN_SHARE
 
 
 # Weapon damage growth per level (raw points added to base_damage). "hp" is the average HP gain per level of the
@@ -122,6 +147,7 @@ def apply_level_growth(hero, levels=1):
     if hero.class_name in HERO_MANA:
         hero.max_mana = hero_max_mana(hero.class_name, hero.level)
         hero.mana = hero.max_mana
+    apply_regen_rates(hero)
 
 
 def set_hero_level(hero, level):

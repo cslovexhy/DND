@@ -57,8 +57,8 @@
   },
   "manual_fighter": {
     "deaths": "0",
-    "digest": "5cd31f17a6f8",
-    "hp": "160/160",
+    "digest": "a6a9df87776f",
+    "hp": "159/160",
     "kills": "9",
     "outcome": "TIMEOUT",
     "time": "60.0s"
@@ -89,8 +89,8 @@
   },
   "northshire_long_respawns": {
     "deaths": "0",
-    "digest": "c7ec36d1f0e6",
-    "hp": "206/239",
+    "digest": "6419fe1ff98a",
+    "hp": "142/199",
     "kills": "22",
     "outcome": "TIMEOUT",
     "time": "200.0s"
