@@ -835,6 +835,12 @@ def draw_target_frame(screen, t):
     pygame.draw.rect(screen, HP_RED if enemy else HP_GREEN, (x, y + 2, int((w - 4) * pct), 18))
     lv = f"Lv {t.level} " if (not enemy or getattr(t, "leveled", False)) else ""
     screen.blit(font.render(f"{lv}{t.name}  {t.hp:.0f}/{t.max_hp:.0f}", True, WHITE), (x + 5, y + 5))
+    max_mana = getattr(t, "max_mana", 0)
+    if max_mana:                                    # heroes, and monsters that cast skills: a thin MP bar
+        pygame.draw.rect(screen, HP_BG, (x - 2, y + 22, w, 7))
+        pygame.draw.rect(screen, MANA_EMPTY, (x, y + 23, w - 4, 5))
+        pygame.draw.rect(screen, MANA_BLUE, (x, y + 23, int((w - 4) * min(1.0, t.mana / max_mana)), 5))
+        y += 8
     if t.kind == "ally":
         screen.blit(font.render("T = Trade", True, (200, 200, 150)), (x + 2, y + 25))
 

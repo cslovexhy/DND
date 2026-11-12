@@ -11,8 +11,6 @@ from typing import Optional
 # === SCALING CONSTANTS ===
 # Board game HP 1-12 → ARPG HP (×50 for granularity)
 HP_SCALE = 50
-# Poison applied by monster hits: damage per second (scaled by the map's pp, see World._apply_pp)
-POISON_DPS = 10.0
 # Character scale: 1.0 = same size as map tile, 0.5 = half size. Gameplay constant (not just art):
 # movement speed scales with it so the map feels bigger. The client sizes sprites from it too.
 CHAR_SCALE = 0.5
@@ -486,12 +484,10 @@ class Hero(Entity):
 
     def __init__(self, name: str, class_name: str,
                  x: float, y: float,
-                 hp: int, ac: int, speed: int, surge_value: int,
-                 special_ability: str = ""):
+                 hp: int, ac: int, speed: int, surge_value: int):
         super().__init__(name, x, y, hp, ac, speed)
         self.class_name = class_name
         self.surge_value = surge_value * HP_SCALE
-        self.special_ability = special_ability
 
         # Progression
         self.xp = 0
@@ -602,10 +598,6 @@ class Monster(Entity):
 
         # Tactics (behavior tree steps)
         self.tactics: list[dict] = []
-
-        # Conditions this monster applies on hit
-        self.on_hit_condition: Optional[tuple[Condition, float]] = None
-        # e.g. (Condition.POISONED, 4.0) = apply poison for 4 seconds
 
         # Ranged attack (if any)
         self.ranged_attack_bonus: int = 0

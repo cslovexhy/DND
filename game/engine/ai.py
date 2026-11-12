@@ -29,7 +29,7 @@ Patrol:
 import math
 import random
 from typing import Optional
-from .entities import Monster, Hero, Entity, Condition, POISON_DPS
+from .entities import Monster, Hero, Entity, Condition
 from .pathfinding import astar, has_line_of_sight
 from .skills import check_skill_triggers
 
@@ -367,11 +367,7 @@ def ai_melee(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None)
         dmg = monster.try_basic_attack(target)
         if dmg is not None:
             monster.since_combat = 0.0          # it reached someone: the leash timer starts over
-            if monster.on_hit_condition:
-                cond, dur = monster.on_hit_condition
-                target.apply_condition(cond, dur,
-                                       tick_damage=getattr(monster, 'poison_dps', POISON_DPS) if cond == Condition.POISONED else 0)
-            return ("attack", target, dmg)
+            return ("attack", target, dmg)      # (World spends an armed Poison Dagger on this hit)
     return ("move", target, 0)
 
 
@@ -451,11 +447,7 @@ def ai_boss(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None):
         dmg = monster.try_basic_attack(target)
         if dmg is not None:
             monster.since_combat = 0.0          # it reached someone: the leash timer starts over
-            if monster.on_hit_condition:
-                cond, dur = monster.on_hit_condition
-                target.apply_condition(cond, dur,
-                                       tick_damage=getattr(monster, 'poison_dps', POISON_DPS) if cond == Condition.POISONED else 0)
-            return ("attack", target, dmg)
+            return ("attack", target, dmg)      # (World spends an armed Poison Dagger on this hit)
     return ("move", target, 0)
 
 

@@ -1,8 +1,8 @@
 {
   "haycock": {
-    "deaths": "1",
-    "digest": "d03e509fe596",
-    "hp": "17/120",
+    "deaths": "0",
+    "digest": "c410a7cdd1d4",
+    "hp": "40/120",
     "kills": "4",
     "outcome": "TIMEOUT",
     "time": "60.0s"
@@ -65,7 +65,7 @@
   },
   "manual_paladin": {
     "deaths": "0",
-    "digest": "957de38ffa41",
+    "digest": "8de1cfef5d34",
     "hp": "158/158",
     "kills": "8",
     "outcome": "TIMEOUT",

@@ -73,12 +73,22 @@ class NpcDialogue:
     player_id: int = 0
 
 
+@dataclass
+class SkillCast:
+    """A monster used a skill from its kit (engine/monster_casting.py) on `target_id` (itself for self-buffs).
+    Clients may ignore it; tools (tools/skill_playground.py) log it."""
+    caster_id: int
+    skill: str
+    target_id: int
+
+
 GOLD = (255, 215, 0)
 HP_RED = (200, 50, 50)
 
 
 # --- (de)serialization for the network (design/06 phase 4) ---
-_BY_NAME = {cls.__name__: cls for cls in (FloatText, Ring, LevelUp, SkillUp, QuestReady, BindRightSkill, NpcDialogue)}
+_BY_NAME = {cls.__name__: cls for cls in (FloatText, Ring, LevelUp, SkillUp, QuestReady, BindRightSkill, NpcDialogue,
+                                          SkillCast)}
 
 
 def to_dict(ev):

@@ -1,12 +1,14 @@
 """Monster stat table for map spawn points (pure data; no pygame).
 
 Keys are the spawn-type strings used in data/maps/*.json. Optional flags: boss, unique, ranged,
-condition (on-hit), relentless, hive_mind, respawn_mult, skills (see game/engine/skills.py),
+relentless, hive_mind, respawn_mult, skills (HP-triggered boss skills, see game/engine/skills.py),
+kit (castable skills from content/skill_library.py, e.g. ["Poison Dagger"]; see engine/monster_casting.py),
 hp_mult (max HP multiplier for the type, default 1; see monster_hp_mult),
 swing (seconds between attacks, default MONSTER_SWING_TIME; bosses swing 20% faster).
 Every type also has a category (MONSTER_CATEGORY: humanoid / beast / demon) that decides its loot.
+A map spawn point may override any of these for that spawn ("stats": {...}), kit included.
 """
-from game.engine.entities import Condition
+from game.progression import ref_mana
 
 MONSTER_SWING_TIME = 2.0   # default seconds between a monster's attacks
 RESPAWN_TIME = 60.0     # seconds before a killed regular mob respawns
@@ -14,14 +16,14 @@ BOSS_RESPAWN_MULT = 10  # bosses take 10x as long (600s) unless SPAWN_STATS sets
 
 SPAWN_STATS = {
     "kobold_dragonshield": {"name": "Kobold Dragonshield", "hp": 1, "ac": 16, "speed": 5, "atk": 7, "dmg": 1, "xp": 5},
-    "snake": {"name": "Snake", "hp": 1, "ac": 13, "speed": 6, "atk": 7, "dmg": 0, "xp": 5, "condition": (Condition.POISONED, 3.0)},
+    "snake": {"name": "Snake", "hp": 1, "ac": 13, "speed": 6, "atk": 7, "dmg": 0, "xp": 5, "kit": ["Poison Dagger"]},
     "orc_smasher": {"name": "Orc Smasher", "hp": 2, "ac": 15, "speed": 4, "atk": 9, "dmg": 1, "xp": 10},
     "orc_archer": {"name": "Orc Archer", "hp": 1, "ac": 13, "speed": 4, "atk": 6, "dmg": 1, "xp": 5, "ranged": True},
     "grey_wolf": {"name": "Grey Wolf", "hp": 2, "ac": 14, "speed": 5, "atk": 8, "dmg": 2, "xp": 10},
     "duergar_guard": {"name": "Duergar Guard", "hp": 2, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 10},
     "gibbering_mouther": {"name": "Gibbering Mouther", "hp": 2, "ac": 14, "speed": 3, "atk": 8, "dmg": 1, "xp": 15},
-    "grell": {"name": "Grell", "hp": 2, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 10, "condition": (Condition.POISONED, 3.0)},
-    "human_cultist": {"name": "Human Cultist", "hp": 1, "ac": 14, "speed": 5, "atk": 6, "dmg": 1, "xp": 5, "condition": (Condition.POISONED, 3.0)},
+    "grell": {"name": "Grell", "hp": 2, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 10, "kit": ["Poison Dagger"]},
+    "human_cultist": {"name": "Human Cultist", "hp": 1, "ac": 14, "speed": 5, "atk": 6, "dmg": 1, "xp": 5, "kit": ["Poison Dagger"]},
     "legion_devil": {"name": "Legion Devil", "hp": 1, "ac": 16, "speed": 5, "atk": 11, "dmg": 1, "xp": 15},
     # Stranger Things set (Upside Down). Demogorgon: fast (1.5x player speed 6 = 9) and hits hard.
     "demogorgon": {"name": "Demogorgon", "hp": 8, "ac": 16, "speed": 9, "atk": 10, "dmg": 3, "xp": 20, "relentless": True, "hive_mind": (1000, ["demogorgon", "vecna"])},
@@ -97,6 +99,24 @@ def damage_for_level(level):
 
 
 DAMAGE_ROLL = (0.9, 1.1)    # per-hit random factor for levelled monsters
+
+
+# --- Monster skills (kit) ---------------------------------------------------------------------------------------
+# A monster casts its kit's skills exactly like a hero: same damage formula (a x its hit damage + b), cooldown and
+# mana cost (Ability.mana_cost: mana_rate(level) x time between casts x the skill's share of the kit's weights). Its
+# mana pool is the average hero pool at its level, so it spends mana at the same rate a hero does and runs dry
+# after about as long.
+MONSTER_SKILL_LEVEL_AT = (10, 20)   # monster level at which its skills reach skill level 2 / 3
+
+
+def monster_skill_level(level):
+    """Skill level (1..3) of a monster's kit at this monster level."""
+    return 1 + sum(level >= lv for lv in MONSTER_SKILL_LEVEL_AT)
+
+
+def monster_max_mana(level):
+    """Mana pool of a monster with a kit: the average hero pool at its level (progression.ref_mana)."""
+    return int(round(ref_mana(level)))
 
 
 def base_xp_for_level(level):

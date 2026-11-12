@@ -25,8 +25,7 @@ from game.engine.pathfinding import astar
 from game.engine.world_map import TILE_SIZE
 
 
-from game.content.skill_tree import (wall_shield, renew_total, seal_bonus, holy_light_heal, shout_damage_mult,
-                                     smite_damage, poison_dps, POISON_DAGGER_SECS, POISON_DAGGER_WINDOW,
+from game.content.skill_tree import (seal_bonus, holy_light_heal, shout_damage_mult, smite_damage,
                                      stealth_speed, stealth_upkeep)
 HEROIC_STRIKE_WINDOW = 10.0   # seconds a Heroic Strike buff waits for the next Strike / Cleave
 CAST_QUEUE_SECS = 1.0         # a skill pressed during the global cooldown waits this long to fire
@@ -479,11 +478,7 @@ class PlayerState:
             text = f"{dmg:.0f}!" if hero.last_crit else f"{dmg:.0f}"
             self.world.float_text(clicked_monster.x, clicked_monster.y - 20, text, color)
             # Poison Dagger: this Stab poisons the target (damage over time, counts as the Rogue's for threat)
-            poison = hero.buffs.pop("Poison Dagger", None)
-            if poison and clicked_monster.alive:
-                if clicked_monster.apply_condition(Condition.POISONED, poison["duration"],
-                                                   tick_damage=poison["dps"], source="Poison Dagger", by=hero):
-                    self.world.float_text(clicked_monster.x, clicked_monster.y - 35, "Poisoned!", (120, 220, 80))
+            abilities.poison_on_hit(self.world, hero, clicked_monster)
             call_for_help(clicked_monster, gs.monsters, hero)
             if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
                 from game.engine.ai import aggro_monster as _aggro
@@ -509,11 +504,7 @@ class PlayerState:
 
         # === Tarak: Poison Dagger (self-buff: the next Stab poisons its target) ===
         if ab.name == "Poison Dagger":
-            ab.use()
-            hero.buffs["Poison Dagger"] = {"remaining": POISON_DAGGER_WINDOW, "dps": poison_dps(ab),
-                                           "duration": POISON_DAGGER_SECS}
-            self.world.float_text(hero.x, hero.y - 30, "Poison Dagger!", (120, 220, 80))
-            hero.gcd = hero.GCD_DURATION
+            abilities.poison_dagger(self.world, hero, ab)
             return
 
         # === Tarak special: Ambush (stealth-only burst) ===
@@ -641,13 +632,7 @@ class PlayerState:
             target = self._support_target(ally)
             if target is None:
                 return
-            ab.use()
-            shield_amount = wall_shield(hero, ab)   # potion amount (200) at skill level 3
-            target.absorb_shield = shield_amount
-            target.buffs["Wall"] = {"remaining": 15.0}
-            self.world.credit_heal(hero, target, shield_amount)   # shielding generates hate like healing
-            self.world.float_text(target.x, target.y - 30, f"Wall +{shield_amount:.0f}!", (255, 215, 60))
-            hero.gcd = hero.GCD_DURATION
+            abilities.wall(self.world, hero, target, ab)
             self.move_path = []
             return
 
@@ -656,14 +641,7 @@ class PlayerState:
             target = self._support_target(ally)
             if target is None:
                 return
-            ab.use()
-            hot_total = renew_total(hero, ab)   # 50% of the potion amount (100) at skill level 3
-            hot_duration = 8.0
-            target.buffs["Renew"] = {"remaining": hot_duration, "hot_per_sec": hot_total / hot_duration,
-                                     "source": hero}   # each tick's healing is credited to the caster's hate
-            self.world.credit_heal(hero, target, 0)       # in combat with the friend -> on the mobs' tables now
-            self.world.float_text(target.x, target.y - 30, "Renew!", (100, 255, 150))
-            hero.gcd = hero.GCD_DURATION
+            abilities.renew(self.world, hero, target, ab)
             self.move_path = []
             return
 

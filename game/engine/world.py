@@ -11,20 +11,20 @@ from dataclasses import dataclass
 
 from game.content.heroes import HERO_CLASSES, COMPANION_NAMES
 from game.engine.ai import (generate_patrol_route, setup_monster_aggro, aggro_monster, call_for_help,
-                            run_monster_ai, drop_from_hate, credit_heal_hate)
+                            run_monster_ai, drop_from_hate, credit_heal_hate, AggroState)
 from game.engine.entities import Condition, Monster, Projectile
 from game.engine.events import FloatText, LevelUp, SkillUp, QuestReady, NpcDialogue, GOLD, HP_RED
 from game.engine.npc import NPC
-from game.engine import skills
+from game.engine import abilities, monster_casting, skills
 from game.engine.snapshot import quest_info
 from game.engine.pathfinding import has_line_of_sight
 from game.engine.world_map import TILE_SIZE
 from game.content.monsters import (SPAWN_STATS, respawn_delay, hp_for_level, base_xp_for_level, kill_xp,
                                     monster_hp_mult, damage_for_level, MONSTER_SWING_TIME, humanoid_money,
-                                    HUMANOID)
+                                    HUMANOID, monster_skill_level, monster_max_mana)
 from game.content.skill_tree import apply_skill_levels, describe
+from game.content.skill_library import make_skill
 from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_multiplier, scaled_xp
-from game.engine.entities import POISON_DPS
 from game.content.items import roll_drops
 from game.engine.trade import Trade
 from game.content import money
@@ -240,8 +240,6 @@ class World:
             self.on_monster_spawned(m)
         m.skills = dict(mt.get("skills", {}))
         m.unique = mt.get("unique", False)  # one-of-a-kind minion: name shown, but respawns/leashes like a normal mob
-        if mt.get("condition"):
-            m.on_hit_condition = mt["condition"]
         m.category = mt["category"]   # humanoid / beast / demon: decides money and food drops
         level_range = self.world_map.data.get("monster_levels", {}).get(sp.type)
         m.leveled = level_range is not None
@@ -251,6 +249,7 @@ class World:
             m.experience = base_xp_for_level(m.level)
             m.base_damage = damage_for_level(m.level)   # each hit rolls x0.9..x1.1 (Monster.hit_damage)
         m.weapon_speed = mt.get("swing", MONSTER_SWING_TIME) * (0.8 if is_boss else 1.0)   # bosses swing faster
+        self._give_kit(m, mt.get("kit", ()))
         m.max_hp *= monster_hp_mult(mt)   # per-type HP multiplier (default 1)
         m.hp = m.max_hp
         self._apply_pp(m)
@@ -269,13 +268,24 @@ class World:
         self.register(m)
         return m
 
+    def _give_kit(self, m, kit):
+        """A monster's castable skills (content/skill_library.py, the same Ability a hero gets) at the skill level
+        of its monster level, and a mana pool to pay for them (content/monsters.py)."""
+        if not kit:
+            return
+        for name in kit:
+            ab = make_skill(name)
+            ab.set_level(monster_skill_level(m.level))
+            m.add_ability(name, ab)
+        m.max_mana = m.mana = monster_max_mana(m.level)
+
     def _apply_pp(self, m):
         """Scale a freshly spawned monster for the map's pp (no-op at 1pp): HP x pp, damage and XP x (1+pp)/2."""
         m.max_hp = m.max_hp * hp_multiplier(self.pp)
         m.hp = m.max_hp
         dm = damage_multiplier(self.pp)
         m.base_damage = m.base_damage * dm
-        m.poison_dps = POISON_DPS * dm
+        m.skill_power = dm                          # its skills' flat amounts (poison, heals, shields) scale too
         m.base_experience = m.experience            # gold rolls stay on the base value
         m.experience = scaled_xp(m.experience, self.pp)
 
@@ -533,13 +543,6 @@ class World:
                     if proj.source is not None:
                         proj.source.since_combat = 0.0  # it reached someone: the leash timer starts over
                     self.float_text(hit_target.x + random.randint(-10, 10), hit_target.y - 30, f"{dmg:.0f}", HP_RED)
-                    # Apply on-hit condition if any
-                    on_hit = getattr(proj, 'on_hit_condition', None)
-                    if on_hit and hit_target.alive:
-                        cond, dur = on_hit
-                        hit_target.apply_condition(cond, dur,
-                                                   tick_damage=getattr(proj.source, "poison_dps", POISON_DPS)
-                                                   if cond == Condition.POISONED else 0)
         self.projectiles[:] = [p for p in self.projectiles if p.alive]
 
     # --- one simulation step ---
@@ -566,10 +569,10 @@ class World:
         self.process_level_ups()
         self.process_respawns()
         self.update_projectiles(dt)
-        # Expire Wall shield when buff expires
-        for hero in self.player_heroes:
-            if "Wall" not in hero.buffs and hero.absorb_shield > 0:
-                hero.absorb_shield = 0
+        # Expire Wall shield when buff expires (heroes, and monsters shielded by a monster's Wall)
+        for e in itertools.chain(self.player_heroes, gs.monsters):
+            if "Wall" not in e.buffs and e.absorb_shield > 0:
+                e.absorb_shield = 0
         # No game over: a fallen player gets up again at the map's start point (solo and co-op)
         for player in self.player_list:
             if not player.hero.alive:
@@ -653,6 +656,8 @@ class World:
             for healer, amount in h.heal_credits:
                 self.credit_heal(healer, h, amount)
             h.heal_credits.clear()
+        for m in gs.monsters:                     # a monster healed by a monster: no hate to credit
+            m.heal_credits.clear()
         alive = gs.alive_monsters
         return alive
 
@@ -666,6 +671,8 @@ class World:
             if result and result[0] in ("attack", "ranged_attack", "aoe_attack"):
                 hit_hero = result[1]
                 self.float_text(hit_hero.x+random.randint(-10,10), hit_hero.y-30, f"{result[2]:.0f}", HP_RED)
+                if result[0] == "attack":
+                    abilities.poison_on_hit(self, m, hit_hero)   # an armed Poison Dagger rides on this hit
                 # Demogorgon reveals when it attacks; stealth timer restarts from now.
                 if m.name == "Demogorgon":
                     m._last_attack_time = gs.game_time
@@ -676,5 +683,6 @@ class World:
                 proj = Projectile(x=m.x, y=m.y, target=target_hero,
                                   speed=350.0, damage=proj_damage,
                                   color=(255, 80, 80), source=m)
-                proj.on_hit_condition = m.on_hit_condition
                 self.projectiles.append(proj)
+            if m.abilities and m.alive and m.aggro_state == AggroState.AGGROED:
+                monster_casting.cast_skills(self, m)       # its kit: same skills, costs and cooldowns as a hero's

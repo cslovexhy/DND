@@ -28,6 +28,8 @@ def _entity(e, kind, ctl=None):
         d["unique"] = bool(getattr(e, "unique", False))
         d["say"] = getattr(e, "say", "")
         d["leveled"] = bool(getattr(e, "leveled", False))   # has a real level (map monster_levels): show "Lv N"
+        if e.max_mana:                                       # it casts skills (a kit): the target frame shows its MP
+            d["mana"], d["max_mana"] = e.mana, e.max_mana
     elif kind in ("hero", "ally", "companion"):
         d["class_name"] = e.class_name
         d["mana"], d["max_mana"] = e.mana, e.max_mana

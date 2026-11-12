@@ -6,7 +6,7 @@ from game import saves
 from game.content.difficulty import clamp_pp, damage_multiplier, hp_multiplier, map_title, scaled_xp
 from game.content.monsters import SPAWN_STATS, base_xp_for_level, hp_for_level, monster_hp_mult, damage_for_level
 from game.engine.bootstrap import create_world, join_player
-from game.engine.entities import HP_SCALE, POISON_DPS
+from game.engine.entities import HP_SCALE
 from game.engine.snapshot import make_snapshot
 
 MAP = "data/maps/northshire.json"
@@ -57,7 +57,7 @@ class PpMonstersTest(unittest.TestCase):
         self.assertEqual(m.max_hp, base_hp(m) * pp)
         self.assertEqual(m.hp, m.max_hp)
         self.assertAlmostEqual(m.base_damage, base_dmg(m) * (1 + pp) / 2)
-        self.assertAlmostEqual(m.poison_dps, POISON_DPS * (1 + pp) / 2)
+        self.assertAlmostEqual(m.skill_power, (1 + pp) / 2)          # its skills' poison / heals / shields
         if getattr(m, "ranged_attack_range", 0):
             self.assertAlmostEqual(m.ranged_attack_damage, m.base_damage)
         self.assertEqual(m.experience, scaled_xp(base_xp(m), pp))
