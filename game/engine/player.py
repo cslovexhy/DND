@@ -26,7 +26,8 @@ from game.engine.world_map import TILE_SIZE
 
 
 from game.content.skill_tree import (wall_shield, renew_total, seal_bonus, holy_light_heal, shout_damage_mult,
-                                     smite_damage, poison_dps, POISON_DAGGER_SECS, POISON_DAGGER_WINDOW)
+                                     smite_damage, poison_dps, POISON_DAGGER_SECS, POISON_DAGGER_WINDOW,
+                                     stealth_speed, stealth_upkeep)
 HEROIC_STRIKE_WINDOW = 10.0   # seconds a Heroic Strike buff waits for the next Strike / Cleave
 CAST_QUEUE_SECS = 1.0         # a skill pressed during the global cooldown waits this long to fire
 from game.engine.hero_ai import SUPPORT_RANGE   # px: how far away an ally can be for Wall / Renew / Holy Light
@@ -89,6 +90,14 @@ class PlayerState:
     @property
     def is_companion(self):
         return self.owner is not None
+
+    def _end_stealth(self, text):
+        """Leave stealth on purpose (cancel) or because the mana ran out."""
+        hero = self.hero
+        hero.stealthed = False
+        self.ambush_target = None
+        self._bind_right("R")                        # right-click back to Stealth
+        self.world.float_text(hero.x, hero.y - 30, text, (200, 200, 200))
 
     def _bind_right(self, key):
         """Ask this player's client to switch its right-click skill (companions have no client)."""
@@ -347,6 +356,9 @@ class PlayerState:
             ab = hero.abilities.get(cmd.ab_key)
             if ab is None:
                 return
+            if ab.toggle and hero.stealthed:
+                self._end_stealth("Stealth cancelled")      # press again to cancel: free, no new cooldown
+                return
             if hero.gcd > 0 and ab.remaining <= 0:
                 # pressed during the global cooldown: queue it, it fires the moment the GCD ends (see update)
                 self.queued_cast = cmd
@@ -486,6 +498,7 @@ class PlayerState:
         if ab.name == "Stealth":
             ab.use()
             hero.stealthed = True
+            hero.stealth_speed = stealth_speed(ab)
             self.selected_target = None  # Stop auto-attack
             # Auto-bind right-click to Ambush
             self._bind_right("E")
@@ -840,6 +853,15 @@ class PlayerState:
             self.target = None               # the target died or vanished
         if self.pickup_target is not None:
             self._try_pickup()
+        # Stealth upkeep: 1 / 2 / 3 mana per second (Stealth level); it breaks when the mana runs out
+        if hero.stealthed:
+            stealth = next((a for a in hero.abilities.values() if a.toggle), None)
+            upkeep = stealth_upkeep(stealth) * dt if stealth is not None else 0.0
+            if hero.mana < upkeep:
+                hero.mana = 0.0
+                self._end_stealth("Out of mana!")
+            else:
+                hero.mana -= upkeep
         # Frostbolt channel completion
         if self.frostbolt_channeling:
             self.frostbolt_channel_timer -= dt
@@ -872,7 +894,7 @@ class PlayerState:
                 or hero.has_condition(Condition.FROZEN)):
             dx, dy = self.move_dir
             norm = math.hypot(dx, dy)
-            spd = hero.base_speed * dt * (0.6 if hero.stealthed else 1.0)
+            spd = hero.base_speed * dt * (hero.stealth_speed if hero.stealthed else 1.0)
             self._step_toward(hero.x + dx / norm * 100, hero.y + dy / norm * 100, 100, spd)
             if dx:
                 hero.facing_left = dx < 0
@@ -887,7 +909,7 @@ class PlayerState:
             else:
                 spd = hero.base_speed * dt
                 if hero.stealthed:
-                    spd *= 0.6  # 60% move speed while stealthed
+                    spd *= hero.stealth_speed  # 50 / 60 / 70% move speed while stealthed (Stealth level)
                 if not self._step_toward(tx, ty, dist, spd):   # never into a wall
                     self.move_path = []
                 hero.facing_left = dx < 0

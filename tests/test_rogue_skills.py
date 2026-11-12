@@ -1,6 +1,7 @@
-"""Rogue kit: Stealth is out of combat only (it opens a fight with Ambush); Poison Dagger arms the next Stab to poison
-its target for 15/30/45 damage in total over 5 s (ignores armor, counts as the Rogue's threat); unlock order
-L2 Poison Dagger, L4 Stealth, L6 Ambush."""
+"""Rogue kit: Stealth is out of combat only (it opens a fight with Ambush); its levels move at 50/60/70% speed for
+1/2/3 mana per second, and pressing it again cancels it for free. Poison Dagger arms the next Stab to poison its
+target for 15/30/45 damage in total over 5 s (ignores armor, counts as the Rogue's threat). Unlock order L2 Poison
+Dagger, L4 Stealth, L6 Ambush; Stealth levels 2 / 3 at L14 / L22."""
 import random
 import tempfile
 import unittest
@@ -55,10 +56,68 @@ class UnlockTest(unittest.TestCase):
         self.assertEqual(set(skill_levels("Rogue", 2)), {"Q", "F"})
         self.assertEqual(set(skill_levels("Rogue", 4)), {"Q", "F", "R"})
         self.assertEqual(set(skill_levels("Rogue", 6)), {"Q", "F", "R", "E"})
-        self.assertEqual(skill_levels("Rogue", 18), {"Q": 3, "F": 3, "R": 1, "E": 3})
+        self.assertEqual(skill_levels("Rogue", 22), {"Q": 3, "F": 3, "R": 3, "E": 3})
+        self.assertEqual(skill_levels("Rogue", 14)["R"], 2)
 
 
 class StealthTest(unittest.TestCase):
+    def test_levels_set_speed_and_upkeep(self):
+        from game.content.skill_tree import stealth_speed, stealth_upkeep
+        _, p, _ = rogue()
+        st = p.hero.abilities["R"]
+        got = [(st.set_level(lv), stealth_speed(st), stealth_upkeep(st))[1:] for lv in (1, 2, 3)]
+        self.assertEqual(got, [(0.5, 1), (0.6, 2), (0.7, 3)])
+
+    def test_moves_at_its_level_speed(self):
+        for level, share in ((4, 0.5), (14, 0.6), (22, 0.7)):
+            world, p, m = rogue(level, aggroed=False)
+            h = p.hero
+            cast(world, "R")
+            self.assertTrue(h.stealthed)
+            world.game_state.monsters.clear()                  # (nobody to bump into)
+            x0 = h.x
+            world.submit(C.MoveDir(-1, 0), 0)
+            for _ in range(30):
+                world.step(DT)
+            self.assertAlmostEqual((x0 - h.x) / h.base_speed, share, delta=0.05, msg=level)
+
+    def test_costs_mana_per_second_and_breaks_when_out(self):
+        world, p, m = rogue(22, aggroed=False)                 # Stealth level 3: 3 mana/s
+        h = p.hero
+        cast(world, "R")
+        h.mana_regen_ooc = h.mana_regen_combat = 0.0
+        h.mana = 10.0
+        for _ in range(30):                                    # 1 s
+            world.step(DT)
+        self.assertAlmostEqual(h.mana, 7.0, delta=0.2)
+        self.assertTrue(h.stealthed)
+        for _ in range(30 * 4):                                # 7 mana runs out after ~2.3 s
+            world.step(DT)
+        self.assertFalse(h.stealthed)
+        self.assertEqual(h.mana, 0.0)
+
+    def test_press_again_cancels_for_free(self):
+        world, p, m = rogue(aggroed=False)
+        h = p.hero
+        cast(world, "R")
+        wait_gcd(world)
+        self.assertTrue(h.stealthed)
+        h.mana_regen_ooc = h.mana_regen_combat = 0.0
+        mana, cd = h.mana, h.abilities["R"].remaining
+        ups = h.abilities["R"].flat_bonus * DT                 # at most one frame of upkeep
+        cast(world, "R")                                       # (Stealth is still on cooldown: cancel works anyway)
+        self.assertFalse(h.stealthed)
+        self.assertAlmostEqual(h.mana, mana, delta=ups + 1e-6)  # no cost to cancel
+        self.assertLessEqual(h.abilities["R"].remaining, cd)    # no new cooldown
+        ab = {a["key"]: a for a in make_snapshot(world, 0)["you"]["abilities"]}
+        self.assertFalse(ab["R"]["ready"])                     # back to the normal cooldown display
+
+    def test_hotbar_shows_stealth_pressable_while_stealthed(self):
+        world, p, m = rogue(aggroed=False)
+        cast(world, "R")
+        ab = {a["key"]: a for a in make_snapshot(world, 0)["you"]["abilities"]}
+        self.assertTrue(ab["R"]["ready"])
+
     def test_refused_in_combat_costs_nothing(self):
         world, p, m = rogue()
         h = p.hero
@@ -89,7 +148,7 @@ class StealthTest(unittest.TestCase):
 
 class PoisonDaggerTest(unittest.TestCase):
     def test_next_stab_poisons_for_the_skill_level_dps(self):
-        for level, total in ((2, 15), (10, 30), (16, 45)):
+        for level, total in ((2, 15), (10, 30), (18, 45)):
             world, p, m = rogue(level)
             cast(world, "F")
             self.assertIn("Poison Dagger", p.hero.buffs)

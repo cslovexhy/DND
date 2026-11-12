@@ -20,9 +20,10 @@ SKILL_SCHEDULE = {
     "Cleric":  ["Q", "R", "Q", "E", "R", "Q", "E", "R", "E"],
     #           L1   L2   L4   L6   L8   L10  L12  L14  L16  L18  L20  L22
     "Paladin": ["Q", "R", "E", "Q", "F", "R", "E", "Q", "F", "R", "E", "F"],
-    #           L1   L2   L4   L6   L8   L10  L12  L14  L16  L18   (Stealth has a single level)
+    #           L1   L2   L4   L6   L8   L10  L12  L14  L16  L18  L20  L22
     # Poison Dagger (F) comes first: it is the Rogue's in-combat damage. Stealth + Ambush only open a fight.
-    "Rogue":   ["Q", "F", "R", "E", "Q", "F", "E", "Q", "F", "E"],
+    # Stealth levels make sneaking faster (50 / 60 / 70% speed) but cost more mana per second.
+    "Rogue":   ["Q", "F", "R", "E", "Q", "F", "E", "R", "Q", "F", "E", "R"],
     #           L1   L2   L4   L6   L8   L10  L12  L14  L16
     "Wizard":  ["Q", "R", "E", "Q", "R", "E", "Q", "R", "E"],
 }
@@ -126,6 +127,16 @@ def poison_dps(ab) -> float:
     return poison_total(ab) / POISON_DAGGER_SECS
 
 
+def stealth_speed(ab) -> float:
+    """Stealth: move speed while stealthed, share of normal (effect_levels: 0.5 / 0.6 / 0.7)."""
+    return ab.effect_value
+
+
+def stealth_upkeep(ab) -> float:
+    """Stealth: b = mana per second while stealthed (on top of the cost to enter it)."""
+    return ab.flat_bonus
+
+
 # --- what a skill does, in the player's words (shown in the unlock / upgrade popup) -------------------------------
 
 def _dmg(hero, ab):
@@ -156,8 +167,9 @@ _DESCRIPTIONS = {
     "Holy Light": lambda h, a: f"Channel for 2s (you cannot move) to heal you or an ally within 300 px for "
                                f"{holy_light_heal(a):.0f}. {a.cooldown:g}s cooldown.",
     "Stab": lambda h, a: f"Fast melee strike for {_dmg(h, a):.0f} damage.",
-    "Stealth": lambda h, a: "Out of combat only: become invisible, monsters can't see you and you move at 60% "
-                            "speed. Your next attack breaks it. Opens a fight with Ambush.",
+    "Stealth": lambda h, a: f"Out of combat only: become invisible and move at {stealth_speed(a) * 100:.0f}% speed. "
+                            f"Costs {stealth_upkeep(a):g} mana per second while active; press again to cancel (free). "
+                            f"Your next attack breaks it. Opens a fight with Ambush.",
     "Poison Dagger": lambda h, a: f"Your next Stab poisons its target for {poison_total(a):g} damage over "
                                   f"{POISON_DAGGER_SECS:g}s (ignores armor). {a.cooldown:g}s cooldown.",
     "Ambush": lambda h, a: f"From stealth, strike for {_dmg(h, a):.0f} damage.",

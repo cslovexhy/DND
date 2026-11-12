@@ -86,6 +86,7 @@ class Ability:
     # of mana_rate(level) instead (e.g. Ambush 4 s).
     mana_secs: float = 0.0
     out_of_combat_only: bool = False   # can't be cast while a monster is fighting you (Stealth)
+    toggle: bool = False               # pressing it again while its effect is on turns it off, for free (Stealth)
     # Who owns this skill (set by Entity.add_ability): is_ready() checks its mana, use() spends it, mana_cost reads it
     caster: object = field(default=None, repr=False, compare=False)
     # Threat: hate a hit adds = damage dealt x threat_mult (never changes the damage itself)
@@ -245,6 +246,7 @@ class Entity:
 
         # Stealth
         self.stealthed: bool = False
+        self.stealth_speed = 0.6   # move speed share while stealthed (a Rogue's Stealth sets it from its level)
 
         # State
         self.alive = True
@@ -309,7 +311,7 @@ class Entity:
             slow_factor = getattr(slow_cond, 'slow_factor', 0.5) if slow_cond else 0.5
             effective_speed *= slow_factor
         if getattr(self, 'stealthed', False):
-            effective_speed *= 0.6
+            effective_speed *= getattr(self, 'stealth_speed', 0.6)   # heroes: their Stealth level; monsters 60%
 
         move_dist = min(effective_speed * dt, dist)
         nx = self.x + (dx/dist) * move_dist

@@ -137,12 +137,14 @@ def create_rogue(name: str, x: float, y: float) -> Hero:
                                radius=0, range=55,
                                effect="Fast melee strike (100% weapon dmg + 0.5/1/1.5).",
                                power_type="at_will", color=ROGUE_COLOR))
-    # Stealth + Ambush open a fight (out of combat only), so they are priced as openers, outside the in-combat budget
-    h.add_ability("R", Ability("Stealth", mana_secs=1.0, out_of_combat_only=True, target_kind="self", cooldown=6.0,
-                               multiplier=0, flat_bonus=0, radius=0, range=0,
-                               effect="Out of combat only. Go invisible. 60% move speed. Mobs can't see you. "
-                                      "Attack breaks stealth.",
-                               power_type="utility", color=(100, 180, 100), max_level=1))   # nothing to scale
+    # Stealth + Ambush open a fight (out of combat only), so they are priced as openers, outside the in-combat budget.
+    # Stealth: 50/60/70% move speed (effect_levels), b = 1/2/3 mana per second while active; press again to cancel.
+    h.add_ability("R", Ability("Stealth", mana_secs=1.0, out_of_combat_only=True, toggle=True, target_kind="self",
+                               cooldown=6.0, multiplier=0, b_levels=(1, 2, 3), effect_levels=(0.5, 0.6, 0.7),
+                               radius=0, range=0,
+                               effect="Out of combat only. Go invisible at 50/60/70% move speed, 1/2/3 mana per "
+                                      "second. Press again to cancel. Attack breaks stealth.",
+                               power_type="utility", color=(100, 180, 100)))
     h.add_ability("E", Ability("Ambush", mana_secs=4.0, cooldown=0, a_levels=(2.5, 2.75, 3.0), b_levels=(2, 4, 6),
                                radius=0, range=55,
                                effect="Stealth only. 250/275/300% weapon dmg + 2/4/6.",

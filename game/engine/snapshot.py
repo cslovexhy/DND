@@ -106,7 +106,8 @@ def make_snapshot(world, player_id=0):
         "frostbolt_channeling": player.frostbolt_channeling,
         "frostbolt_channel_timer": player.frostbolt_channel_timer,
         "abilities": [{"key": k, "name": a.name, "remaining": a.remaining,
-                       "ready": a.is_ready() and not (a.out_of_combat_only and fighting),
+                       "ready": ((a.is_ready() and not (a.out_of_combat_only and fighting))
+                                 or (a.toggle and hero.stealthed)),          # stealthed: press again to cancel
                        "level": a.level, "max_level": a.max_level, "range": a.range, "cooldown": a.cooldown,
                        "mana_cost": a.mana_cost, "has_mana": a.has_mana()}
                       for k, a in hero.abilities.items()],
