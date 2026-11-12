@@ -126,8 +126,8 @@ def _run_fight(classes, level, boss_stats, seed, target_time, boss_type, boss_at
     while True:
         world.step(DT)
         t += DT
-        if t_aggro is None and boss.aggro_state == AggroState.AGGROED:
-            t_aggro = t
+        if t_aggro is None and (boss.aggro_state == AggroState.AGGROED or not boss.alive):
+            t_aggro = t                    # (a boss killed in the frame it was pulled was fought too)
         if not boss.alive:
             break
         if t_aggro is None and t > APPROACH_LIMIT:

@@ -5,7 +5,7 @@ import unittest
 from collections import deque
 
 from game import saves
-from game.engine import commands as C
+from game.engine import actions, commands as C
 from game.engine.bootstrap import create_world, join_player
 from game.engine.pathfinding import astar
 from game.engine.world_map import WorldMap, TILE_SIZE
@@ -117,16 +117,16 @@ class ChargeTest(unittest.TestCase):
             hp_before = m.hp
             world.submit(C.Cast("R", m.x, m.y, m.eid), 0)
             world.step(DT)
-            if not p.dash_active:
+            if h.dash is None:
                 continue          # refused (no LOS or no reasonable path): fine, nothing happened
             charges += 1
             for _ in range(60):
                 world.step(DT)
                 world.events.clear()
                 self.assertFalse(world.is_wall(h.x, h.y), "Fighter inside a wall during Charge")
-                if not p.dash_active:
+                if h.dash is None:
                     break
-            self.assertFalse(p.dash_active, "Charge never finished")
+            self.assertIsNone(h.dash, "Charge never finished")
             hits += m.hp < hp_before or not m.alive
             world.game_state.monsters[:] = [x for x in world.game_state.monsters if x is not m] + [m]
         self.assertGreater(charges, 5)
@@ -137,16 +137,16 @@ class ChargeTest(unittest.TestCase):
         h = p.hero
         m = min(world.game_state.monsters, key=lambda m: h.distance_to(m))
         tx, ty = m.x - 50, m.y
-        self.assertTrue(p._start_dash(tx, ty, m, 10, 0))
+        self.assertTrue(actions.start_dash(world, h, tx, ty, m, None))
         expected = p._path(h.x, h.y, tx, ty)
-        self.assertEqual(p.dash_path[:len(expected)], expected)
+        self.assertEqual(h.dash.path[:len(expected)], expected)
 
     def test_charge_to_an_unreachable_point_is_refused(self):
         world, p = self.fighter()
         _, _, islands = reachable_and_islands(world.world_map)
         m = world.game_state.monsters[0]
-        self.assertFalse(p._start_dash(*center(islands[0]), m, 10, 0))
-        self.assertFalse(p.dash_active)
+        self.assertFalse(actions.start_dash(world, p.hero, *center(islands[0]), m, None))
+        self.assertIsNone(p.hero.dash)
 
     def test_once_started_a_charge_takes_any_detour(self):
         """Range/LOS are only checked when the charge starts; after that it follows the path however long."""
@@ -154,14 +154,14 @@ class ChargeTest(unittest.TestCase):
         h = p.hero
         world.game_state.monsters.sort(key=lambda m: -h.distance_to(m))
         far = world.game_state.monsters[0]                       # far across the map: a long walking path
-        self.assertTrue(p._start_dash(far.x - 50, far.y, far, 10, 0))
+        self.assertTrue(actions.start_dash(world, h, far.x - 50, far.y, far, None))
         for _ in range(30 * 30):
             world.step(DT)
             world.events.clear()
             self.assertFalse(world.is_wall(h.x, h.y))
-            if not p.dash_active:
+            if h.dash is None:
                 break
-        self.assertFalse(p.dash_active, "the long charge should finish")
+        self.assertIsNone(h.dash, "the long charge should finish")
         self.assertLess(h.distance_to(far), 200)
 
     def test_autopilot_charges_only_within_range(self):
@@ -170,11 +170,13 @@ class ChargeTest(unittest.TestCase):
         p.ai_enabled = True
         h = p.hero
         starts = []
-        real = p._start_dash
-        def spy(tx, ty, target, *a, **k):
-            starts.append(h.distance_to(target))
-            return real(tx, ty, target, *a, **k)
-        p._start_dash = spy
+        real = actions.start_dash
+        def spy(world_, e, tx, ty, target, *a, **k):
+            if e is h:
+                starts.append(h.distance_to(target))
+            return real(world_, e, tx, ty, target, *a, **k)
+        actions.start_dash = spy
+        self.addCleanup(setattr, actions, "start_dash", real)
         for _ in range(30 * 60):
             world.step(DT)
             world.events.clear()

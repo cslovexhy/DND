@@ -4,18 +4,21 @@
 The arena is the boss test room (data/maps/bossTestRoom.json) with its spawns replaced: your hero at the start and
 1 monster (2 for support skills such as Renew / Wall: a caster and a friend it can heal / shield) a few tiles away,
 already fighting you. The skill comes from content/skill_library.py through the monster's "kit" (spawn "stats"),
-so it has the hero's damage formula, cooldown and mana cost; the monster casts it with engine/monster_casting.py.
+so it has the hero's damage formula, cooldown and mana cost; the monster casts it through the same cast path as a
+hero (engine/casting.py: try_cast, with the skill's AI hint deciding when).
 
     .venv/bin/python3 tools/skill_playground.py --list
     .venv/bin/python3 tools/skill_playground.py --skill "Poison Dagger"
     .venv/bin/python3 tools/skill_playground.py --skill Renew --mob human_cultist --mob-level 8 --secs 40
     .venv/bin/python3 tools/skill_playground.py --kit "Fire Blast,Poison Dagger" --passive
+    .venv/bin/python3 tools/skill_playground.py --skill Charge --passive
     .venv/bin/python3 tools/skill_playground.py --skill Wall --window      # play it yourself (TAB: autopilot off)
 
-Headless prints every cast (time, caster, skill, target, caster mana left) and a summary per monster: casts, mana
-spent, when it first could not pay for a ready skill (out of mana), damage it did to the hero (hits / poison / Fire
-Blast), healing and shields it gave. --passive: the hero never attacks (to watch damage skills without the monster
-dying); by default the hero fights on autopilot (support skills need someone to heal).
+Headless prints every cast (time, caster, skill, target, caster mana left) and a summary: per monster its casts,
+mana spent and when it first could not pay for a ready skill (out of mana); healing and shields it gave; what reached
+the hero (damage, of which damage over time; conditions such as STUNNED / FROZEN / SLOWED; debuffs such as
+Demoralized). --passive: the hero never attacks (to watch damage skills without the monster dying); by default the
+hero fights on autopilot (support skills need someone to heal).
 """
 import argparse
 import contextlib
@@ -36,17 +39,18 @@ saves.SAVE_DIR = tempfile.mkdtemp()                      # never touch real save
 from game.content.heroes import HERO_CLASSES             # noqa: E402
 from game.content.monsters import SPAWN_STATS            # noqa: E402
 from game.content.skill_library import SKILLS            # noqa: E402
-from game.engine import abilities                        # noqa: E402
+from game.engine import casting                          # noqa: E402
 from game.engine.ai import aggro_monster                 # noqa: E402
 from game.engine.bootstrap import create_world           # noqa: E402
-from game.engine.entities import Monster                 # noqa: E402
+from game.engine.entities import Entity                  # noqa: E402
 from game.engine.events import SkillCast                 # noqa: E402
-from game.engine.monster_casting import CASTABLE         # noqa: E402
+
+CASTABLE = casting.AI_CASTABLE                           # skills a monster brain uses from its kit
 
 BASE_MAP = "data/maps/bossTestRoom.json"
 HERO_TILE = (4, 14)
 MOB_TILES = [(10, 14), (11, 16)]
-SUPPORT_SKILLS = ("Renew", "Wall")      # cast on a friend: the arena gets 2 monsters
+SUPPORT_SKILLS = tuple(n for n, sp in casting.SKILLS.items() if sp.targeting == "ally")   # 2 monsters
 DT = 1 / 30
 
 
@@ -65,39 +69,65 @@ def build_map(mob_type, mob_level, kits, path):
 
 
 class Recorder:
-    """Tallies what the monsters did, by wrapping the shared skill effects for the run."""
+    """Tallies what reached whom during the run, by wrapping the shared entry points (nothing skill-specific)."""
 
-    def __init__(self):
-        self.fire_blast = {}     # caster -> damage dealt
-        self.shield = {}         # caster -> shield given
-        self.healed = {}         # healed monster -> HP from heal-over-time
+    def __init__(self, hero, mobs):
+        self.hero, self.mobs = hero, mobs
+        self.damage = self.dot = 0.0       # to the hero, from monsters
+        self.conditions = {}               # condition name -> times applied to the hero
+        self.debuffs = set()               # buffs a monster put on the hero (e.g. Demoralized)
+        self.healed = {}                   # monster -> HP healed on it (Renew ticks, Holy Light)
+        self.shields = 0.0
         self.patches = []
 
-    def _wrap(self, obj, name, after):
+    def _patch(self, obj, name, make):
         orig = getattr(obj, name)
-
-        def wrapper(*a, **kw):
-            out = orig(*a, **kw)
-            after(out, *a, **kw)
-            return out
-        setattr(obj, name, wrapper)
+        setattr(obj, name, make(orig))
         self.patches.append((obj, name, orig))
 
     def __enter__(self):
-        self._wrap(abilities, "fire_blast",
-                   lambda out, world, caster, target, ab: self._add(self.fire_blast, caster, out))
-        self._wrap(abilities, "wall", lambda out, world, caster, target, ab: self._add(self.shield, caster, out))
-        self._wrap(Monster, "heal", lambda out, mon, amount: self._add(self.healed, mon, out))
+        rec, hero = self, self.hero
+
+        def take_damage(orig):
+            def f(raw, ignore_armor=False, source=None, threat=1.0, flash=True):
+                dealt = orig(raw, ignore_armor, source, threat, flash)
+                if source in rec.mobs:
+                    rec.damage += dealt
+                    rec.dot += 0.0 if flash else dealt
+                return dealt
+            return f
+
+        def apply_condition(orig):
+            def f(condition, duration, *a, **kw):
+                ok = orig(condition, duration, *a, **kw)
+                if ok:
+                    rec.conditions[condition.name] = rec.conditions.get(condition.name, 0) + 1
+                return ok
+            return f
+
+        def heal(orig):
+            def f(self_, amount):
+                got = orig(self_, amount)
+                if self_ in rec.mobs and got:
+                    rec.healed[self_] = rec.healed.get(self_, 0.0) + got
+                return got
+            return f
+
+        self._patch(hero, "take_damage", take_damage)
+        self._patch(hero, "apply_condition", apply_condition)
+        self._patch(Entity, "heal", heal)
         return self
+
+    def note_frame(self):
+        self.debuffs |= {b for b in self.hero.buffs if b == "Demoralized"}
+        for m in self.mobs:
+            if m.absorb_shield > getattr(m, "_pg_shield", 0.0):
+                self.shields += m.absorb_shield - getattr(m, "_pg_shield", 0.0)
+            m._pg_shield = m.absorb_shield
 
     def __exit__(self, *exc):
         for obj, name, orig in reversed(self.patches):
             setattr(obj, name, orig)
-
-    @staticmethod
-    def _add(d, key, amount):
-        if isinstance(key, Monster) and amount:
-            d[key] = d.get(key, 0.0) + amount
 
 
 def run(args, kits):
@@ -106,13 +136,22 @@ def run(args, kits):
     world, player = create_world(path, saves.blank_character("hero", args.hero, level=args.hero_level),
                                  autopilot=not args.passive)
     hero = player.hero
+    others = [c for c in HERO_CLASSES if c["class"] != args.hero][:args.party]
+    party = [world.spawn_companion(c, owner=player) for c in others]   # more heroes (e.g. for Cleave)
+    for comp in party:
+        comp.x, comp.y = hero.x + 20, hero.y + 20 * (party.index(comp) + 1)
+        if args.passive:
+            next(p for p in world.companions if p.hero is comp).ai_enabled = False
     mobs = [m for m in world.game_state.monsters]
     for m in mobs:
         aggro_monster(m, hero, world.game_state.monsters)
     names = {m.eid: f"{m.name} #{i + 1}" for i, m in enumerate(mobs)}
     names[hero.eid] = f"{hero.name} ({args.hero})"
+    for comp in party:
+        names[comp.eid] = f"{comp.name} ({comp.class_name})"
+    party_txt = f" + {len(party)} companion(s)" if party else ""
 
-    print(f"Arena: {args.hero} L{args.hero_level} ({hero.max_hp} HP) vs {len(mobs)} x {SPAWN_STATS[args.mob]['name']} "
+    print(f"Arena: {args.hero} L{args.hero_level}{party_txt} ({hero.max_hp} HP) vs {len(mobs)} x {SPAWN_STATS[args.mob]['name']} "
           f"L{args.mob_level}; {'hero does not attack' if args.passive else 'hero fights on autopilot'}; "
           f"{args.secs:g} s, seed {args.seed}", flush=True)
     for m in mobs:
@@ -125,36 +164,24 @@ def run(args, kits):
     casts = {m: {} for m in mobs}
     spent = {m: 0.0 for m in mobs}
     oom_at = {}
-    hit_dmg = poison_dmg = 0.0
-    orig_hero_damage = hero.take_damage
-
-    def hero_take_damage(raw, ignore_armor=False, source=None, threat=1.0, flash=True):
-        nonlocal hit_dmg, poison_dmg
-        dealt = orig_hero_damage(raw, ignore_armor, source, threat, flash)
-        if not flash:
-            poison_dmg += dealt                  # damage over time (poison ticks don't flash)
-        elif source in casts:
-            hit_dmg += dealt                     # melee hits and Fire Blast (Fire Blast is split out below)
-        return dealt
-    hero.take_damage = hero_take_damage
-
     t = 0.0
     print("\nCasts:", flush=True)
-    with Recorder() as rec:
+    with Recorder(hero, mobs) as rec:
         while t < args.secs:
             mana_before = {m: m.mana for m in mobs}
             with contextlib.redirect_stdout(io.StringIO()):       # the hero AI prints debug lines
                 world.step(DT)
             t += DT
             for ev in world.events:
-                if isinstance(ev, SkillCast):
-                    m = next(x for x in mobs if x.eid == ev.caster_id)
+                m = next((x for x in mobs if x.eid == ev.caster_id), None) if isinstance(ev, SkillCast) else None
+                if m is not None:                       # (heroes' and companions' casts are not listed)
                     casts[m][ev.skill] = casts[m].get(ev.skill, 0) + 1
                     spent[m] += max(0.0, mana_before[m] - m.mana)
                     target = names.get(ev.target_id, "?") if ev.target_id != ev.caster_id else "self"
                     print(f"  t={t:6.1f}s  {names[m.eid]:<20} {ev.skill:<14} -> {target:<20} "
                           f"mana {m.mana:6.1f}/{m.max_mana}", flush=True)
             world.events.clear()
+            rec.note_frame()
             for m in mobs:
                 if m not in oom_at and m.alive and any(ab.remaining <= 0 and not ab.has_mana()
                                                        for ab in m.abilities.values()):
@@ -165,24 +192,23 @@ def run(args, kits):
     if not any(casts.values()):
         print("  (none)", flush=True)
 
-    fire = sum(rec.fire_blast.values())
     print("\nSummary:", flush=True)
     for m in mobs:
         c = ", ".join(f"{k} x{v}" for k, v in casts[m].items()) or "nothing"
         oom = f"out of mana at {oom_at[m]:.1f}s" if m in oom_at else "never out of mana"
-        extra = []
-        if rec.shield.get(m):
-            extra.append(f"shields given {rec.shield[m]:.0f}")
-        if rec.healed.get(m):
-            extra.append(f"healed by Renew {rec.healed[m]:.0f}")
+        extra = f"; healed {rec.healed[m]:.0f}" if rec.healed.get(m) else ""
         state = "alive" if m.alive else "dead"
         print(f"  {names[m.eid]} ({state}, {m.hp:.0f}/{m.max_hp:.0f} HP): cast {c}; mana spent {spent[m]:.0f}; "
-              f"{oom}" + ("; " + ", ".join(extra) if extra else ""), flush=True)
-    print(f"  Damage to the hero: hits {hit_dmg - fire:.0f}, Fire Blast {fire:.0f}, poison {poison_dmg:.0f} "
-          f"(hero {hero.hp:.0f}/{hero.max_hp} HP, {hero.deaths} deaths)", flush=True)
+              f"{oom}{extra}", flush=True)
+    if rec.shields:
+        print(f"  Shields put on monsters: {rec.shields:.0f}", flush=True)
+    conds = ", ".join(f"{k} x{v}" for k, v in sorted(rec.conditions.items())) or "none"
+    print(f"  To the hero: {rec.damage:.0f} damage ({rec.dot:.0f} of it over time); conditions {conds}; "
+          f"debuffs {', '.join(sorted(rec.debuffs)) or 'none'} (hero {hero.hp:.0f}/{hero.max_hp} HP, "
+          f"{hero.deaths} deaths)", flush=True)
     return {"casts": {names[m.eid]: casts[m] for m in mobs}, "oom": {names[m.eid]: oom_at.get(m) for m in mobs},
-            "hit": hit_dmg - fire, "fire_blast": fire, "poison": poison_dmg,
-            "shield": sum(rec.shield.values()), "healed": sum(rec.healed.values())}
+            "damage": rec.damage, "dot": rec.dot, "conditions": dict(rec.conditions), "debuffs": sorted(rec.debuffs),
+            "healed": sum(rec.healed.values()), "shields": rec.shields}
 
 
 def window(args, kits):
@@ -205,7 +231,8 @@ def main(argv=None):
     ap.add_argument("--hero-level", type=int, default=5)
     ap.add_argument("--secs", type=float, default=60)
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--passive", action="store_true", help="the hero never attacks")
+    ap.add_argument("--passive", action="store_true", help="the hero (and companions) never attack")
+    ap.add_argument("--party", type=int, help="AI companions with the hero (default 0, 1 for sweeps such as Cleave)")
     ap.add_argument("--window", action="store_true", help="open the game on the arena instead")
     ap.add_argument("--list", action="store_true", help="list the skills")
     args = ap.parse_args(argv)
@@ -222,6 +249,8 @@ def main(argv=None):
     if unknown:
         ap.error(f"unknown skill(s) {unknown} (see --list)")
     n = args.mobs or (2 if any(s in SUPPORT_SKILLS for s in kit) else 1)
+    if args.party is None:
+        args.party = 1 if any(casting.SKILLS[s].targeting == "sweep" for s in kit if s in casting.SKILLS) else 0
     kits = [kit] + [[]] * (n - 1)         # the second monster is the friend: no skills
     return window(args, kits) if args.window else run(args, kits)
 

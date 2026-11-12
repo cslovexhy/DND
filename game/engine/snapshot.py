@@ -22,6 +22,8 @@ def _entity(e, kind, ctl=None):
         "facing_left": e.facing_left, "flash_timer": getattr(e, "flash_timer", 0.0),
         "stealthed": bool(getattr(e, "stealthed", False)), "level": getattr(e, "level", 1),
         "conditions": _conditions(e),
+        # cast-bar progress (0..1) of a channel (Frostbolt, Holy Light) — anyone's, monsters' too
+        "channel": e.channel.progress if getattr(e, "channel", None) is not None else None,
     }
     if kind == "monster":
         d["is_boss"] = bool(e.is_boss)
@@ -38,9 +40,6 @@ def _entity(e, kind, ctl=None):
         d["chill_visual"] = getattr(e, "chill_visual", 0.0)
         d["weapon_speed"] = e.weapon_speed
         d["xp"], d["gold"], d["kills"] = e.xp, e.gold, e.kills
-        # channel-bar progress (0..1) while channelling Frostbolt — everyone sees everyone's cast bar
-        d["channel"] = (1.0 - ctl.frostbolt_channel_timer / e.weapon_speed
-                        if ctl is not None and ctl.frostbolt_channeling else None)
     return d
 
 
@@ -105,8 +104,8 @@ def make_snapshot(world, player_id=0):
         "selected_target_id": player.selected_target.eid if player.selected_target is not None else None,
         "target_id": player.target.eid if player.target is not None else None,   # hotbar skills go here
         "move_path": [list(wp) for wp in player.move_path[:8]],
-        "frostbolt_channeling": player.frostbolt_channeling,
-        "frostbolt_channel_timer": player.frostbolt_channel_timer,
+        "frostbolt_channeling": hero.channel is not None,          # (any channel: ESC cancels it)
+        "frostbolt_channel_timer": hero.channel.remaining if hero.channel is not None else 0.0,
         "abilities": [{"key": k, "name": a.name, "remaining": a.remaining,
                        "ready": ((a.is_ready() and not (a.out_of_combat_only and fighting))
                                  or (a.toggle and hero.stealthed)),          # stealthed: press again to cancel

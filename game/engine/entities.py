@@ -242,6 +242,13 @@ class Entity:
         self.gcd = 0.0  # Global cooldown
         self.GCD_DURATION = 0.5
 
+        # Faction (engine/combat.py): who is hostile to whom. None = nobody's enemy (NPCs).
+        self.faction = None
+
+        # Actions in progress (engine/actions.py): a Charge-style dash, a channelled cast
+        self.dash = None
+        self.channel = None
+
         # Stealth
         self.stealthed: bool = False
         self.stealth_speed = 0.6   # move speed share while stealthed (a Rogue's Stealth sets it from its level)
@@ -298,18 +305,9 @@ class Entity:
         if dist < 2:
             return
 
-        # Check conditions
-        if self.has_condition(Condition.IMMOBILIZED) or self.has_condition(Condition.STUNNED) or self.has_condition(Condition.FROZEN):
+        if not self.can_move:
             return
-        
-        effective_speed = self.speed
-        if self.has_condition(Condition.SLOWED):
-            # Use slow_factor from condition if set, else default 50%
-            slow_cond = next((c for c in self.conditions if c.condition == Condition.SLOWED), None)
-            slow_factor = getattr(slow_cond, 'slow_factor', 0.5) if slow_cond else 0.5
-            effective_speed *= slow_factor
-        if getattr(self, 'stealthed', False):
-            effective_speed *= getattr(self, 'stealth_speed', 0.6)   # heroes: their Stealth level; monsters 60%
+        effective_speed = self.move_speed
 
         move_dist = min(effective_speed * dt, dist)
         nx = self.x + (dx/dist) * move_dist
@@ -351,6 +349,8 @@ class Entity:
             return 0
 
         self.was_hit = True  # flag for stealth-reveal logic (any incoming damage)
+        if source is not None:
+            raw_damage = raw_damage * source.damage_mult   # food buff, Demoralized, ... of whoever hits
 
         if ignore_armor:
             actual = raw_damage
@@ -385,6 +385,33 @@ class Entity:
         actual = min(amount, self.max_hp - self.hp)
         self.hp += actual
         return actual
+
+    # --- what the entity can do right now (the same rules for heroes and monsters) ---
+    @property
+    def can_act(self) -> bool:
+        """Not stunned or frozen: may attack and cast."""
+        return self.alive and not (self.has_condition(Condition.STUNNED) or self.has_condition(Condition.FROZEN))
+
+    @property
+    def can_move(self) -> bool:
+        """May walk: can act and is not immobilized (channelling, Holy Light)."""
+        return self.can_act and not self.has_condition(Condition.IMMOBILIZED)
+
+    @property
+    def move_speed(self) -> float:
+        """Walking speed in px/s after slows and stealth (`speed`: base speed, lowered while a monster patrols)."""
+        speed = self.speed
+        slow = next((c for c in self.conditions if c.condition == Condition.SLOWED), None)
+        if slow is not None:
+            speed *= slow.slow_factor
+        if self.stealthed:
+            speed *= self.stealth_speed
+        return speed
+
+    @property
+    def damage_mult(self) -> float:
+        """Multiplier on all damage this entity deals: Demoralized (x0.9 / 0.8 / 0.7) and, for heroes, the food buff."""
+        return self.buffs.get("Demoralized", {}).get("damage_mult", 1.0)
 
     def has_condition(self, condition: Condition) -> bool:
         return any(c.condition == condition for c in self.conditions)
@@ -470,9 +497,13 @@ class Entity:
         self.swing_timer = self.weapon_speed
         import random
         damage = self.hit_damage()
-        # Demoralized debuff reduces damage output
-        if "Demoralized" in getattr(self, 'buffs', {}):
-            damage *= self.buffs["Demoralized"].get("damage_mult", 1.0)
+        # buffs on the next melee hits (the same skills heroes use: content/skill_library.py)
+        heroic = self.buffs.pop("Heroic Strike", None)
+        if heroic:
+            damage += heroic["bonus"]
+        seal = self.buffs.get("Righteous Seal")
+        if seal:
+            damage += seal["bonus"] * self.base_damage
         self.last_crit = random.random() < self.crit_chance
         if self.last_crit:
             damage *= self.crit_multiplier
@@ -487,6 +518,7 @@ class Hero(Entity):
                  hp: int, ac: int, speed: int, surge_value: int):
         super().__init__(name, x, y, hp, ac, speed)
         self.class_name = class_name
+        self.faction = "heroes"
         self.surge_value = surge_value * HP_SCALE
 
         # Progression
@@ -511,8 +543,12 @@ class Hero(Entity):
 
     @property
     def damage_bonus(self) -> float:
-        """Multiplier on all damage this hero deals (1.0 without a food buff)."""
+        """The food buff's damage multiplier (1.0 without one)."""
         return 1.0 + self._food_buff().get("damage_pct", 0.0)
+
+    @property
+    def damage_mult(self) -> float:
+        return super().damage_mult * self.damage_bonus
 
     def refresh_max_hp(self):
         """Recompute max_hp from base_max_hp and the food buff. Gaining max HP also adds it to current HP; losing it
@@ -528,57 +564,6 @@ class Hero(Entity):
         if fed and "Well Fed" not in self.buffs:
             self.refresh_max_hp()        # the food buff ran out
 
-    def use_ability(self, key: str, targets: list['Entity'],
-                    target_pos: tuple = None) -> list[tuple[str, float]]:
-        """Use an ability (consumes a swing). Returns list of (target_name, damage_dealt)."""
-        ab = self.abilities.get(key)
-        if not ab or not ab.is_ready():
-            return []
-        if self.has_condition(Condition.STUNNED):
-            return []
-        if self.swing_timer > 0:
-            return []  # Can't use skill mid-swing
-
-        hits = []
-        ab.use()
-        self.swing_timer = self.weapon_speed  # Skill consumes a swing
-        skill_damage = ab.calc_damage(self.base_damage)
-        # Heroic Strike: the next empowered attack hits its (first) target harder and with more threat
-        hs = self.buffs.pop("Heroic Strike", None) if ab.heroic else None
-
-        def hit(t, first):
-            bonus = hs["bonus"] if (hs and first) else 0.0
-            threat = ab.threat_mult * (hs["threat"] if (hs and first) else 1.0)
-            return t.take_damage(skill_damage + bonus, source=self, threat=threat)
-
-        if ab.max_targets:
-            # Capped melee sweep (Cleave): the first target, then the nearest others, all within `radius` of us
-            first = targets[0] if targets else None
-            near = [t for t in targets if t.alive and self.distance_to(t) <= ab.radius]
-            near.sort(key=lambda t: (t is not first, self.distance_to(t)))
-            for i, t in enumerate(near[:ab.max_targets]):
-                hits.append((t.name, hit(t, i == 0)))
-        elif ab.radius > 0:
-            # AoE - check all targets in radius
-            center_x = target_pos[0] if target_pos else self.x
-            center_y = target_pos[1] if target_pos else self.y
-
-            for t in targets:
-                if not t.alive:
-                    continue
-                dx = t.x - center_x
-                dy = t.y - center_y
-                if math.sqrt(dx*dx + dy*dy) <= ab.radius:
-                    hits.append((t.name, hit(t, not hits)))
-        else:
-            # Single target - closest in range
-            in_range = [t for t in targets if t.alive and self.distance_to(t) <= ab.range]
-            if in_range:
-                target = min(in_range, key=lambda t: self.distance_to(t))
-                hits.append((target.name, hit(target, True)))
-
-        return hits
-
 
 class Monster(Entity):
     """AI-controlled monster with tactics from board game."""
@@ -593,6 +578,7 @@ class Monster(Entity):
         super().__init__(name, x, y, hp, ac, speed,
                          attack_bonus, attack_damage, attack_range)
         self.monster_type = monster_type
+        self.faction = "monsters"
         self.experience = experience
         self.is_boss = is_boss
 
@@ -645,8 +631,7 @@ class Monster(Entity):
 
     def take_damage(self, raw_damage: float, ignore_armor: bool = False, source: 'Entity' = None,
                     threat: float = 1.0, flash: bool = True) -> float:
-        bonus = getattr(source, "damage_bonus", 1.0)     # a hero's food buff
-        dealt = super().take_damage(raw_damage * bonus, ignore_armor, source, flash=flash)
+        dealt = super().take_damage(raw_damage, ignore_armor, source, flash=flash)
         if source is not None:
             self.since_combat = 0.0                      # being hit restarts the leash timer (ai.LEASH_TIME)
         if source is not None and dealt > 0:

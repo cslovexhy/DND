@@ -66,7 +66,7 @@ class StatusVisualsTest(unittest.TestCase):
             self.skipTest("no line of sight in this spot")
         self.world.submit(C.Cast("Q", m.x, m.y, m.eid), 1)    # Frostbolt: channelled
         self.world.step(DT)
-        self.assertTrue(wiz.frostbolt_channeling)
+        self.assertEqual(wiz.hero.channel.skill, "Frostbolt")
         self.assert_same_on_every_screen(wiz.hero.eid, {"channel"})
 
     def test_companion_effects_visible(self):

@@ -412,8 +412,13 @@ class FighterAI(HeroAI):
             action["ability_target_monster"] = self.target
             return action
 
-        # 6. Strike (Q): the basic attack
+        # 6. Strike (Q): the basic attack. Between swings, keep a target that is after someone else within 60 px
+        #    (it would walk out of reach toward the ally; a target that fights this Fighter comes to it anyway)
         if ab_q and ab_q.is_ready() and in_melee:
+            if self.hero.swing_timer > 0:
+                if dist > 60 and getattr(self.target, "aggro_target", None) is not self.hero:
+                    action["move_to"] = self.melee_move_to(alive, self.target.x, self.target.y)
+                return action
             action["use_ability"] = "Q"
             action["ability_target_monster"] = self.target
             return action

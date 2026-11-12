@@ -103,8 +103,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 973.7068024657943,
-    "y": 1079.9854648887144,
+    "x": 884.9684081466404,
+    "y": 1035.4760618475675,
     "target_id": 17,
     "fallback_move": false,
     "ally_id": null
@@ -154,8 +154,8 @@
    "player": 0,
    "cmd": {
     "type": "MoveTo",
-    "x": 947.310696271986,
-    "y": 1137.2279241206813
+    "x": 936.4639135773095,
+    "y": 1132.0949615088498
    }
   },
   {
@@ -172,8 +172,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 943.872599460423,
-    "y": 1127.090502479769,
+    "x": 941.4473214396241,
+    "y": 1122.72430173521,
     "target_id": null,
     "fallback_move": false,
     "ally_id": null
@@ -240,9 +240,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 948.1893276317278,
-    "y": 1136.1116020683307,
-    "target_id": 18,
+    "x": 1074.8501817747938,
+    "y": 1223.5121750299877,
+    "target_id": null,
     "fallback_move": false,
     "ally_id": null
    }
@@ -252,7 +252,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 18
+    "target_id": 19
    }
   },
   {
@@ -260,7 +260,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 18
+    "target_id": 19
    }
   },
   {
@@ -268,7 +268,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 18
+    "target_id": 19
    }
   },
   {
@@ -291,8 +291,8 @@
    "player": 0,
    "cmd": {
     "type": "MoveTo",
-    "x": 983.2985456705142,
-    "y": 1303.5259504053868
+    "x": 798.852557453736,
+    "y": 1303.998850760256
    }
   },
   {
@@ -317,8 +317,8 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 663.4287664580495,
-    "y": 1282.7234582599344,
+    "x": 782.9398135573681,
+    "y": 1295.0818142321696,
     "target_id": 19,
     "fallback_move": false,
     "ally_id": null
@@ -368,7 +368,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 19
+    "target_id": 20
    }
   },
   {
@@ -377,9 +377,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 879.7359375914751,
-    "y": 1273.4294508063788,
-    "target_id": null,
+    "x": 823.5630006524689,
+    "y": 1281.8451481550962,
+    "target_id": 20,
     "fallback_move": false,
     "ally_id": null
    }
@@ -397,7 +397,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 20
+    "target_id": 23
    }
   },
   {
@@ -405,7 +405,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 20
+    "target_id": 23
    }
   },
   {
@@ -420,7 +420,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 20
+    "target_id": 23
    }
   },
   {
@@ -428,8 +428,8 @@
    "player": 0,
    "cmd": {
     "type": "MoveTo",
-    "x": 789.7359375914751,
-    "y": 1353.4294508063788
+    "x": 734.79019249882,
+    "y": 1367.2122441571703
    }
   },
   {
@@ -445,7 +445,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 20
+    "target_id": 23
    }
   },
   {
@@ -454,9 +454,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 1072.6342229536583,
-    "y": 1224.009747005391,
-    "target_id": null,
+    "x": 914.8350277659041,
+    "y": 1209.2646155241077,
+    "target_id": 23,
     "fallback_move": false,
     "ally_id": null
    }
@@ -466,7 +466,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 24
+    "target_id": 23
    }
   },
   {
@@ -474,7 +474,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 24
+    "target_id": 23
    }
   },
   {
@@ -482,7 +482,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 24
+    "target_id": 23
    }
   },
   {
@@ -497,7 +497,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 24
+    "target_id": 23
    }
   },
   {
@@ -505,7 +505,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 24
+    "target_id": 23
    }
   },
   {
@@ -514,9 +514,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 744.0010783825732,
-    "y": 1494.5709783831728,
-    "target_id": 24,
+    "x": 984.0201602635426,
+    "y": 1223.4409816306884,
+    "target_id": 23,
     "fallback_move": false,
     "ally_id": null
    }
@@ -526,7 +526,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 14
+    "target_id": 23
    }
   },
   {
@@ -534,7 +534,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 14
+    "target_id": 23
    }
   },
   {
@@ -542,7 +542,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 14
+    "target_id": 23
    }
   },
   {
@@ -557,7 +557,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 14
+    "target_id": 23
    }
   },
   {
@@ -565,8 +565,8 @@
    "player": 0,
    "cmd": {
     "type": "MoveTo",
-    "x": 704.8775795379929,
-    "y": 1328.2259396340653
+    "x": 934.0718848672798,
+    "y": 1304.2012460512537
    }
   },
   {
@@ -574,7 +574,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 14
+    "target_id": 23
    }
   },
   {
@@ -583,9 +583,9 @@
    "cmd": {
     "type": "Cast",
     "ab_key": "Q",
-    "x": 694.5152901198056,
-    "y": 1249.0316467431646,
-    "target_id": 14,
+    "x": 955.445398784038,
+    "y": 1261.0970383772972,
+    "target_id": 23,
     "fallback_move": false,
     "ally_id": null
    }
@@ -595,7 +595,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 14
+    "target_id": 23
    }
   },
   {
@@ -603,7 +603,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 14
+    "target_id": 23
    }
   },
   {
@@ -611,7 +611,7 @@
    "player": 0,
    "cmd": {
     "type": "SelectTarget",
-    "target_id": 14
+    "target_id": 23
    }
   },
   {
@@ -626,7 +626,7 @@
    "player": 0,
    "cmd": {
     "type": "SetTarget",
-    "target_id": 14
+    "target_id": 23
    }
   }
  ]

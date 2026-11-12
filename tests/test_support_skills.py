@@ -186,7 +186,7 @@ class CompanionTest(unittest.TestCase):
         comp.hero_ai.update = lambda *a, **k: {"move_to": None, "use_ability": None, "ability_target_pos": None,
                                               "ability_target_monster": None, "use_potion": False, "dash": None}
         comp.move_path = []
-        comp.dash_active, comp.dash_path = False, []      # no Charge in flight: any movement would be following
+        comp.hero.dash = None                             # no Charge in flight: any movement would be following
         owner.hero.x, owner.hero.y = world.world_map.get_start_pos()   # owner far away (would normally teleport)
         far = comp.hero.distance_to(owner.hero)
         self.assertGreater(far, 600)
@@ -225,10 +225,10 @@ class CompanionTest(unittest.TestCase):
         player.hero.hp = player.hero.max_hp * 0.3
         landed = False
         for _ in range(int(6 / DT)):
-            cast = comp.buffs.get("Holy Light Casting")
+            cast = comp.channel if comp.channel is not None and comp.channel.skill == "Holy Light" else None
             before = player.hero.hp
             world.step(DT)
-            if cast and "Holy Light Casting" not in comp.buffs and cast.get("target_id") == player.hero.eid:
+            if cast and comp.channel is None and cast.target is player.hero:
                 landed = player.hero.hp > before
                 break
         self.assertTrue(landed, "Paladin companion should finish a Holy Light on the player")

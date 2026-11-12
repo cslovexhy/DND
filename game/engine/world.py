@@ -15,7 +15,7 @@ from game.engine.ai import (generate_patrol_route, setup_monster_aggro, aggro_mo
 from game.engine.entities import Condition, Monster, Projectile
 from game.engine.events import FloatText, LevelUp, SkillUp, QuestReady, NpcDialogue, GOLD, HP_RED
 from game.engine.npc import NPC
-from game.engine import abilities, monster_casting, skills
+from game.engine import abilities, actions, casting, combat, skills
 from game.engine.snapshot import quest_info
 from game.engine.pathfinding import has_line_of_sight
 from game.engine.world_map import TILE_SIZE
@@ -520,29 +520,24 @@ class World:
     # --- projectiles ---
     def update_projectiles(self, dt):
         gs = self.game_state
-        hero_side = set(map(id, self.player_heroes))
         for proj in self.projectiles:
             result = proj.update(dt)
             if result is not None:
                 dmg, hit_target = result
-                # Determine if source is a hero (player or companion)
-                source_is_hero = id(proj.source) in hero_side
-                if source_is_hero:
-                    self.float_text(hit_target.x, hit_target.y - 20, f"{dmg:.0f}", proj.color)
-                    # Aggro on hit: directly aggro the hit monster + call for help
-                    if hasattr(hit_target, 'aggro_state'):
-                        if hit_target.aggro_state != "aggroed":
-                            aggro_monster(hit_target, proj.source, gs.monsters)
-                        call_for_help(hit_target, gs.monsters, proj.source)
-                    # Frostbolt slow
-                    if getattr(proj, 'apply_slow', False) and hit_target.alive:
-                        slowed = hit_target.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.25)
-                        self.float_text(hit_target.x, hit_target.y - 35, "SLOWED" if slowed else "IMMUNE", (150, 200, 255))
-                else:
-                    # Monster projectile hitting hero
-                    if proj.source is not None:
-                        proj.source.since_combat = 0.0  # it reached someone: the leash timer starts over
+                src = proj.source
+                if hit_target.faction == "heroes":
                     self.float_text(hit_target.x + random.randint(-10, 10), hit_target.y - 30, f"{dmg:.0f}", HP_RED)
+                else:
+                    self.float_text(hit_target.x, hit_target.y - 20, f"{dmg:.0f}", proj.color)
+                if src is not None:
+                    if hasattr(src, "since_combat"):
+                        src.since_combat = 0.0      # it reached someone: the leash timer starts over
+                    combat.engage(self, hit_target, src)
+                # Frostbolt slow
+                if getattr(proj, 'apply_slow', False) and hit_target.alive:
+                    slowed = hit_target.apply_condition(Condition.SLOWED, abilities.FROSTBOLT_SLOW_SECS,
+                                                        slow_factor=abilities.FROSTBOLT_SLOW)
+                    self.float_text(hit_target.x, hit_target.y - 35, "SLOWED" if slowed else "IMMUNE", (150, 200, 255))
         self.projectiles[:] = [p for p in self.projectiles if p.alive]
 
     # --- one simulation step ---
@@ -609,11 +604,8 @@ class World:
         player.pending_cast = None
         player.queued_cast = None
         player.ambush_target = None
-        player.dash_active = False
-        player.dash_path = []
-        player.dash_stun_target = None
-        player.frostbolt_channeling = False
-        player.frostbolt_target = None
+        hero.dash = None
+        hero.channel = None
         player.hero_ai.target = None
         player.hero_ai._path_cache.clear()
         # monsters that were fighting this hero give up (otherwise it would be "in combat" at 10% HP)
@@ -631,16 +623,6 @@ class World:
         gs = self.game_state
         self._apply_commands()
         for hero in self.player_heroes:
-            # Check Holy Light cast completion BEFORE update (buff gets removed during update)
-            if "Holy Light Casting" in hero.buffs and hero.buffs["Holy Light Casting"]["remaining"] <= dt:
-                cast = hero.buffs.pop("Holy Light Casting")
-                target = self.entity(cast.get("target_id")) or hero   # the chosen ally, or the caster
-                if not target.alive or target not in gs.heroes:
-                    target = hero
-                heal = target.heal(cast["heal"])
-                self.credit_heal(hero, target, heal)
-                self.float_text(target.x, target.y - 30, f"+{heal:.0f} HP", (100, 255, 100))
-
             # Update combat state for health regeneration
             hero.in_combat = any(m.alive and getattr(m, 'aggro_target', None) == hero
                                  for m in gs.monsters)
@@ -667,6 +649,7 @@ class World:
         gs = self.game_state
         all_heroes = [h for h in gs.heroes if h.alive]
         for m in alive:
+            actions.update_actions(self, m, dt)          # a monster's channel / dash, same as a hero's
             result = run_monster_ai(m, all_heroes, dt, self.is_wall, all_monsters=gs.monsters)
             if result and result[0] in ("attack", "ranged_attack", "aoe_attack"):
                 hit_hero = result[1]
@@ -685,4 +668,4 @@ class World:
                                   color=(255, 80, 80), source=m)
                 self.projectiles.append(proj)
             if m.abilities and m.alive and m.aggro_state == AggroState.AGGROED:
-                monster_casting.cast_skills(self, m)       # its kit: same skills, costs and cooldowns as a hero's
+                casting.monster_turn(self, m)              # its kit: the same cast path as a hero's

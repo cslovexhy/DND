@@ -1,35 +1,31 @@
 """PlayerState: the local player's hero controller (pure; no pygame).
 
 Holds the per-player control state that used to be module globals in session.py (move path, target,
-dash/channel state, queued casts, potions, autopilot) and the rules that act on it. The client feeds
+queued casts, potions, autopilot; a dash or channel lives on the hero, engine/actions.py) and the rules that act on it. The client feeds
 it intents (cast_ability, move_path, selected_target ...) and calls the update_* methods in frame order.
 Skill-slot bindings (which key is the left/right click skill) are UI state and stay in the client;
 the controller asks the client to rebind through a BindRightSkill event.
 """
 import math
-import random
 
-from game.engine import abilities
-from game.engine.ai import aggro_monster, call_for_help, AggroState, is_fighting
-from game.engine.entities import Condition, Projectile
+from game.engine import actions, casting
+from game.engine.ai import AggroState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
                                   UseItem, PickUp, SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake,
                                   TradeAccept, TradeCancel)
 from game.engine.inventory import Inventory
 from game.content.items import ITEMS, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT
-from game.engine.events import Ring, BindRightSkill, GOLD
+from game.engine.events import BindRightSkill, GOLD
 from game.engine.hero_ai import create_hero_ai
 from game.content.heroes import HERO_CLASSES
-from game.engine.pathfinding import astar
 from game.engine.world_map import TILE_SIZE
+from game.content.skill_tree import stealth_upkeep
 
-
-from game.content.skill_tree import (seal_bonus, holy_light_heal, shout_damage_mult, smite_damage,
-                                     stealth_speed, stealth_upkeep)
-HEROIC_STRIKE_WINDOW = 10.0   # seconds a Heroic Strike buff waits for the next Strike / Cleave
+# a failed cast's reason (engine/casting.py) -> what the player sees
+MESSAGES = {"no target": "No target!", "no line of sight": "No line of sight!", "out of range": "Out of range!",
+            "can't reach": "Can't charge there!"}
 CAST_QUEUE_SECS = 1.0         # a skill pressed during the global cooldown waits this long to fire
-from game.engine.hero_ai import SUPPORT_RANGE   # px: how far away an ally can be for Wall / Renew / Holy Light
 
 
 class PlayerState:
@@ -70,19 +66,6 @@ class PlayerState:
         # A Cast pressed during the global cooldown (fires when it ends, see update)
         self.queued_cast = None
         self.queued_cast_timer = 0.0
-        # Dash animation state (Charge)
-        self.dash_path = []      # Charge waypoints (follows a walking path, not a straight line)
-        self.dash_target_x = 0.0
-        self.dash_target_y = 0.0
-        self.dash_active = False
-        self.dash_speed = 800.0  # pixels per second (very fast)
-        self.dash_stun_target = None
-        self.dash_stun_duration = 0.0
-        self.dash_damage = 0.0  # damage dealt on arrival
-        # Frostbolt channel state (Heskan)
-        self.frostbolt_channeling = False
-        self.frostbolt_channel_timer = 0.0
-        self.frostbolt_target = None  # Monster being targeted
         # Ambush walk-to state (Tarak): monster to ambush (walk toward, execute when in range)
         self.ambush_target = None
 
@@ -209,48 +192,12 @@ class PlayerState:
         return m if (m is not None and m.alive and m in self.world.game_state.monsters) else None
 
     def _path(self, ax, ay, bx, by):
-        """Walking path for this hero: searches the whole map, and returns [] (stay put) when the target can't
-        be reached — never a straight line through walls."""
-        return astar(self.world.dungeon, ax, ay, bx, by, max_steps=None, fallback_direct=False)
+        """Walking path for this hero: the whole map, [] (stay put) when the target can't be reached."""
+        return actions.walk_path(self.world, ax, ay, bx, by)
 
     def _step_toward(self, tx, ty, dist, spd):
         """Move up to `spd` px toward (tx, ty), sliding along walls; returns False if completely blocked."""
-        hero, wall = self.hero, self.world.is_wall
-        step = min(spd, dist)
-        nx = hero.x + (tx - hero.x) / dist * step
-        ny = hero.y + (ty - hero.y) / dist * step
-        if not wall(nx, ny):
-            hero.x, hero.y = nx, ny
-        elif not wall(nx, hero.y):
-            hero.x = nx
-        elif not wall(hero.x, ny):
-            hero.y = ny
-        else:
-            return False
-        return True
-
-    def _start_dash(self, tx, ty, target, damage, stun):
-        """Begin a Charge to (tx, ty) along a walking path (around walls, never through them), however long the
-        detour. Range and line of sight are checked by the caller when the charge is initiated.
-        Returns False — and does nothing — only if there is no walking path at all."""
-        hero = self.hero
-        path = self._path(hero.x, hero.y, tx, ty)
-        if not path:
-            # [] means unreachable — or already on the target's tile (then a short straight hop is fine)
-            same_tile = (int(hero.x // TILE_SIZE), int(hero.y // TILE_SIZE)) == (int(tx // TILE_SIZE), int(ty // TILE_SIZE))
-            if not same_tile:
-                return False
-        if not self.world.is_wall(tx, ty) and (not path or path[-1] != (tx, ty)):
-            path = path + [(tx, ty)]          # finish exactly at the charge point when it is walkable
-        if not path:
-            return False
-        self.dash_path = path
-        self.dash_target_x, self.dash_target_y = path[-1]
-        self.dash_active = True
-        self.dash_stun_target = target
-        self.dash_stun_duration = stun
-        self.dash_damage = damage
-        return True
+        return actions.step_toward(self.world, self.hero, tx, ty, dist, spd)
 
     def _friendly(self, eid):
         """A living friendly hero (any player's hero or companion) by id, or None."""
@@ -259,21 +206,9 @@ class PlayerState:
             return None
         return e
 
-    def _support_target(self, ally):
-        """Who a support skill lands on: the chosen ally if close enough, else the caster.
-        Returns None (and says why) if the chosen ally is out of reach."""
-        if ally is None or ally is self.hero:
-            return self.hero
-        if self.hero.distance_to(ally) > SUPPORT_RANGE or not self.world.check_los(self.hero.x, self.hero.y, ally.x, ally.y):
-            self.world.float_text(self.hero.x, self.hero.y - 30, "Out of range!", (255, 150, 100))
-            return None
-        return ally
-
     def _stop_channel(self):
-        """Interrupt a Frostbolt channel (releases the self-immobilize)."""
-        self.frostbolt_channeling = False
-        self.frostbolt_target = None
-        self.hero.conditions = [c for c in self.hero.conditions if c.condition != Condition.IMMOBILIZED]
+        """Interrupt a channel (Frostbolt, Holy Light): nothing happens, the caster can move again."""
+        actions.cancel_channel(self.hero)
 
     def handle(self, cmd):
         """Apply one validated player command (ignored while this player's hero is dead)."""
@@ -284,7 +219,7 @@ class PlayerState:
         gs = world.game_state
         if isinstance(cmd, MoveTo):
             # Click ground = move (cancel channel)
-            if self.frostbolt_channeling:
+            if hero.channel is not None:
                 self._stop_channel()
             self.move_path = self._path(hero.x, hero.y, cmd.x, cmd.y)
             self.selected_target = None
@@ -298,7 +233,7 @@ class PlayerState:
             self.move_dir = d
             if d != (0, 0):
                 # walking by keyboard replaces click-to-move / walk-to-target / walk-to-cast
-                if self.frostbolt_channeling:
+                if hero.channel is not None:
                     self._stop_channel()
                 self.move_path = []
                 self.pickup_target = None
@@ -324,7 +259,7 @@ class PlayerState:
             item = world.ground_item(cmd.item_id)
             if item is None or self.is_companion:
                 return
-            if self.frostbolt_channeling:
+            if hero.channel is not None:
                 self._stop_channel()
             self.pickup_target = item.item_id
             self.selected_target = None
@@ -344,7 +279,7 @@ class PlayerState:
                 world.float_text(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100))
             else:
                 # Cancel any active channel
-                if self.frostbolt_channeling:
+                if hero.channel is not None:
                     self._stop_channel()
                     hero.swing_timer = 0.5  # Brief delay after cancel
                 self.selected_target = m
@@ -425,9 +360,8 @@ class PlayerState:
         elif isinstance(cmd, HoldPosition):
             self.hold_position = bool(cmd.on)
         elif isinstance(cmd, CancelChannel):
-            if self.frostbolt_channeling:
+            if hero.channel is not None:
                 # Cancel channel and stop auto-attack
-                self.frostbolt_channel_timer = 0
                 self.selected_target = None
                 self._stop_channel()
         else:
@@ -435,383 +369,36 @@ class PlayerState:
 
     # --- casting ---
     def cast_ability(self, ab_key, ab, wx, wy, clicked_monster, ally=None):
-        """Cast an ability — handles AoE, single target, dash, stun, call-for-help, and Quinn's Seal system."""
+        """Cast a skill for this player (human or hero AI). engine/casting.try_cast applies the same rules to every
+        caster; this adds what only a player has: walking into range and firing then, auto-attacking, messages."""
         hero = self.hero
-        gs = self.world.game_state
-
-        # Global Cooldown check
-        if hero.gcd > 0:
-            return  # Can't cast anything during GCD
-
-        # Out-of-combat-only skills (Stealth) are refused while a monster is fighting you
-        if ab.out_of_combat_only and is_fighting(hero, gs.alive_monsters):
-            self.world.float_text(hero.x, hero.y - 30, "Can't do that in combat!", (255, 150, 100))
-            return
-
-        # === Tarak special: Stab (fast melee, breaks stealth) ===
-        if ab.name == "Stab":
-            if not clicked_monster:
-                self.world.float_text(hero.x, hero.y - 30, "No target!", (255, 150, 100))
-                return
-            dist_to_target = hero.distance_to(clicked_monster)
-            if dist_to_target > ab.range:
-                self.selected_target = clicked_monster
-                self.move_path = []
-                return
-            if hero.swing_timer > 0:
-                return  # Gated by weapon speed
-            ab.use()
-            hero.swing_timer = hero.weapon_speed
-            # Break stealth on attack
-            if hero.stealthed:
-                hero.stealthed = False
-                self.world.float_text(hero.x, hero.y - 40, "Stealth broken!", (200, 200, 200))
-                # Auto-bind right-click back to Stealth
-                self._bind_right("R")
-            dmg_amount = ab.calc_damage(hero.base_damage)
-            # Crit roll
-            hero.last_crit = random.random() < hero.crit_chance
-            if hero.last_crit:
-                dmg_amount *= hero.crit_multiplier
-            dmg = clicked_monster.take_damage(dmg_amount, source=hero, threat=ab.threat_mult)
-            color = (255, 255, 50) if hero.last_crit else (180, 255, 180)
-            text = f"{dmg:.0f}!" if hero.last_crit else f"{dmg:.0f}"
-            self.world.float_text(clicked_monster.x, clicked_monster.y - 20, text, color)
-            # Poison Dagger: this Stab poisons the target (damage over time, counts as the Rogue's for threat)
-            abilities.poison_on_hit(self.world, hero, clicked_monster)
-            call_for_help(clicked_monster, gs.monsters, hero)
-            if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
-                from game.engine.ai import aggro_monster as _aggro
-                aggro_monster(clicked_monster, hero, gs.monsters)
-            # (no global cooldown: Stab is the auto-attack, paced by the 0.5 s swing. With a GCD on every swing the
-            # Rogue was GCD-locked the whole fight and could not use Poison Dagger or any other skill.)
-            self.move_path = []
-            self.selected_target = clicked_monster  # Keep target for auto-attack
-            return
-
-        # === Tarak special: Stealth (go invisible; out of combat only, so it opens a fight with Ambush) ===
-        if ab.name == "Stealth":
-            ab.use()
-            hero.stealthed = True
-            hero.stealth_speed = stealth_speed(ab)
-            self.selected_target = None  # Stop auto-attack
-            # Auto-bind right-click to Ambush
-            self._bind_right("E")
-            self.world.float_text(hero.x, hero.y - 30, "Stealth!", (100, 200, 100))
-            hero.gcd = hero.GCD_DURATION
-            self.move_path = []
-            return
-
-        # === Tarak: Poison Dagger (self-buff: the next Stab poisons its target) ===
-        if ab.name == "Poison Dagger":
-            abilities.poison_dagger(self.world, hero, ab)
-            return
-
-        # === Tarak special: Ambush (stealth-only burst) ===
-        if ab.name == "Ambush":
-            if not hero.stealthed:
-                self.world.float_text(hero.x, hero.y - 30, "Must be stealthed!", (255, 150, 100))
-                return
-            if not clicked_monster:
-                self.world.float_text(hero.x, hero.y - 30, "No target!", (255, 150, 100))
-                return
-            dist_to_target = hero.distance_to(clicked_monster)
-            if dist_to_target > ab.range:
-                # Queue walk-to via self.ambush_target (works while stealthed)
-                self.ambush_target = clicked_monster
+        spec = casting.SKILLS.get(ab.name)
+        if spec is None:
+            return None
+        res = casting.try_cast(self.world, hero, ab, ally if spec.targeting == "ally" else clicked_monster)
+        target, why = res.target, res.reason
+        if res.ok:
+            if spec.stops_attack:
                 self.selected_target = None
+            elif spec.targeting in ("enemy", "sweep", "dash"):
+                self.selected_target = target            # keep auto-attacking what you just hit
+            if spec.targeting != "self" or spec.stops_attack:
                 self.move_path = []
-                return
-            ab.use()
-            hero.swing_timer = hero.weapon_speed
-            # Break stealth
-            hero.stealthed = False
-            # Auto-bind right-click back to Stealth
-            self._bind_right("R")
-            # Damage: 5x weapon (no %-of-max-HP bonus: it made boss HP meaningless)
-            dmg_amount = ab.calc_damage(hero.base_damage)
-            dmg = clicked_monster.take_damage(dmg_amount, source=hero, threat=ab.threat_mult)
-            self.world.float_text(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", (255, 50, 50))
-            self.world.float_text(clicked_monster.x, clicked_monster.y - 40, "AMBUSH!", (255, 50, 50))
-            self.world.events.append(Ring(clicked_monster.x, clicked_monster.y, 40, (255, 50, 50)))
-            call_for_help(clicked_monster, gs.monsters, hero)
-            if hasattr(clicked_monster, 'aggro_state') and clicked_monster.aggro_state != "aggroed":
-                from game.engine.ai import aggro_monster as _aggro
-                aggro_monster(clicked_monster, hero, gs.monsters)
-            hero.gcd = hero.GCD_DURATION
+            return res
+        if why == "out of range" and spec.targeting != "ally" and not self.ai_enabled:   # (the AI steers itself)
             self.move_path = []
-            self.selected_target = clicked_monster
-            return
-
-        # === Heskan special: Fire Blast (instant ranged single target) ===
-        if ab.name == "Fire Blast":
-            if not clicked_monster:
-                self.world.float_text(hero.x, hero.y - 30, "No target!", (255, 150, 100))
-                return
-            if hero.distance_to(clicked_monster) > ab.range:
-                # Queue walk-to-range
-                self.pending_cast = (ab_key, ab, clicked_monster); self.selected_target = clicked_monster
-                self.move_path = []
-                return
-            if not self.world.check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-                self.world.float_text(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100))
-                return
-            abilities.fire_blast(self.world, hero, clicked_monster, ab)
-            hero.gcd = hero.GCD_DURATION
-            self.move_path = []
-            return
-
-        # === Heskan special: Frost Nova (AoE freeze around self) ===
-        if ab.name == "Frost Nova":
-            ab.use()
-            dmg_amount = ab.calc_damage(hero.base_damage)  # 25% weapon
-            hit_count = 0
-            for m in gs.alive_monsters:
-                if hero.distance_to(m) <= ab.radius:
-                    dmg = m.take_damage(dmg_amount, source=hero, threat=ab.threat_mult)
-                    frozen = m.apply_condition(Condition.FROZEN, 4.0)
-                    self.world.float_text(m.x, m.y - 20, f"{dmg:.0f}", (180, 220, 255))
-                    self.world.float_text(m.x, m.y - 35, "FROZEN" if frozen else "IMMUNE", (150, 220, 255))
-                    hit_count += 1
-            self.world.events.append(Ring(hero.x, hero.y, ab.radius, (150, 200, 255)))
-            if hit_count == 0:
-                self.world.float_text(hero.x, hero.y - 30, "No enemies in range!", (200, 200, 200))
-            hero.gcd = hero.GCD_DURATION
-            self.move_path = []
-            return
-
-        # === Heskan special: Frostbolt (start channel — fires on completion) ===
-        if ab.name == "Frostbolt":
-            if self.frostbolt_channeling:
-                return  # Already channeling, wait for completion
-            if not clicked_monster:
-                self.world.float_text(hero.x, hero.y - 30, "No target!", (255, 150, 100))
-                return
-            dist_to_target = hero.distance_to(clicked_monster)
-            if dist_to_target > ab.range:
-                # Walk into range, then start channeling
-                self.selected_target = clicked_monster
-                self.move_path = []
-                return
-            # Line of sight check
-            if not self.world.check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-                self.world.float_text(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100))
-                return
-            # Start channeling (immobilize self for weapon_speed duration)
-            self.frostbolt_channeling = True
-            self.frostbolt_channel_timer = hero.weapon_speed
-            self.frostbolt_target = clicked_monster
-            self.selected_target = clicked_monster
-            hero.apply_condition(Condition.IMMOBILIZED, hero.weapon_speed)
-            ab.use()  # Put on cooldown at start of channel (expires when channel ends)
-            self.move_path = []
-            return
-
-        # === Quinn special: Wanding (ranged projectile auto-attack) ===
-        if ab.name == "Wanding":
-            if not clicked_monster:
-                self.world.float_text(hero.x, hero.y - 30, "No target!", (255, 150, 100))
-                return
-            dist_to_target = hero.distance_to(clicked_monster)
-            if dist_to_target > ab.range:
-                self.pending_cast = (ab_key, ab, clicked_monster); self.selected_target = clicked_monster
-                return
-            if not self.world.check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-                self.world.float_text(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100))
-                return
-            if hero.swing_timer > 0:
-                return  # Gated by weapon speed
-            abilities.ranged_projectile(self.world, hero, clicked_monster, ab, color=(255, 220, 100))
-            hero.gcd = hero.GCD_DURATION
-            # Don't clear self.selected_target — keep auto-attacking
-            self.move_path = []
-            return
-
-        # === Quinn special: Wall (absorb shield on self or a chosen ally) ===
-        if ab.name == "Wall":
-            target = self._support_target(ally)
-            if target is None:
-                return
-            abilities.wall(self.world, hero, target, ab)
-            self.move_path = []
-            return
-
-        # === Quinn special: Renew (HoT on self or a chosen ally) ===
-        if ab.name == "Renew":
-            target = self._support_target(ally)
-            if target is None:
-                return
-            abilities.renew(self.world, hero, target, ab)
-            self.move_path = []
-            return
-
-        # === Fighter: Heroic Strike (self-buff: the next Strike / Cleave hit gets +b damage and more threat) ===
-        if ab.name == "Heroic Strike":
-            ab.use()
-            hero.buffs["Heroic Strike"] = {"remaining": HEROIC_STRIKE_WINDOW, "bonus": ab.flat_bonus,
-                                           "threat": ab.threat_mult}
-            self.world.float_text(hero.x, hero.y - 30, "Heroic Strike!", (255, 160, 80))
-            hero.gcd = hero.GCD_DURATION
-            return
-
-        # === Fighter: Cleave (target + nearest adjacent enemies, capped by skill level) ===
-        if ab.max_targets:
-            target = clicked_monster
-            if target is None:
-                near = [m for m in gs.alive_monsters if hero.distance_to(m) <= ab.radius
-                        and not getattr(m, "stealthed", False)]
-                target = min(near, key=hero.distance_to) if near else None
-            if target is None:
-                self.world.float_text(hero.x, hero.y - 30, "No target!", (255, 150, 100))
-                return
-            if hero.distance_to(target) > ab.range:
-                self.pending_cast = (ab_key, ab, target); self.selected_target = target
-                return
-            others = [m for m in gs.alive_monsters if m is not target and not getattr(m, "stealthed", False)]
-            hits = hero.use_ability(ab_key, [target] + others)
-            if hits:
-                self.world.events.append(Ring(hero.x, hero.y, ab.radius, ab.color))
-                self.world.float_text(target.x, target.y - 20, " ".join(f"{d:.0f}" for _, d in hits), GOLD)
-                call_for_help(target, gs.monsters, hero)
-                hero.gcd = hero.GCD_DURATION
-                self.move_path = []
-            return
-
-        # === Quinn special: Righteous Seal (self-buff, no target needed) ===
-        if ab.name == "Righteous Seal":
-            ab.use()
-            hero.buffs["Righteous Seal"] = {"remaining": 10.0, "bonus": seal_bonus(ab)}
-            self.world.float_text(hero.x, hero.y - 30, "Seal Active!", (255, 220, 80))
-            hero.gcd = hero.GCD_DURATION
-            self.move_path = []
-            return
-
-        # === Quinn special: Holy Light (heal self or a chosen ally + immobilize self while casting) ===
-        if ab.name == "Holy Light":
-            target = self._support_target(ally)
-            if target is None:
-                return
-            ab.use()
-            # Start casting — immobilize for 2s, heal lands (on the target) after cast finishes
-            hero.apply_condition(Condition.IMMOBILIZED, 2.0)
-            hero.buffs["Holy Light Casting"] = {"remaining": 2.0, "heal": holy_light_heal(ab),
-                                                "target_id": target.eid if target is not hero else None}
-            self.world.float_text(hero.x, hero.y - 30, "Casting...", (255, 255, 150))
-            hero.gcd = hero.GCD_DURATION
-            self.move_path = []
-            return
-
-        # === Quinn special: Judgement (ranged, consumes Seal for bonus damage) ===
-        if ab.name == "Judgement":
-            if not clicked_monster:
-                self.world.float_text(hero.x, hero.y - 30, "No target!", (255, 150, 100))
-                return
-            dist_to_target = hero.distance_to(clicked_monster)
-            if dist_to_target > ab.range:
-                self.pending_cast = (ab_key, ab, clicked_monster); self.selected_target = clicked_monster
-                return
-            if not self.world.check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-                self.world.float_text(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100))
-                return
-            abilities.judgement(self.world, hero, clicked_monster, ab)
-            hero.gcd = hero.GCD_DURATION
-            self.move_path = []
-            self.selected_target = None
-            return
-
-        # === Quinn special: Smite (boosted by Seal) ===
-        if ab.name == "Smite":
-            if not clicked_monster:
-                self.world.float_text(hero.x, hero.y - 30, "No target!", (255, 150, 100))
-                return
-            dist_to_target = hero.distance_to(clicked_monster)
-            if dist_to_target > ab.range:
-                self.pending_cast = (ab_key, ab, clicked_monster); self.selected_target = clicked_monster
-                return
-            if hero.swing_timer > 0:
-                return  # Gated by weapon speed
-            ab.use()
-            hero.swing_timer = hero.weapon_speed
-            sealed = "Righteous Seal" in hero.buffs
-            skill_dmg = smite_damage(hero, ab)     # (a + Seal bonus) x weapon + b
-            dmg = clicked_monster.take_damage(skill_dmg, source=hero, threat=ab.threat_mult)
-            color = (255, 230, 100) if sealed else (255, 255, 255)
-            self.world.float_text(clicked_monster.x, clicked_monster.y - 20, f"{dmg:.0f}", color)
-            call_for_help(clicked_monster, gs.monsters, hero)
-            hero.gcd = hero.GCD_DURATION
-            self.move_path = []
-            self.selected_target = None
-            return
-
-        # === Vistra special: Demoralizing Shout (AoE debuff) ===
-        if ab.name == "Demoralizing Shout":
-            ab.use()
-            hit_count = 0
-            for m in gs.alive_monsters:
-                if hero.distance_to(m) <= ab.radius:
-                    # enemy damage x0.9 / x0.8 / x0.7 (skill level 1 / 2 / 3) for 10s
-                    m.buffs["Demoralized"] = {"remaining": 10.0, "damage_mult": shout_damage_mult(ab)}
-                    # Slow for 3s
-                    m.apply_condition(Condition.SLOWED, 3.0, slow_factor=0.5)
-                    self.world.float_text(m.x, m.y - 20, "Demoralized!", (200, 150, 50))
-                    hit_count += 1
-            if hit_count > 0:
-                self.world.events.append(Ring(hero.x, hero.y, ab.radius, ab.color))
-            hero.gcd = hero.GCD_DURATION
-            self.move_path = []
-            return
-
-        # === Standard ability handling ===
-        if ab.radius > 0:
-            # AoE — check if click location is within ability range
-            dist_to_click = math.sqrt((wx - hero.x)**2 + (wy - hero.y)**2)
-            if dist_to_click > ab.range and ab.range > 0:
-                self.pending_cast = (ab_key, ab, clicked_monster); self.selected_target = clicked_monster
-                return
-            hits = hero.use_ability(ab_key, gs.alive_monsters, target_pos=(wx, wy))
-            if hits:
-                self.world.events.append(Ring(wx, wy, ab.radius, ab.color))
-                for name, dmg in hits:
-                    self.world.float_text(wx, wy-20, f"{dmg:.0f}", GOLD)
-        elif clicked_monster:
-            # Single target — check range
-            dist_to_target = hero.distance_to(clicked_monster)
-            if dist_to_target > ab.range:
-                self.pending_cast = (ab_key, ab, clicked_monster); self.selected_target = clicked_monster
-                return
-            # Dash abilities: delay damage until arrival
-            if ab.is_dash:
-                # Line of sight check — can't charge through walls
-                if not self.world.check_los(hero.x, hero.y, clicked_monster.x, clicked_monster.y):
-                    self.world.float_text(hero.x, hero.y - 30, "No line of sight!", (255, 150, 100))
-                    return
-                dx = clicked_monster.x - hero.x
-                dy = clicked_monster.y - hero.y
-                d = math.sqrt(dx*dx + dy*dy)
-                if d > 0:
-                    # stop 50 px short of the target; damage is applied on arrival
-                    if not self._start_dash(clicked_monster.x - (dx/d) * 50, clicked_monster.y - (dy/d) * 50,
-                                            clicked_monster, ab.calc_damage(hero.base_damage), ab.stun_duration):
-                        self.world.float_text(hero.x, hero.y - 30, "Can't charge there!", (255, 150, 100))
-                        return
-                ab.use()  # Put on cooldown
-                call_for_help(clicked_monster, gs.monsters, hero)
+            if ab.power_type == "at_will":
+                self.selected_target = target            # weapon attack: auto-attack walks into range
+            elif spec.requires_stealth:
+                self.ambush_target, self.selected_target = target, None   # sneak up, then Ambush (update_ambush)
             else:
-                # Non-dash single target: deal damage immediately
-                hits = hero.use_ability(ab_key, [clicked_monster])
-                for name, dmg in hits:
-                    self.world.float_text(clicked_monster.x, clicked_monster.y-20, f"{dmg:.0f}", (255, 255, 255))
-                if ab.stun_duration > 0 and clicked_monster.alive:
-                    stunned = clicked_monster.apply_condition(Condition.STUNNED, ab.stun_duration)
-                    self.world.float_text(clicked_monster.x, clicked_monster.y-35, "STUNNED" if stunned else "IMMUNE", (255,255,100))
-                call_for_help(clicked_monster, gs.monsters, hero)
-        else:
-            # No target clicked for single-target skill
-            self.world.float_text(hero.x, hero.y - 30, "No target!", (255, 150, 100))
-            return
-        hero.gcd = hero.GCD_DURATION
-        self.move_path = []
-        self.selected_target = None
+                self.pending_cast = (ab_key, ab, target)  # walk into range, then fire (auto_attack)
+                self.selected_target = target
+        elif why in MESSAGES:
+            self.world.float_text(hero.x, hero.y - 30, MESSAGES[why], (255, 150, 100))
+        elif why[:1].isupper():                          # a gate's own message ("Must be stealthed!")
+            self.world.float_text(hero.x, hero.y - 30, why, (255, 150, 100))
+        return res
 
     def update(self, dt):
         """Frostbolt channel completion, path-following movement and the dash animation."""
@@ -840,90 +427,28 @@ class PlayerState:
                 self._end_stealth("Out of mana!")
             else:
                 hero.mana -= upkeep
-        # Frostbolt channel completion
-        if self.frostbolt_channeling:
-            self.frostbolt_channel_timer -= dt
-            if self.frostbolt_channel_timer <= 0:
-                self.frostbolt_channeling = False
-                # Fire projectile if target still alive (range doesn't matter — bolt chases)
-                if self.frostbolt_target and self.frostbolt_target.alive:
-                    frostbolt = next(a for a in hero.abilities.values() if a.name == "Frostbolt")
-                    proj_damage = frostbolt.calc_damage(hero.base_damage)   # 100% weapon at skill level 3
-                    proj = Projectile(x=hero.x, y=hero.y, target=self.frostbolt_target,
-                                      speed=500.0, damage=proj_damage,
-                                      color=(150, 200, 255), source=hero, threat=frostbolt.threat_mult)
-                    proj.apply_slow = True  # Flag for slow on hit
-                    self.world.projectiles.append(proj)
-                else:
-                    # Target dead — stop
-                    self.frostbolt_target = None
-                    self.selected_target = None
-            # If target died mid-channel, cancel
-            elif self.frostbolt_target and not self.frostbolt_target.alive:
-                self.frostbolt_channeling = False
-                self.frostbolt_target = None
-                self.selected_target = None
-                # Remove immobilize early
-                hero.conditions = [c for c in hero.conditions if c.condition != Condition.IMMOBILIZED]
+        actions.update_actions(self.world, hero, dt)     # channel (Frostbolt, Holy Light) and dash (Charge)
 
         # WASD: walk in the held direction (slides along walls), like the path walk below
-        if self.move_dir != (0, 0) and not self.dash_active and not (
-                hero.has_condition(Condition.IMMOBILIZED) or hero.has_condition(Condition.STUNNED)
-                or hero.has_condition(Condition.FROZEN)):
+        if self.move_dir != (0, 0) and hero.dash is None and hero.can_move:
             dx, dy = self.move_dir
             norm = math.hypot(dx, dy)
-            spd = hero.base_speed * dt * (hero.stealth_speed if hero.stealthed else 1.0)
+            spd = hero.move_speed * dt
             self._step_toward(hero.x + dx / norm * 100, hero.y + dy / norm * 100, 100, spd)
             if dx:
                 hero.facing_left = dx < 0
 
         # Smooth movement along path
-        if self.move_path and not self.dash_active and not hero.has_condition(Condition.IMMOBILIZED):
+        if self.move_path and hero.dash is None and hero.can_move:
             tx, ty = self.move_path[0]
             dx, dy = tx - hero.x, ty - hero.y
             dist = math.sqrt(dx*dx + dy*dy)
             if dist < 8:
                 self.move_path.pop(0)
             else:
-                spd = hero.base_speed * dt
-                if hero.stealthed:
-                    spd *= hero.stealth_speed  # 50 / 60 / 70% move speed while stealthed (Stealth level)
+                spd = hero.move_speed * dt        # slows, stealth (50 / 60 / 70%)
                 if not self._step_toward(tx, ty, dist, spd):   # never into a wall
                     self.move_path = []
-                hero.facing_left = dx < 0
-
-        # Dash animation (Charge skill)
-        if self.dash_active:
-            # Charge follows its path (waypoints) at dash speed
-            path = getattr(self, "dash_path", None) or [(self.dash_target_x, self.dash_target_y)]
-            while len(path) > 1 and math.hypot(path[0][0] - hero.x, path[0][1] - hero.y) < 10:
-                path.pop(0)
-            self.dash_path = path
-            wx, wy = path[0]
-            dx = wx - hero.x
-            dy = wy - hero.y
-            dist = math.sqrt(dx*dx + dy*dy)
-            if dist < 10 and len(path) == 1:
-                # Arrived — deal damage + apply stun
-                self.dash_active = False
-                self.dash_path = []
-                if not self.world.is_wall(wx, wy):
-                    hero.x, hero.y = wx, wy
-                if self.dash_stun_target and self.dash_stun_target.alive:
-                    charge = next((x for x in hero.abilities.values() if x.is_dash), None)
-                    dmg = self.dash_stun_target.take_damage(self.dash_damage, source=hero,
-                                                            threat=charge.threat_mult if charge else 1.0)
-                    self.world.float_text(self.dash_stun_target.x, self.dash_stun_target.y-20, f"{dmg:.0f}", (255, 200, 50))
-                    if self.dash_stun_duration > 0 and self.dash_stun_target.alive:
-                        stunned = self.dash_stun_target.apply_condition(Condition.STUNNED, self.dash_stun_duration)
-                        self.world.float_text(self.dash_stun_target.x, self.dash_stun_target.y-35, "STUNNED" if stunned else "IMMUNE", (255,255,100))
-                self.dash_stun_target = None
-                self.dash_damage = 0
-            else:
-                spd = self.dash_speed * dt
-                if dist > 0 and not self._step_toward(wx, wy, dist, spd):
-                    # blocked (shouldn't happen on a path): end the charge here
-                    self.dash_path = [(hero.x, hero.y)]
                 hero.facing_left = dx < 0
 
     def run_ai(self, dt):
@@ -932,7 +457,7 @@ class PlayerState:
         hero = self.hero
         gs = self.world.game_state
         # === HERO AI (when enabled) ===
-        if not (self.ai_enabled and not self.dash_active):
+        if not (self.ai_enabled and hero.dash is None):
             return None
         if not self.is_companion and self._autopilot_pickup():
             return None                  # walking to a dropped item: that comes first
@@ -961,18 +486,13 @@ class PlayerState:
 
         if ai_action["dash"]:
             # Charge ability
-            tx, ty, target_m, dmg, stun = ai_action["dash"]
+            target_m = ai_action["dash"][2]
             ab = hero.abilities.get("R")
             if ab and ab.is_ready():
-                if not self.world.check_los(hero.x, hero.y, target_m.x, target_m.y):
-                    # No LOS — pathfind toward target
+                res = self.cast_ability("R", ab, target_m.x, target_m.y, target_m)
+                if res is not None and not res.ok and res.reason in ("no line of sight", "can't reach"):
+                    # no line of sight / no walking path for the dash: walk toward it instead (cooldown kept)
                     self.move_path = self._path(hero.x, hero.y, target_m.x, target_m.y)
-                elif self._start_dash(tx, ty, target_m, dmg, stun):
-                    ab.use()
-                else:
-                    # no walking path at all: walk toward it instead (cooldown kept)
-                    self.move_path = self._path(hero.x, hero.y, target_m.x, target_m.y)
-                call_for_help(target_m, gs.monsters, hero)
 
         elif ai_action["use_ability"]:
             ab_key = ai_action["use_ability"]
@@ -1050,7 +570,7 @@ class PlayerState:
         # for a moment, and stepping toward the owner then back made melee companions shuffle left and right.
         if self.in_combat():
             return
-        busy = (self.dash_active or self.frostbolt_channeling or self.move_path
+        busy = (self.hero.dash is not None or self.hero.channel is not None or self.move_path
                 or (action and (action.get("use_ability") or action.get("move_to") or action.get("dash"))))
         if not busy:
             self.follow_owner(dt)
@@ -1100,7 +620,7 @@ class PlayerState:
         hero = self.hero
         gs = self.world.game_state
         # Auto-attack selected target (walk to range, attack when close)
-        if self.selected_target and not self.ai_enabled and not self.frostbolt_channeling and not hero.stealthed and not hero.has_condition(Condition.IMMOBILIZED):
+        if self.selected_target and not self.ai_enabled and hero.channel is None and not hero.stealthed and hero.can_move:
             if not self.selected_target.alive:
                 self.selected_target = None
                 self.pending_cast = None

@@ -1,5 +1,5 @@
 """Monster skills: a spawn type's "kit" gives monsters the hero skills of content/skill_library.py (same damage formula,
-cooldown and mana cost), cast by engine/monster_casting.py; poisoners (Cultist, Snake, Grell) poison through Poison
+cooldown and mana cost), cast through engine/casting.py; poisoners (Cultist, Snake, Grell) poison through Poison
 Dagger instead of a hard-coded on-hit poison. Also the skill playground tool (tools/skill_playground.py)."""
 import os
 import random
@@ -12,7 +12,7 @@ from game.content import skill_library
 from game.content.heroes import HERO_CLASSES
 from game.content.monsters import SPAWN_STATS, monster_max_mana, monster_skill_level
 from game.content.skill_tree import POISON_DAGGER_SECS
-from game.engine import monster_casting
+from game.engine import casting
 from game.engine.ai import AggroState, aggro_monster
 from game.engine.bootstrap import create_world
 from game.engine.entities import Condition
@@ -134,7 +134,7 @@ class SupportTest(unittest.TestCase):
         friend.hp = friend.max_hp * 0.5
         healer.hp = healer.max_hp * 0.65
         before = friend.hp
-        monster_casting.cast_skills(world, healer)
+        casting.monster_turn(world, healer)
         self.assertIn("Renew", friend.buffs)
         self.assertNotIn("Renew", healer.buffs)
         p.hero.x += 2000                                  # (nobody hits anyone: just the heal)
@@ -147,14 +147,14 @@ class SupportTest(unittest.TestCase):
         world, p, (healer, friend) = arena(n=2)
         healer.abilities.clear()                           # (cultists carry Poison Dagger first)
         give(world, healer, "Renew")
-        self.assertIsNone(monster_casting.cast_skills(world, healer))
+        self.assertIsNone(casting.monster_turn(world, healer))
 
     def test_wall_shields_a_friend_below_half_and_expires(self):
         world, p, (caster, friend) = arena(n=2)
         caster.abilities.clear()                           # (cultists carry Poison Dagger first)
         give(world, caster, "Wall")
         friend.hp = friend.max_hp * 0.4
-        monster_casting.cast_skills(world, caster)
+        casting.monster_turn(world, caster)
         self.assertGreater(friend.absorb_shield, 0)
         p.hero.x += 2000
         for _ in range(int(16 / DT)):
@@ -170,7 +170,7 @@ class FireBlastTest(unittest.TestCase):
         other.aggro_state = AggroState.IDLE
         other.hate.clear()
         hp = p.hero.hp
-        self.assertEqual(monster_casting.cast_skills(world, m), "Fire Blast")
+        self.assertEqual(casting.monster_turn(world, m), "Fire Blast")
         self.assertLess(p.hero.hp, hp)
         self.assertEqual(other.aggro_state, AggroState.IDLE)   # a monster hitting a hero calls no one for help
 
@@ -179,7 +179,7 @@ class FireBlastTest(unittest.TestCase):
         m.abilities.clear()
         give(world, m, "Fire Blast")
         p.hero.x = m.x + 1000
-        self.assertIsNone(monster_casting.cast_skills(world, m))
+        self.assertIsNone(casting.monster_turn(world, m))
 
     def test_heroes_fire_blast_still_pulls_the_monster(self):
         world, p, mobs = arena("Human Cultist", 1, hero_cls="Wizard", hero_level=10)
@@ -193,6 +193,174 @@ class FireBlastTest(unittest.TestCase):
         self.assertEqual(m.aggro_state, AggroState.AGGROED)
 
 
+class FactionTest(unittest.TestCase):
+    def test_enemies_and_friends_by_faction(self):
+        from game.engine import combat
+        world, p, (m, m2) = arena(n=2)
+        self.assertEqual(combat.enemies_of(world, p.hero), [m, m2])
+        self.assertEqual(combat.enemies_of(world, m), [p.hero])
+        self.assertEqual(set(map(id, combat.friends_of(world, m))), {id(m), id(m2)})
+        m2.stealthed = True
+        self.assertEqual(combat.enemies_of(world, p.hero), [m])          # stealthed: not a valid target
+
+
+class OneRuleForEveryoneTest(unittest.TestCase):
+    """The same rules hold for heroes and monsters: damage multipliers, conditions, engaging an attacker."""
+
+    def test_demoralized_hero_deals_less(self):
+        from game.engine import combat
+        world, p, (m,) = arena()
+        h = p.hero
+        m.hp = m.max_hp = 10 ** 6
+        d1 = combat.hit(world, h, m, 100)
+        h.buffs["Demoralized"] = {"remaining": 10, "damage_mult": 0.7}
+        d2 = combat.hit(world, h, m, 100)
+        self.assertAlmostEqual(d2, d1 * 0.7)
+
+    def test_frozen_hero_can_neither_cast_nor_walk(self):
+        world, p, (m,) = arena(hero_cls="Wizard", hero_level=10)
+        h = p.hero
+        h.apply_condition(Condition.FROZEN, 4.0)
+        self.assertFalse(casting.try_cast(world, h, h.abilities["R"], m).ok)   # Fire Blast
+        x0 = h.x
+        from game.engine import commands as C
+        world.submit(C.MoveDir(-1, 0), 0)
+        for _ in range(15):
+            world.step(DT)
+        self.assertEqual(h.x, x0)
+
+    def test_slowed_hero_walks_slower(self):
+        world, p, mobs = arena()
+        world.game_state.monsters.clear()
+        h = p.hero
+        h.apply_condition(Condition.SLOWED, 5.0, slow_factor=0.5)
+        x0 = h.x
+        from game.engine import commands as C
+        world.submit(C.MoveDir(-1, 0), 0)
+        for _ in range(30):
+            world.step(DT)
+        self.assertAlmostEqual((x0 - h.x) / h.base_speed, 0.5, delta=0.05)
+
+    def test_every_damaging_skill_makes_the_monster_fight_back(self):
+        """Frost Nova used to hit without pulling: now every hit engages (aggro + call for help)."""
+        world, p, (m,) = arena(hero_cls="Wizard", hero_level=10)
+        m.aggro_state = AggroState.IDLE
+        m.hate.clear()
+        m.aggro_target = None
+        self.assertTrue(casting.try_cast(world, p.hero, p.hero.abilities["E"]).ok)   # Frost Nova
+        self.assertEqual(m.aggro_state, AggroState.AGGROED)
+
+
+def with_kit(skill, n=1, hero_cls="Fighter", hero_level=10, dist=40):
+    """An arena whose first monster has only `skill`."""
+    world, p, mobs = arena(n=n, hero_cls=hero_cls, hero_level=hero_level)
+    m = mobs[0]
+    m.abilities.clear()
+    give(world, m, skill)
+    m.x = p.hero.x + dist
+    return world, p, mobs
+
+
+class MonsterSkillsTest(unittest.TestCase):
+    """Every skill with an AI hint can be cast by a monster through the same cast path, on heroes by faction."""
+
+    def test_charge_dashes_and_stuns_the_hero(self):
+        world, p, (m,) = with_kit("Charge", dist=200)
+        if not world.check_los(m.x, m.y, p.hero.x, p.hero.y):
+            self.skipTest("no line of sight here")
+        self.assertEqual(casting.monster_turn(world, m), "Charge")
+        self.assertIsNotNone(m.dash)
+        for _ in range(30):
+            world.step(DT)
+            if m.dash is None:
+                break
+        self.assertTrue(p.hero.has_condition(Condition.STUNNED))
+        self.assertFalse(p.hero.can_act)
+
+    def test_frost_nova_freezes_the_hero(self):
+        world, p, (m,) = with_kit("Frost Nova")
+        self.assertEqual(casting.monster_turn(world, m), "Frost Nova")
+        self.assertTrue(p.hero.has_condition(Condition.FROZEN))
+
+    def test_shout_demoralizes_and_slows_the_hero(self):
+        world, p, (m,) = with_kit("Demoralizing Shout")
+        self.assertEqual(casting.monster_turn(world, m), "Demoralizing Shout")
+        self.assertLess(p.hero.damage_mult, 1.0)
+        self.assertLess(p.hero.move_speed, p.hero.base_speed)
+        self.assertIsNone(casting.monster_turn(world, m))      # already demoralized: not worth it again
+
+    def test_holy_light_is_a_channel_that_heals_a_friend(self):
+        world, p, (healer, friend) = with_kit("Holy Light", n=2)
+        friend.hp = friend.max_hp * 0.4
+        self.assertEqual(casting.monster_turn(world, healer), "Holy Light")
+        self.assertEqual(healer.channel.skill, "Holy Light")
+        from game.engine.snapshot import make_snapshot
+        world.step(DT)
+        snap = {e["id"]: e for e in make_snapshot(world, 0)["entities"]}
+        self.assertIsNotNone(snap[healer.eid]["channel"])     # everyone sees the monster's cast bar
+        hp = friend.hp
+        p.hero.x += 2000
+        for _ in range(int(2.5 / DT)):
+            world.step(DT)
+        self.assertGreater(friend.hp, hp)
+        self.assertIsNone(healer.channel)
+
+    def test_frostbolt_channel_then_a_slowing_bolt(self):
+        world, p, (m,) = with_kit("Frostbolt", dist=150)
+        if not world.check_los(m.x, m.y, p.hero.x, p.hero.y):
+            self.skipTest("no line of sight here")
+        self.assertEqual(casting.monster_turn(world, m), "Frostbolt")
+        for _ in range(int(3 / DT)):
+            world.step(DT)
+            if p.hero.has_condition(Condition.SLOWED):
+                break
+        self.assertTrue(p.hero.has_condition(Condition.SLOWED))
+
+    def test_heroic_strike_powers_the_monsters_next_hit(self):
+        world, p, (m,) = with_kit("Heroic Strike")
+        self.assertEqual(casting.monster_turn(world, m), "Heroic Strike")
+        bonus = m.buffs["Heroic Strike"]["bonus"]
+        self.assertGreater(bonus, 0)
+        m.swing_timer = 0
+        from game.engine.entities import Entity
+        hp = p.hero.hp
+        m.hit_damage = lambda: 10.0
+        Entity.try_basic_attack(m, p.hero)
+        self.assertNotIn("Heroic Strike", m.buffs)
+        self.assertAlmostEqual(hp - p.hero.hp, (10.0 + bonus) * (1 - p.hero.armor_reduction), delta=0.01)
+
+    def test_cleave_hits_two_heroes(self):
+        world, p, (m,) = with_kit("Cleave")
+        from game.content.heroes import HERO_CLASS_BY_NAME
+        comp = world.spawn_companion(HERO_CLASS_BY_NAME["Cleric"], owner=p)
+        comp.x, comp.y = p.hero.x, p.hero.y + 15
+        hp1, hp2 = p.hero.hp, comp.hp
+        self.assertEqual(casting.monster_turn(world, m), "Cleave")
+        self.assertLess(p.hero.hp, hp1)
+        self.assertLess(comp.hp, hp2)
+
+
+class TryCastTest(unittest.TestCase):
+    def test_reasons(self):
+        world, p, (m,) = arena(hero_cls="Wizard", hero_level=10)
+        h = p.hero
+        fire = h.abilities["R"]
+        self.assertEqual(casting.try_cast(world, h, fire, None).reason, "no target")
+        self.assertEqual(casting.try_cast(world, h, fire, h).reason, "no target")          # not an enemy
+        m.x = h.x + 2000
+        self.assertEqual(casting.try_cast(world, h, fire, m).reason, "out of range")
+        h.gcd = 0.3
+        self.assertEqual(casting.try_cast(world, h, fire, m).reason, "not ready")
+
+    def test_a_failed_cast_spends_nothing(self):
+        world, p, (m,) = arena(hero_cls="Wizard", hero_level=10)
+        h, fire = p.hero, p.hero.abilities["R"]
+        m.x = h.x + 2000
+        mana = h.mana
+        casting.try_cast(world, h, fire, m)
+        self.assertEqual((fire.remaining, h.mana, h.gcd), (0, mana, 0))
+
+
 class PlaygroundTest(unittest.TestCase):
     def _run(self, *argv):
         import contextlib
@@ -202,8 +370,10 @@ class PlaygroundTest(unittest.TestCase):
             return skill_playground.main(list(argv))
 
     def test_every_castable_skill_gets_cast(self):
-        for skill in monster_casting.CASTABLE:
-            out = self._run("--skill", skill, "--secs", "25")
+        import skill_playground
+        for skill in casting.AI_CASTABLE:
+            fight = skill in skill_playground.SUPPORT_SKILLS         # support skills need someone hurt
+            out = self._run("--skill", skill, "--secs", "25", *(() if fight else ("--passive",)))
             self.assertTrue(any(c.get(skill) for c in out["casts"].values()), (skill, out))
 
     def test_support_skills_get_a_friend(self):

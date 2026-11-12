@@ -404,9 +404,7 @@ def ai_ranged(monster: Monster, heroes: list[Hero], dt: float, collision_fn=None
             # Cast time: freeze in place while shooting
             monster.apply_condition(Condition.IMMOBILIZED, 0.5)
             # Return signal to spawn projectile (damage applied on hit)
-            ranged_dmg = monster.hit_damage()
-            if "Demoralized" in getattr(monster, 'buffs', {}):
-                ranged_dmg *= monster.buffs["Demoralized"].get("damage_mult", 1.0)
+            ranged_dmg = monster.hit_damage()       # (Demoralized etc. apply when it lands: Entity.damage_mult)
             return ("ranged_attack_projectile", target, ranged_dmg)
 
     return ("move", target, 0)
@@ -533,8 +531,10 @@ def run_monster_ai(monster: Monster, heroes: list[Hero], dt: float,
     """Run aggro check + AI for a monster."""
     if not monster.alive:
         return None
-    if monster.has_condition(Condition.STUNNED) or monster.has_condition(Condition.FROZEN):
+    if not monster.can_act:
         return None
+    if monster.dash is not None or monster.channel is not None:
+        return None                       # busy dashing (Charge) or channelling (engine/actions.py)
     if not hasattr(monster, 'aggro_state'):
         setup_monster_aggro(monster)
 
