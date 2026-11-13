@@ -864,8 +864,14 @@ class Hotbar:
         for i, (r, ab) in enumerate(zip(rects, abilities)):
             ready = ab.is_ready()
             no_mana = not getattr(ab, "has_mana", True)
+            wrong_weapon = not getattr(ab, "weapon_ok", True)
             pygame.draw.rect(screen, (45, 45, 60) if ready else (30, 30, 38), r, border_radius=5)
-            if no_mana:
+            if wrong_weapon:
+                # the equipped weapon can't do this skill: a red tint over the whole slot
+                tint = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
+                tint.fill((200, 40, 40, 110))
+                screen.blit(tint, (r.x, r.y))
+            elif no_mana:
                 # not enough mana: a blue tint over the whole slot
                 tint = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
                 tint.fill((40, 70, 200, 90))
@@ -883,7 +889,9 @@ class Hotbar:
             screen.blit(font.render(info, True, (190, 190, 210)), (r.x + 24, r.y + 25))
             # right side: cooldown left while cooling down, otherwise the mana cost (red when you can't pay it)
             cost = getattr(ab, "mana_cost", 0)
-            if ab.remaining > 0:
+            if wrong_weapon:
+                right = font.render("weapon", True, (255, 140, 140))
+            elif ab.remaining > 0:
                 right = font.render(f"{ab.remaining:.1f}s", True, (190, 190, 210))
             elif cost:
                 right = font.render(f"{cost:g} MP", True, (255, 120, 120) if no_mana else (140, 180, 255))
@@ -987,7 +995,7 @@ def draw_hero_figure(v, cx, cy, flash=False):
     if sx < -2 * sw or sx > WIDTH + sw or sy < -2 * sh or sy > HEIGHT + sh:
         return None
     main, off = (getattr(v, "equipment", None) or [None, None])[:2]
-    style, frame = gear_art.pose_for(main, off, getattr(v, "attack", None), getattr(v, "channel", None),
+    style, frame = gear_art.pose_for(getattr(v, "attack", None), getattr(v, "channel", None),
                                      getattr(v, "channel_skill", None))
     if main or off or style:
         key = HERO_CLASS_BY_NAME[v.class_name]["sprite_key"]

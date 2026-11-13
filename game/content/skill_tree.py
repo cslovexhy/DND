@@ -10,6 +10,8 @@ it already has. The schedule is a fixed list per class, so a hero's skills are a
 (nothing extra to save, companions and joined players get the right skills too).
 """
 
+from game.content.equipment import allowed_names
+
 LEVEL_STEP = 2   # a new skill or skill level every this many character levels
 
 # One entry per step: the ability key that gets a new level. The first entry is the starting skill.
@@ -183,7 +185,12 @@ _DESCRIPTIONS = {
 
 
 def describe(hero, ab) -> str:
-    """What the skill does at its current level, with real numbers (and its mana cost)."""
+    """What the skill does at its current level, with real numbers (its mana cost, and the weapons it needs)."""
     fn = _DESCRIPTIONS.get(ab.name)
     text = fn(hero, ab) if fn else ab.effect
-    return f"{text} Costs {ab.mana_cost:g} mana." if ab.mana_cost else text
+    if ab.mana_cost:
+        text = f"{text} Costs {ab.mana_cost:g} mana."
+    weapons = allowed_names(ab.name)
+    if weapons:
+        text += f" Needs bare hands or: {', '.join(weapons)}."
+    return text

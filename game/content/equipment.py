@@ -57,6 +57,66 @@ GEAR = {
 # Each class's iconic weapon: its swing matches the class swing (no speed cost).
 ICONIC = {"Rogue": "dagger", "Fighter": "axe", "Paladin": "warhammer", "Cleric": "wand", "Wizard": "staff"}
 
+# --- which skills a weapon allows, and how they animate (user rule: default = every weapon; spells just "raise") ---
+# Weapon families (main-hand weapon decides; bare hands are always allowed, so a character without gear can use
+# every skill exactly as before).
+LIGHT_BLADES = {"dagger", "short_sword", "wooden_sword"}
+SWORDS = {"short_sword", "wooden_sword", "broadsword"}
+EDGED = {"dagger", "short_sword", "wooden_sword", "broadsword", "cleaver", "axe", "double_axe"}
+MELEE = EDGED | {"warhammer", "spear", "staff"}            # everything but the wand
+STAB_WEAPONS = LIGHT_BLADES | {"spear"}                     # things you can thrust a point with, quickly
+SKILL_WEAPONS = {  # skill -> weapons allowed (missing = every weapon)
+    "Stab": STAB_WEAPONS,                                   # no axes, hammers, staves, cleavers, broadswords
+    "Ambush": LIGHT_BLADES,                                 # a hidden blade in the back
+    "Poison Dagger": LIGHT_BLADES - {"wooden_sword"},       # needs a metal blade to coat
+    "Strike": MELEE,                                        # any melee weapon (not a wand)
+    "Smite": MELEE,
+    "Cleave": EDGED - {"dagger"} | {"warhammer", "staff"},  # a wide sweep needs reach: no dagger, spear or wand
+    "Heroic Strike": MELEE,                                 # empowers the next Strike / Cleave
+}
+# skill -> animation: "weapon" = the weapon's own basic move (chop, or thrust for daggers / spears / fists),
+# "thrust", "chop", "sweep" (wide Cleave arc); missing = "raise" (spells, buffs, heals: the weapon goes up).
+SKILL_ANIM = {
+    "Strike": "weapon", "Smite": "chop", "Stab": "thrust", "Ambush": "thrust", "Cleave": "sweep",
+}
+NO_ANIM = {"Stealth", "Charge"}                             # stealth fades out, Charge dashes: no weapon pose
+
+
+def skill_allows(skill, item):
+    """Can `skill` be used with `item` in the main hand (None = bare hands: always)?"""
+    return item is None or item in SKILL_WEAPONS.get(skill, (item,))
+
+
+def weapon_move(item):
+    """A weapon's own basic move: "thrust" for stabbing weapons and bare fists, else "chop"."""
+    return "thrust" if item is None or item in ("dagger", "spear") else "chop"
+
+
+def skill_anim(skill, item):
+    """How `skill` animates with `item` in hand: "thrust" / "chop" / "sweep" / "raise", or None (no pose)."""
+    if skill in NO_ANIM:
+        return None
+    a = SKILL_ANIM.get(skill, "raise")
+    return weapon_move(item) if a == "weapon" else a
+
+
+def attack_hand(skill, equipment, count):
+    """Which hand swings this time ("main" / "off"): dual wielders alternate on each melee attack, but only with an
+    off-hand weapon the skill allows (a shield or a disallowed weapon just stays at the side)."""
+    off = equipment.get("off")
+    if (skill_anim(skill, equipment.get("main")) in ("thrust", "chop", "sweep") and off in GEAR
+            and GEAR[off]["kind"] == "weapon" and skill_allows(skill, off) and count % 2 == 0):
+        return "off"
+    return "main"
+
+
+def allowed_names(skill):
+    """Player-facing list of the weapons a skill allows (None = any)."""
+    allowed = SKILL_WEAPONS.get(skill)
+    if allowed is None:
+        return None
+    return [GEAR[k]["name"] for k in GEAR if k in allowed]
+
 NO_GEAR = {"a": 1.0, "b": 0.0, "swing": 0.0, "weight": 0, "block": 0.0, "move_mult": 1.0}
 
 
@@ -170,4 +230,7 @@ def describe(item_id):
     text = f"{hands}. {dmg}. {g['swing']:g}s swing. Weight {g['weight']}."
     if g["hands"] == "1h":
         text += " Rogues and Fighters can dual wield it (off hand: half the bonus)."
+    banned = [s for s in SKILL_WEAPONS if item_id not in SKILL_WEAPONS[s]]
+    if banned:
+        text += f" Can't be used for: {', '.join(banned)}."
     return text

@@ -375,6 +375,8 @@ class PlayerState:
                 self.cast_ability(cmd.ab_key, ab, cmd.x, cmd.y, enemy, ally=self._friendly(cmd.ally_id))
             elif ab.remaining <= 0 and not ab.has_mana():
                 world.float_text(hero.x, hero.y - 30, "Not enough mana!", (120, 160, 255))
+            elif not ab.weapon_ok():
+                world.float_text(hero.x, hero.y - 30, f"Can't {ab.name} with this weapon!", (255, 110, 110))
             if attack and enemy.alive:
                 self.selected_target = enemy      # (casting clears it; keep attacking afterwards)
             elif cmd.fallback_move:

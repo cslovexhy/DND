@@ -18,13 +18,13 @@ A failed cast spends nothing and says why (CastResult.reason): "not ready", "bus
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+from game.content.equipment import attack_hand, skill_anim
 from game.engine import abilities as A
 from game.engine import combat
 from game.engine.entities import Condition
 from game.engine.events import SkillCast
 
 SUPPORT_RANGE = 300          # px: how far a friend can be for an ally skill (hero_ai.SUPPORT_RANGE is the same)
-MELEE_ANIM_RANGE = 100       # px: a swing skill with this little range animates as a melee swing (else a cast)
 
 
 @dataclass
@@ -179,7 +179,7 @@ def try_cast(world, caster, ab, target=None):
     if spec is None:
         return CastResult(False, "unknown skill")
     if not caster.can_act or caster.gcd > 0 or not ab.is_ready():
-        return CastResult(False, "not ready")
+        return CastResult(False, "wrong weapon" if not ab.weapon_ok() else "not ready")
     if caster.dash is not None or (spec.channel and caster.channel is not None):
         return CastResult(False, "busy")
     if ab.out_of_combat_only and combat.in_combat(world, caster):
@@ -201,7 +201,11 @@ def try_cast(world, caster, ab, target=None):
     if spec.gcd:
         caster.gcd = caster.GCD_DURATION
     if not spec.channel:                          # (channels animate from their progress, then "release")
-        caster.mark_attack("melee" if spec.swing and ab.range <= MELEE_ANIM_RANGE else "cast")
+        eq = getattr(caster, "equipment", None) or {}
+        hand = attack_hand(ab.name, eq, caster.next_attack_count())
+        style = skill_anim(ab.name, eq.get(hand) if hand == "off" else eq.get("main"))
+        if style is not None:
+            caster.mark_attack(style, hand)
     world.events.append(SkillCast(caster.eid, ab.name, target.eid if target is not None else caster.eid))
     return CastResult(True, "", target)
 

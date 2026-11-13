@@ -264,7 +264,7 @@ ARM_COLORS = {  # sprite_key -> (sleeve, fist)
     "fighter": (PAL["B"], PAL["D"]), "paladin": (PAL["G"], (225, 154, 101)), "rogue": (PAL["B"], PAL["G"]),
     "wizard": (PAL["K"], PAL["G"]), "cleric": ((189, 108, 74), PAL["G"]),
 }
-from game.client.anim import THRUST_WEAPONS, STYLES, swing_style, pose_for   # noqa: F401 (re-exported)
+from game.client.anim import STYLES, pose_for   # noqa: F401 (re-exported)
 _pose_cache = {}
 
 
@@ -371,30 +371,49 @@ def _idle_on_pose_canvas(hero_tile, key, main, off):
 
 def _draw_pose(hero_tile, key, main, off, style, frame):
     sx, sy = SHOULDER_R
-    if style == "dual" and frame == "left":
-        c = _idle_on_pose_canvas(hero_tile, key, main, None)       # right hand back at the side
+    if style in ("chop_l", "thrust_l"):
+        # off-hand attack: the main-hand weapon rests at the right side, the left arm swings across the body.
+        # The left arm is one straight line too, from a shoulder at the left edge.
+        c = _idle_on_pose_canvas(hero_tile, key, main, None)
         c.erase_arm("L")
-        c.speed_lines([((-4, 11), 1), ((-6, 13), 0)])
-        c.weapon(off, (15, 11), 90)
-        c.arm(key, (2, 11), (15, 11))
+        lsx = 2
+        if style == "thrust_l":
+            reach = {"pull": 7, "thrust": 15, "recover": 12}[frame]
+            if frame == "thrust":
+                c.speed_lines([((-4, 10), 1), ((-6, 12), 0)])
+            c.weapon(off, (reach, 11), 90)
+            c.arm(key, (lsx, 11), (reach, 11))
+        else:
+            hand, deg, shoulder = {"windup": ((lsx, sy - 6), 45, (lsx, sy)),
+                                   "strike": ((15, 10), 90, (lsx, 10)),
+                                   "follow": ((14, 12), 135, (lsx, 12))}[frame]
+            if frame == "strike" and off in SPRITES:
+                c.smear((lsx, sy), (15 - lsx) + SPRITES[off][1][1], -80, -8)
+            c.weapon(off, hand, deg)
+            c.arm(key, shoulder, hand)
         return c.s
     c = _Canvas(hero_tile)
     c.erase_arm("R")
-    if style != "dual":
-        c.off_item(off)
+    c.off_item(off)                                  # shield / off-hand weapon resting at the left side
+    gy = SPRITES[main][1][1] if main in SPRITES else 0
     if style == "chop":
         hand, deg = {"windup": ((sx, sy - 6), -45), "strike": ((sx + 4, sy), 90),
                      "follow": ((sx + 4, sy + 4), 135)}[frame]
         if frame == "strike" and main in SPRITES:
-            gy = SPRITES[main][1][1]
             c.smear(SHOULDER_R, (hand[0] - sx) + gy, -100, -8)
         c.weapon(main, hand, deg)
         c.arm(key, SHOULDER_R, hand)
-    elif style in ("thrust", "dual"):
-        if style == "dual":
-            c.off_item(off)
-        reach = {"pull": 1, "thrust": 5, "recover": 3, "right": 5}[frame]
-        if frame in ("thrust", "right"):
+    elif style == "sweep":
+        # Cleave: weapon held back behind the head, then a wide flat arc in front of the hero
+        hand, deg = {"windup": ((sx, sy - 6), -90), "strike": ((sx + 4, sy), 90),
+                     "follow": ((sx + 4, sy + 4), 135)}[frame]
+        if frame == "strike":
+            c.smear(SHOULDER_R, (hand[0] - sx) + gy, -150, 40, thick=4)
+        c.weapon(main, hand, deg)
+        c.arm(key, SHOULDER_R, hand)
+    elif style == "thrust":
+        reach = {"pull": 1, "thrust": 5, "recover": 3}[frame]
+        if frame == "thrust":
             c.speed_lines([((-6, sy - 1), -1), ((-8, sy + 1), -2), ((-5, sy + 3), 0)])
         hand = (sx + reach, sy)
         c.weapon(main, hand, 90)

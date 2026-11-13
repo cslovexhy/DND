@@ -8,7 +8,7 @@ from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import Optional
 
-from game.content.equipment import NO_GEAR, empty_equipment, gear_stats
+from game.content.equipment import NO_GEAR, empty_equipment, gear_stats, skill_allows
 # === SCALING CONSTANTS ===
 # Board game HP 1-12 → ARPG HP (×50 for granularity)
 HP_SCALE = 50
@@ -162,8 +162,14 @@ class Ability:
         return base_damage * self.multiplier + self.flat_bonus
 
     def is_ready(self) -> bool:
-        """Off cooldown and the caster can pay the mana cost."""
-        return self.remaining <= 0 and self.has_mana()
+        """Off cooldown, the caster can pay the mana cost, and its weapon allows this skill."""
+        return self.remaining <= 0 and self.has_mana() and self.weapon_ok()
+
+    def weapon_ok(self) -> bool:
+        """The caster's main-hand weapon allows this skill (content/equipment.SKILL_WEAPONS; bare hands and
+        monsters: always)."""
+        eq = getattr(self.caster, "equipment", None)
+        return not eq or skill_allows(self.name, eq.get("main"))
 
     def use(self):
         """Start the cooldown and spend the mana cost (every cast path calls this when the skill really fires)."""
@@ -542,13 +548,16 @@ class Entity:
 
     block_chance = 0.0                    # share of monster basic attacks this entity blocks (heroes: a shield)
     last_blocked = False                  # the last basic attack (try_basic_attack) was blocked
-    attack_anim = None                    # [kind, seconds since it started, count] for the client's attack frames
+    attack_anim = None                    # [style, seconds since it started, count, hand] for the client's frames
 
-    def mark_attack(self, kind):
+    def mark_attack(self, style, hand="main"):
         """Remember an attack / cast for the client's animation (cosmetic only: never read by the simulation).
-        kind: "melee" (a weapon swing), "cast" (an instant spell) or "release" (a channel just finished)."""
+        style: "thrust" / "chop" / "sweep" (melee), "raise" (an instant spell) or "release" (a channel finished)."""
         seq = self.attack_anim[2] + 1 if self.attack_anim else 1
-        self.attack_anim = [kind, 0.0, seq]
+        self.attack_anim = [style, 0.0, seq, hand]
+
+    def next_attack_count(self):
+        return self.attack_anim[2] + 1 if self.attack_anim else 1
 
     def try_block(self) -> bool:
         """Roll to block a monster's basic attack (only rolls, and so only uses random numbers, with a shield)."""

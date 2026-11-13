@@ -43,7 +43,7 @@ def _entity(e, kind, ctl=None):
         d["equipment"] = [e.equipment.get("main"), e.equipment.get("off")]   # drawn in the hands (client art)
         # attack animation (cosmetic): [kind, seconds since it started, count] while recent; which channel it is
         a = e.attack_anim
-        d["attack"] = [a[0], a[1], a[2]] if a is not None and a[1] < ATTACK_ANIM_SECS else None
+        d["attack"] = list(a) if a is not None and a[1] < ATTACK_ANIM_SECS else None
         d["channel_skill"] = e.channel.skill if getattr(e, "channel", None) is not None else None
         d["xp"], d["gold"], d["kills"] = e.xp, e.gold, e.kills
     return d
@@ -130,7 +130,7 @@ def make_snapshot(world, player_id=0):
                        "ready": ((a.is_ready() and not (a.out_of_combat_only and fighting))
                                  or (a.toggle and hero.stealthed)),          # stealthed: press again to cancel
                        "level": a.level, "max_level": a.max_level, "range": a.range, "cooldown": a.cooldown,
-                       "mana_cost": a.mana_cost, "has_mana": a.has_mana()}
+                       "mana_cost": a.mana_cost, "has_mana": a.has_mana(), "weapon_ok": a.weapon_ok()}
                       for k, a in hero.abilities.items()],
         "player_id": player.player_id,
         "quests": _quests(player),
