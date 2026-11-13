@@ -100,6 +100,42 @@ class NetTest(unittest.TestCase):
             b.close()
             a.close()
 
+    def test_other_players_see_your_gear_and_gear_changes(self):
+        """A joiner's saved equipment arrives with them, and equipping over the network shows on the other
+        player's screen (the ally entity's "equipment", which the client draws in the hands)."""
+        a = RemoteHost("127.0.0.1", self.srv.port)
+        b = RemoteHost("127.0.0.1", self.srv.port,
+                       character={"name": "kid", "class_name": "Rogue", "level": 3, "xp": 0, "gold": 0,
+                                  "kills": 0, "quests": {},
+                                  "inventory": [{"slot": 0, "item": "dagger", "count": 1}],
+                                  "equipment": {"main": "dagger", "off": None}})
+        try:
+            va, vb = ClientView(), ClientView()
+            va.apply(a.snapshot())
+            vb.apply(b.snapshot())
+
+            def pump():
+                for h, v in ((a, va), (b, vb)):
+                    snap, _ = h.step()
+                    if snap:
+                        v.apply(snap)
+
+            def a_sees_one_dagger():
+                pump()
+                return bool(va.allies) and va.allies[0].equipment == ["dagger", None]
+            self.assertTrue(wait_until(a_sees_one_dagger), "host player should see the joiner's dagger")
+            b.send(C.UseItem(0))                                 # second dagger into the off hand (dual wield)
+
+            def a_sees_two_daggers():
+                pump()
+                return va.allies[0].equipment == ["dagger", "dagger"]
+            self.assertTrue(wait_until(a_sees_two_daggers), "the equip change should reach the other player")
+            self.assertEqual(vb.you.equipment, {"main": "dagger", "off": "dagger"})
+            self.assertEqual(vb.you.progress["equipment"], {"main": "dagger", "off": "dagger"})   # saved by b
+        finally:
+            b.close()
+            a.close()
+
     def test_joiner_leaving_removes_their_hero(self):
         a = RemoteHost("127.0.0.1", self.srv.port)
         b = RemoteHost("127.0.0.1", self.srv.port, class_name="Cleric")
