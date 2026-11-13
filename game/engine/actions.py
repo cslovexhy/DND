@@ -122,6 +122,8 @@ def _update_channel(world, e, dt):
     if c.remaining <= 0:
         e.channel = None
         c.on_complete(world, e, c.target)
+        if c.skill != "Charge":           # (Charge is a dash wind-up, not a spell)
+            e.mark_attack("release")
     elif c.needs_target and (c.target is None or not c.target.alive):
         cancel_channel(e)                 # the target died mid-channel
 

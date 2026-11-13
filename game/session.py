@@ -987,12 +987,14 @@ def draw_hero_figure(v, cx, cy, flash=False):
     if sx < -2 * sw or sx > WIDTH + sw or sy < -2 * sh or sy > HEIGHT + sh:
         return None
     main, off = (getattr(v, "equipment", None) or [None, None])[:2]
-    if main or off:
+    style, frame = gear_art.pose_for(main, off, getattr(v, "attack", None), getattr(v, "channel", None),
+                                     getattr(v, "channel_skill", None))
+    if main or off or style:
         key = HERO_CLASS_BY_NAME[v.class_name]["sprite_key"]
-        comp = gear_art.compose(HERO_TILES_RAW[key], key, main, off)
+        comp, (px_, pt_) = gear_art.figure(HERO_TILES_RAW[key], key, main, off, style, frame)
         k = sw / 16                                       # screen px per source pixel
         img = pygame.transform.scale(comp, (int(comp.get_width() * k), int(comp.get_height() * k)))
-        ox, oy = gear_art.body_offset(k)
+        ox, oy = px_ * k, pt_ * k
         if v.facing_left:
             img = pygame.transform.flip(img, True, False)
             ox = img.get_width() - ox - sw

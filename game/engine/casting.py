@@ -24,6 +24,7 @@ from game.engine.entities import Condition
 from game.engine.events import SkillCast
 
 SUPPORT_RANGE = 300          # px: how far a friend can be for an ally skill (hero_ai.SUPPORT_RANGE is the same)
+MELEE_ANIM_RANGE = 100       # px: a swing skill with this little range animates as a melee swing (else a cast)
 
 
 @dataclass
@@ -199,6 +200,8 @@ def try_cast(world, caster, ab, target=None):
         caster.swing_timer = caster.weapon_speed
     if spec.gcd:
         caster.gcd = caster.GCD_DURATION
+    if not spec.channel:                          # (channels animate from their progress, then "release")
+        caster.mark_attack("melee" if spec.swing and ab.range <= MELEE_ANIM_RANGE else "cast")
     world.events.append(SkillCast(caster.eid, ab.name, target.eid if target is not None else caster.eid))
     return CastResult(True, "", target)
 

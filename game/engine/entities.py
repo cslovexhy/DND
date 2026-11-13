@@ -464,6 +464,8 @@ class Entity:
         self.flash_timer = max(0, self.flash_timer - dt)
         self.swing_timer = max(0, self.swing_timer - dt)
         self.gcd = max(0, self.gcd - dt)
+        if self.attack_anim is not None:
+            self.attack_anim[1] += dt
         self.update_conditions(dt)
         # Ability cooldowns
         for ab in self.abilities.values():
@@ -540,6 +542,13 @@ class Entity:
 
     block_chance = 0.0                    # share of monster basic attacks this entity blocks (heroes: a shield)
     last_blocked = False                  # the last basic attack (try_basic_attack) was blocked
+    attack_anim = None                    # [kind, seconds since it started, count] for the client's attack frames
+
+    def mark_attack(self, kind):
+        """Remember an attack / cast for the client's animation (cosmetic only: never read by the simulation).
+        kind: "melee" (a weapon swing), "cast" (an instant spell) or "release" (a channel just finished)."""
+        seq = self.attack_anim[2] + 1 if self.attack_anim else 1
+        self.attack_anim = [kind, 0.0, seq]
 
     def try_block(self) -> bool:
         """Roll to block a monster's basic attack (only rolls, and so only uses random numbers, with a shield)."""

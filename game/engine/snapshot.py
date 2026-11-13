@@ -7,6 +7,7 @@ quests...). The client never reads the World directly (design/06 phase 3); over 
 """
 
 SNAPSHOT_VERSION = 1
+ATTACK_ANIM_SECS = 0.5        # an attack is sent to clients for this long (its animation is shorter)
 
 from game.engine.ai import is_fighting   # noqa: E402  (pure: no pygame)
 
@@ -40,6 +41,10 @@ def _entity(e, kind, ctl=None):
         d["chill_visual"] = getattr(e, "chill_visual", 0.0)
         d["weapon_speed"] = e.weapon_speed
         d["equipment"] = [e.equipment.get("main"), e.equipment.get("off")]   # drawn in the hands (client art)
+        # attack animation (cosmetic): [kind, seconds since it started, count] while recent; which channel it is
+        a = e.attack_anim
+        d["attack"] = [a[0], a[1], a[2]] if a is not None and a[1] < ATTACK_ANIM_SECS else None
+        d["channel_skill"] = e.channel.skill if getattr(e, "channel", None) is not None else None
         d["xp"], d["gold"], d["kills"] = e.xp, e.gold, e.kills
     return d
 
