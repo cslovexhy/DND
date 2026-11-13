@@ -240,7 +240,8 @@ class World:
             self.on_monster_spawned(m)
         m.skills = dict(mt.get("skills", {}))
         m.unique = mt.get("unique", False)  # one-of-a-kind minion: name shown, but respawns/leashes like a normal mob
-        m.category = mt["category"]   # humanoid / beast / demon: decides money and food drops
+        m.category = mt["category"]   # humanoid / beast / demon: decides money drops
+        m.drops = mt["drops"]         # this type's drop table (monsters.MONSTER_DROPS, or the map's override)
         level_range = self.world_map.data.get("monster_levels", {}).get(sp.type)
         m.leveled = level_range is not None
         if m.leveled:                 # this map gives the type a level range: HP and XP follow the rolled level
@@ -399,8 +400,8 @@ class World:
             self.ground_items.remove(g)
 
     def roll_monster_drops(self, m):
-        """A monster died: roll its drops (content/items.DROP_TABLE) and lay them where it fell."""
-        drops = roll_drops(m.level, random, getattr(m, "category", None))
+        """A monster died: roll its drop table (content/monsters.MONSTER_DROPS) and lay the items where it fell."""
+        drops = roll_drops(getattr(m, "drops", ()), m.level, random)
         for i, item in enumerate(drops):
             x, y = m.x + (i - (len(drops) - 1) / 2) * 14, m.y   # one drop where it fell; several side by side
             if self.is_wall(x, y):

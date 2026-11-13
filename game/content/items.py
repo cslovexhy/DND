@@ -1,4 +1,5 @@
-"""Items (pure data; no pygame): what each item does, its icon and which monsters drop it.
+"""Items (pure data; no pygame): what each item does, its icon, and rolling a monster's drop table (the tables
+themselves are per monster type: content/monsters.MONSTER_DROPS).
 
 Icons are (sheet, col, row) references the client turns into art: "dungeon" = assets/kenney_dungeon tilemap,
 "rpg" = assets/kenney_rpg roguelike sheet (both 16 px tiles with a 1 px gap in the copies main.py loads).
@@ -30,37 +31,28 @@ ITEMS = {
     "wine":          {"name": "Wine", "icon": ("rpg", 56, 14), "kind": "drink", "heal": 300, "mana": 300},
     "elven_nectar":  {"name": "Elven Nectar", "icon": ("rpg", 55, 15), "kind": "drink", "heal": 500, "mana": 500,
                       "buff": {"hp_regen_pct": 1.0, "mana_regen_pct": 1.0}, "buff_duration": 600.0},
-    "bread":         {"name": "Bread", "icon": ("rpg", 56, 12), "kind": "food", "heal": 120},
-    "drumstick":     {"name": "Drumstick", "icon": ("rpg", 55, 13), "kind": "food", "heal": 200},
+    "bread":         {"name": "Bread", "icon": ("rpg", 54, 13), "kind": "food", "heal": 120},
+    "drumstick":     {"name": "Drumstick", "icon": ("rpg", 56, 12), "kind": "food", "heal": 200},
     "roast_chicken": {"name": "Roast Chicken", "icon": ("rpg", 54, 15), "kind": "food", "heal": 300,
                       "buff": {"damage_pct": 0.05, "max_hp_pct": 0.05}, "buff_duration": 600.0},
     "sushi_plate":   {"name": "Sushi Plate", "icon": ("rpg", 56, 13), "kind": "food", "heal": 200,
                       "buff": {"damage_pct": 0.10}, "buff_duration": 600.0},
 }
 
-# (item, chance per kill, lowest monster level, highest monster level). Every row rolls separately on each kill.
-DROP_TABLE = [
-    ("health_potion", 0.01, 1, 9),     # "any mob lower than level 10"
-    ("bread",         0.01, 1, 10),
-    ("drumstick",     0.01, 3, 10),
-    ("roast_chicken", 0.01, 4, 10),
-    ("sushi_plate",   0.01, 4, 10),
-]
-
-BEAST_FOOD_MULT = 3      # beasts (monsters.MONSTER_CATEGORY) drop food 3x as often (they carry no money)
-
 STARTING_INVENTORY = [{"slot": 0, "item": "health_potion", "count": 3}]
 
 
-def drop_chance(item, base_chance, category):
-    return base_chance * BEAST_FOOD_MULT if category == "beast" and ITEMS[item]["kind"] == "food" else base_chance
-
-
-def roll_drops(monster_level, rng, category=None):
-    """Items a monster of this level and category drops (each DROP_TABLE row rolls once with `rng`, e.g. the
-    random module)."""
-    return [item for item, chance, lo, hi in DROP_TABLE
-            if lo <= monster_level <= hi and rng.random() < drop_chance(item, chance, category)]
+def roll_drops(table, monster_level, rng):
+    """Items a monster drops from its drop table (content/monsters.MONSTER_DROPS: (item, chance) or
+    (item, chance, min_lv, max_lv)); each entry rolls once with `rng`, e.g. the random module."""
+    out = []
+    for entry in table:
+        item, chance = entry[0], entry[1]
+        if len(entry) > 2 and not entry[2] <= monster_level <= entry[3]:
+            continue
+        if rng.random() < chance:
+            out.append(item)
+    return out
 
 
 def _restores(it):

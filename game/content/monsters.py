@@ -66,6 +66,41 @@ for _key, _stats in SPAWN_STATS.items():
     _stats["category"] = MONSTER_CATEGORY[_key]       # KeyError = a new monster type without a category
 
 
+# --- Drop tables (items in content/items.py) ----------------------------------------------------------------------
+# Every monster type has its own list. Each entry rolls separately on every kill:
+#   (item, chance)                  any level
+#   (item, chance, min_lv, max_lv)  only from monsters of that level range
+# A map spawn point may override a type's list ("stats": {"drops": [...]}). Shared lists below are just a starting
+# point: give a type its own list to tune it.
+HUMANOID_DROPS = [            # people carry provisions (bread) and the odd potion or cooked meal
+    ("health_potion", 0.01),
+    ("bread",         0.03),
+    ("roast_chicken", 0.01),
+    ("sushi_plate",   0.01),
+    ("elven_nectar",  0.005, 10, 20),   # rare, high-level only: never in Northshire (L1-5)
+]
+BEAST_DROPS = [               # animals drop meat
+    ("drumstick",     0.03),
+]
+DEMON_DROPS = [               # not designed yet (user): what level-1 demons dropped under the old shared table
+    ("health_potion", 0.01),
+    ("bread",         0.01),
+]
+MONSTER_DROPS = {
+    # humanoids
+    "kobold_dragonshield": HUMANOID_DROPS, "orc_smasher": HUMANOID_DROPS, "orc_archer": HUMANOID_DROPS,
+    "duergar_guard": HUMANOID_DROPS, "human_cultist": HUMANOID_DROPS, "garrick_padfoot": HUMANOID_DROPS,
+    "meerak": HUMANOID_DROPS, "margrath": HUMANOID_DROPS, "karash": HUMANOID_DROPS, "vecna": HUMANOID_DROPS,
+    # beasts
+    "snake": BEAST_DROPS, "grey_wolf": BEAST_DROPS, "rage_drake": BEAST_DROPS, "ashardalon": BEAST_DROPS,
+    # demons
+    "legion_devil": DEMON_DROPS, "demogorgon": DEMON_DROPS, "demodog": DEMON_DROPS, "demobat": DEMON_DROPS,
+    "gibbering_mouther": DEMON_DROPS, "grell": DEMON_DROPS, "otyugh": DEMON_DROPS, "bellax": DEMON_DROPS,
+}
+for _key, _stats in SPAWN_STATS.items():
+    _stats["drops"] = MONSTER_DROPS[_key]             # KeyError = a new monster type without a drop table
+
+
 def humanoid_money(level, rng):
     """Bronze a humanoid of this level drops: round(max(5, level x 8 - 40) x 0.8..1.2)."""
     return int(round(max(5, level * 8 - 40) * rng.uniform(0.8, 1.2)))

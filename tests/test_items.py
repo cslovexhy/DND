@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from game import saves
-from game.content.items import DROP_TABLE, ITEMS, POTION_COOLDOWN, describe, roll_drops
+from game.content.items import ITEMS, POTION_COOLDOWN, describe, roll_drops
 from game.engine import commands as C
 from game.engine.bootstrap import create_world, sanitize_character
 from game.engine.inventory import SIZE, Inventory
@@ -296,22 +296,56 @@ class FoodTest(unittest.TestCase):
 
 
 class DropTest(unittest.TestCase):
-    def test_drop_levels(self):
-        always = FixedRng(0.0)
-        self.assertEqual(roll_drops(1, always), ["health_potion", "bread"])
-        self.assertEqual(roll_drops(3, always), ["health_potion", "bread", "drumstick"])
-        self.assertEqual(roll_drops(9, always), ["health_potion", "bread", "drumstick", "roast_chicken",
-                                                 "sushi_plate"])
-        self.assertEqual(roll_drops(10, always), ["bread", "drumstick", "roast_chicken", "sushi_plate"])
-        self.assertEqual(roll_drops(11, always), [])
-        self.assertEqual(roll_drops(5, FixedRng(0.011)), [])      # 1% each
-        self.assertTrue(all(chance == 0.01 for _, chance, _, _ in DROP_TABLE))
+    def test_every_monster_type_has_a_drop_table_of_real_items(self):
+        from game.content.monsters import SPAWN_STATS
+        for key, stats in SPAWN_STATS.items():
+            self.assertIsInstance(stats["drops"], list, key)
+            for entry in stats["drops"]:
+                self.assertIn(entry[0], ITEMS, key)
+                self.assertTrue(0 < entry[1] <= 1, key)
+                self.assertIn(len(entry), (2, 4), key)
 
-    def test_drop_rate_is_about_1_percent(self):
+    def test_bread_from_humanoids_drumstick_from_beasts_at_3_percent_any_level(self):
+        from game.content.monsters import SPAWN_STATS
+        for lv in (1, 5, 10, 30):
+            self.assertIn("bread", roll_drops(SPAWN_STATS["human_cultist"]["drops"], lv, FixedRng(0.029)))
+            self.assertNotIn("bread", roll_drops(SPAWN_STATS["grey_wolf"]["drops"], lv, FixedRng(0.0)))
+            self.assertEqual(roll_drops(SPAWN_STATS["grey_wolf"]["drops"], lv, FixedRng(0.029)), ["drumstick"])
+            self.assertNotIn("drumstick", roll_drops(SPAWN_STATS["kobold_dragonshield"]["drops"], lv, FixedRng(0.0)))
+        self.assertEqual(roll_drops(SPAWN_STATS["snake"]["drops"], 2, FixedRng(0.031)), [])
+
+    def test_level_bounded_entries(self):
+        table = [("bread", 0.5), ("elven_nectar", 0.005, 10, 20)]
+        always = FixedRng(0.0)
+        self.assertEqual(roll_drops(table, 9, always), ["bread"])
+        self.assertEqual(roll_drops(table, 10, always), ["bread", "elven_nectar"])
+        self.assertEqual(roll_drops(table, 20, always), ["bread", "elven_nectar"])
+        self.assertEqual(roll_drops(table, 21, always), ["bread"])
+        self.assertEqual(roll_drops(table, 15, FixedRng(0.006)), ["bread"])     # nectar 0.5%
+
+    def test_northshire_never_drops_elven_nectar(self):
+        import json
+        from game.content.monsters import SPAWN_STATS
+        with open(MAP) as f:
+            levels = json.load(f)["monster_levels"]
+        for kind, rng_ in levels.items():
+            for lv in range(rng_[0], rng_[1] + 1):
+                self.assertNotIn("elven_nectar", roll_drops(SPAWN_STATS[kind]["drops"], lv, FixedRng(0.0)))
+
+    def test_drop_rate_matches_the_table(self):
+        from game.content.monsters import SPAWN_STATS
         rng = random.Random(7)
         n = 20000
-        got = sum(len(roll_drops(2, rng)) for _ in range(n))
-        self.assertAlmostEqual(got / n, 0.02, delta=0.004)        # potion + bread at level 2
+        got = sum(len(roll_drops(SPAWN_STATS["grey_wolf"]["drops"], 2, rng)) for _ in range(n))
+        self.assertAlmostEqual(got / n, 0.03, delta=0.005)
+
+    def test_map_spawn_can_override_the_drop_table(self):
+        random.seed(2)
+        world, p = create_world(MAP, saves.blank_character("t", "Fighter", level=10))
+        sp = next(m.spawn_point for m in world.game_state.monsters if m.spawn_type == "grey_wolf")
+        sp.stats = {"drops": [("wine", 1.0)]}
+        m = world.spawn_single_world_monster(sp)
+        self.assertEqual(m.drops, [("wine", 1.0)])
 
     def test_kill_drops_on_the_ground_and_pickup_puts_it_in_the_backpack(self):
         random.seed(2)
@@ -368,12 +402,10 @@ class LootByCategoryTest(unittest.TestCase):
         rng = random.Random(3)
         self.assertTrue(all(4 <= humanoid_money(3, rng) <= 6 for _ in range(200)))
 
-    def test_beasts_drop_food_3x_but_not_more_potions(self):
-        rng = FixedRng(0.025)                    # between 1% and 3%
-        self.assertEqual(roll_drops(5, rng, "beast"), ["bread", "drumstick", "roast_chicken", "sushi_plate"])
-        self.assertEqual(roll_drops(5, rng, "humanoid"), [])
-        self.assertEqual(roll_drops(5, rng, "demon"), [])
-        self.assertEqual(roll_drops(5, FixedRng(0.005), "beast")[0], "health_potion")   # still 1%
+    def test_beasts_drop_only_meat(self):
+        from game.content.monsters import SPAWN_STATS
+        for kind in ("grey_wolf", "snake", "rage_drake", "ashardalon"):
+            self.assertEqual(roll_drops(SPAWN_STATS[kind]["drops"], 5, FixedRng(0.0)), ["drumstick"])
 
     def test_only_humanoids_give_money(self):
         random.seed(4)
