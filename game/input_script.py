@@ -11,7 +11,8 @@ A script is a JSON list of events keyed by simulation tick (one tick = one headl
 
 `at` may also be "nearest_npc", "nearest_ally" (other player / companion), "hero", "nearest_item" (a ground
 item / monster drop), {"backpack_slot": N} (that slot of the open backpack panel, on screen), {"hotbar_slot": N}
-(slot N of the hotbar, 0 = the first) or {"equip_slot": "main" / "off"} (a slot of the open character window).
+(slot N of the hotbar, 0 = the first), {"equip_slot": "main" / "off"} (a slot of the open character window),
+{"shop_item": item} or {"train_skill": key} (an open vendor / trainer window), {"npc": npc_id} (that NPC).
 A drag presses the left button on one place and releases it on another:
 
   {"tick": 40, "type": "drag", "from": {"hotbar_slot": 4}, "to": {"hotbar_slot": 1}}   # swap hotbar slots 5 and 2 The events are posted as real pygame events, so the
@@ -50,14 +51,18 @@ class InputScript:
         if at == "nearest_npc":
             n = min(npcs, key=lambda n: hero.distance_to(n)) if npcs else None
             return (n.x, n.y) if n else (hero.x, hero.y)
+        if isinstance(at, dict) and "npc" in at:          # a named NPC (its npc_id, e.g. "llane_beshere")
+            n = next((n for n in npcs if getattr(n, "npc_id", None) == at["npc"]), None)
+            return (n.x, n.y) if n else (hero.x, hero.y)
         if isinstance(at, dict):
             return hero.x + at.get("dx", 0), hero.y + at.get("dy", 0)
         return at[0], at[1]
 
     def post_due(self, tick, hero, game_state, npcs, width, height, cam_zoom, slot_pos=None, hotbar_pos=None,
-                 equip_pos=None):
+                 equip_pos=None, ui_pos=None):
         """Post every event scheduled for this tick as pygame events. `slot_pos(i)` / `hotbar_pos(i)` /
-        `equip_pos(name)` -> screen (x, y) of backpack slot i / hotbar slot i / character-window slot "main" or "off"
+        `equip_pos(name)` -> screen (x, y) of backpack slot i / hotbar slot i / character-window slot "main" or "off";
+        `ui_pos(at)` -> screen (x, y) of {"shop_item": id} / {"train_skill": key} in an open NPC window
         (the client's layout)."""
         def screen_at(at):
             if isinstance(at, dict) and "backpack_slot" in at:
@@ -66,6 +71,8 @@ class InputScript:
                 return hotbar_pos(at["hotbar_slot"])
             if isinstance(at, dict) and "equip_slot" in at:
                 return equip_pos(at["equip_slot"])
+            if isinstance(at, dict) and ("shop_item" in at or "train_skill" in at):
+                return ui_pos(at)
             wx, wy = self._resolve(at, hero, game_state, npcs)
             return int((wx - hero.x) * cam_zoom + width // 2), int((wy - hero.y) * cam_zoom + height // 2)
 

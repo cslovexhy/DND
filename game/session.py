@@ -39,14 +39,17 @@ from types import SimpleNamespace
 from game.engine.player import PlayerState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, UseItem, Unequip, PickUp,
-                                  SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake, TradeAccept, TradeCancel)
+                                  SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake, TradeAccept, TradeCancel,
+                                  Buy, Train)
 from game.content.items import ITEMS, describe as describe_item
 from game.content.equipment import GEAR, DUAL_WIELD_CLASSES
+from game.content.shop import SHOPS, PRICES as SHOP_PRICES
 from game.client import gear_art
 from game.content import money
 from game.engine.inventory import ROWS as BAG_ROWS, COLS as BAG_COLS
 from game.engine import abilities
-from game.engine.events import FloatText, Ring, LevelUp, SkillUp, QuestReady, BindRightSkill, NpcDialogue
+from game.engine.events import (FloatText, Ring, LevelUp, SkillUp, QuestReady, BindRightSkill, NpcDialogue,
+                                OpenNpcWindow, SkillTrainable)
 
 # === EFFECTS ===
 floating_texts = []
@@ -110,7 +113,7 @@ class AoeRing:
 
 def drain_events(events):
     """Turn the simulation's view events into on-screen effects / popups / saves."""
-    global quest_popup_text, quest_popup_timer, quest_popup_color, quest_popup_panel
+    global quest_popup_text, quest_popup_timer, quest_popup_color, quest_popup_panel, npc_window
     for ev in events:
         if not view.is_mine(ev):
             continue   # another player's level-up / quest dialogue
@@ -124,6 +127,16 @@ def drain_events(events):
         elif isinstance(ev, SkillUp):
             if not HEADLESS.enabled:            # scripted test runs have nobody to click the popup away
                 skill_popups.append(SkillPopupPanel(ev))
+            save_game()
+        elif isinstance(ev, SkillTrainable):
+            if not HEADLESS.enabled:
+                skill_popups.append(SkillPopupPanel(SimpleNamespace(
+                    hero_level=ev.hero_level, key=ev.key, name=ev.name, skill_level=ev.skill_level,
+                    is_new=ev.is_new, trainable=True,
+                    text=f"Visit your {ev.trainer} (south of the abbey) to learn it for "
+                         f"{money.format_long(ev.cost)}.")))
+        elif isinstance(ev, OpenNpcWindow):
+            npc_window = (ev.npc_id, ev.role)
         elif isinstance(ev, BindRightSkill):
             pass                                # (old click-binding UI) skills now live on the hotbar
         elif isinstance(ev, NpcDialogue):
@@ -230,14 +243,15 @@ def save_game():
     if world is None:
         # Co-op: the host tells us our progress in every snapshot
         prog = view.you.progress
-        char_data.update({k: prog[k] for k in ("level", "xp", "gold", "kills", "inventory", "equipment")})
+        char_data.update({k: prog[k] for k in ("level", "xp", "gold", "kills", "inventory", "equipment", "trained")})
         char_data["hotbar"] = list(globals().get("hotbar_order") or char_data.get("hotbar") or [])
         char_data.setdefault("quests", {})[MAP_ID] = prog["quests"]
         saves.save_character(char_data)
         return
     h = world.hero
     char_data.update({"level": h.level, "xp": h.xp, "gold": h.gold, "kills": h.kills,
-                      "inventory": world.players[0].inventory.to_state(), "equipment": dict(h.equipment)})
+                      "inventory": world.players[0].inventory.to_state(), "equipment": dict(h.equipment),
+                      "trained": dict(h.trained) if h.trained is not None else None})
     char_data["hotbar"] = list(globals().get("hotbar_order") or char_data.get("hotbar") or [])   # slot layout
     char_data.setdefault("quests", {})[MAP_ID] = world.quests.to_state()
     saves.save_character(char_data)
@@ -485,7 +499,8 @@ class SkillPopupPanel:
         panel.fill((20, 20, 30, 235))
         pygame.draw.rect(panel, GOLD, (0, 0, self.WIDTH, self.height), 2, border_radius=6)
         y = self.PAD
-        header = "New skill unlocked!" if ev.is_new else "Skill upgraded!"
+        header = ("New skill to learn!" if ev.is_new else "Skill level to learn!") if getattr(ev, "trainable", False) \
+            else ("New skill unlocked!" if ev.is_new else "Skill upgraded!")
         hdr = big_font.render(header, True, (120, 255, 140) if ev.is_new else GOLD)
         panel.blit(hdr, (self.WIDTH // 2 - hdr.get_width() // 2, y))
         y += 30
@@ -749,6 +764,137 @@ class CharacterWindow:
             draw_item_tooltip(screen, item, mx, my, "Right-click to take it off")
 
 
+NPC_SCALE = 1.2         # NPCs are drawn 1.2x a hero's size
+npc_window = None       # (npc entity id, "vendor" / "trainer") while a shop / trainer window is open
+
+
+class NpcWindow:
+    """A vendor's shop or a class trainer's window (opened by talking to them; closes when you walk away or press
+    Esc). Shop: the goods as icons with prices, right-click one to buy it. Trainer: one row per class skill with its
+    next level's cost, click Train."""
+    W, PAD, SLOT, GAP, COLS, ROW = 360, 14, 48, 8, 6, 34
+    HEADER = 50               # name, then <title> under it
+    CLOSE_DISTANCE = 140      # px from the NPC: the window closes
+
+    @classmethod
+    def npc(cls):
+        return next((n for n in view.npcs if npc_window and n.eid == npc_window[0]), None)
+
+    @classmethod
+    def _goods(cls, npc):
+        return SHOPS.get(npc.shop, []) if npc is not None else []
+
+    @classmethod
+    def _rows(cls):
+        return view.you.training or []
+
+    @classmethod
+    def rect(cls):
+        npc = cls.npc()
+        if npc_window and npc_window[1] == "vendor":
+            rows = max(1, -(-len(cls._goods(npc)) // cls.COLS))
+            h = cls.PAD * 2 + cls.HEADER + rows * (cls.SLOT + 22) + 30
+        else:
+            h = cls.PAD * 2 + cls.HEADER + max(1, len(cls._rows())) * cls.ROW + 34
+        return pygame.Rect(WIDTH - cls.W - 16, 110, cls.W, h)
+
+    @classmethod
+    def slot_rect(cls, i):
+        r = cls.rect()
+        return pygame.Rect(r.x + cls.PAD + (i % cls.COLS) * (cls.SLOT + cls.GAP),
+                           r.y + cls.PAD + cls.HEADER + (i // cls.COLS) * (cls.SLOT + 22), cls.SLOT, cls.SLOT)
+
+    @classmethod
+    def button_rect(cls, i):
+        r = cls.rect()
+        return pygame.Rect(r.right - cls.PAD - 64, r.y + cls.PAD + cls.HEADER + i * cls.ROW + 3, 64, cls.ROW - 8)
+
+    @classmethod
+    def item_at(cls, mx, my):
+        goods = cls._goods(cls.npc())
+        return next((g for i, g in enumerate(goods) if cls.slot_rect(i).collidepoint(mx, my)), None)
+
+    @classmethod
+    def skill_at(cls, mx, my):
+        return next((row["key"] for i, row in enumerate(cls._rows()) if cls.button_rect(i).collidepoint(mx, my)),
+                    None)
+
+    @classmethod
+    def script_pos(cls, at):
+        """Input scripts: screen position of {"shop_item": id} or {"train_skill": key} in the open window."""
+        if "shop_item" in at:
+            return cls.slot_rect(cls._goods(cls.npc()).index(at["shop_item"])).center
+        keys = [row["key"] for row in cls._rows()]
+        return cls.button_rect(keys.index(at["train_skill"])).center
+
+    @classmethod
+    def should_close(cls):
+        npc = cls.npc()
+        return npc is None or math.hypot(npc.x - hero.x, npc.y - hero.y) > cls.CLOSE_DISTANCE
+
+    @classmethod
+    def draw(cls, screen):
+        npc = cls.npc()
+        if npc is None:
+            return
+        r = cls.rect()
+        panel = pygame.Surface(r.size, pygame.SRCALPHA)
+        panel.fill((20, 20, 30, 235))
+        pygame.draw.rect(panel, GOLD, panel.get_rect(), 2, border_radius=6)
+        panel.blit(big_font.render(npc.name, True, GOLD), (cls.PAD, cls.PAD - 2))
+        sub = font.render(f"<{npc.title}>", True, (200, 200, 140))
+        panel.blit(sub, (cls.PAD, cls.PAD + 24))
+        screen.blit(panel, r.topleft)
+        mx, my = pygame.mouse.get_pos()
+        if npc_window[1] == "vendor":
+            for i, item in enumerate(cls._goods(npc)):
+                sr = cls.slot_rect(i)
+                price = SHOP_PRICES[item]
+                afford = hero.gold >= price
+                pygame.draw.rect(screen, (55, 55, 70), sr, border_radius=4)
+                pygame.draw.rect(screen, (110, 110, 130), sr, 1, border_radius=4)
+                screen.blit(item_icon(item, cls.SLOT - 8), (sr.x + 4, sr.y + 4))
+                t = font.render(money.format_price(price), True, (230, 230, 230) if afford else (255, 110, 110))
+                screen.blit(t, (sr.centerx - t.get_width() // 2, sr.bottom + 3))
+            hint = font.render("Right-click to buy  ·  Esc to close", True, (150, 150, 170))
+            screen.blit(hint, (r.x + cls.PAD, r.bottom - cls.PAD - 12))
+            Backpack.draw_money(screen, r.right - cls.PAD, r.bottom - cls.PAD - 8, hero.gold)
+            item = cls.item_at(mx, my)
+            if item:
+                draw_item_tooltip(screen, item, mx, my, f"{money.format_long(SHOP_PRICES[item])}  ·  Right-click to buy")
+        else:
+            rows = cls._rows()
+            if not rows:
+                t = font.render(f"I only train {npc.trains}s." if npc.trains != hero.class_name
+                                else "There is nothing I can teach you.", True, (220, 220, 220))
+                screen.blit(t, (r.x + cls.PAD, r.y + cls.PAD + cls.HEADER + 6))
+            for i, row in enumerate(rows):
+                y = r.y + cls.PAD + cls.HEADER + i * cls.ROW
+                screen.blit(font.render(f"{row['name']}", True, WHITE), (r.x + cls.PAD, y + 3))
+                screen.blit(font.render(f"Lv {row['level']}/{row['max_level']}", True, (170, 170, 190)),
+                            (r.x + cls.PAD, y + 18))
+                br = cls.button_rect(i)
+                if row["next_at"] is None:
+                    screen.blit(font.render("Mastered", True, (140, 220, 140)), (br.x + 4, br.y + 6))
+                    continue
+                ready = hero.level >= row["next_at"]
+                afford = hero.gold >= row["cost"]
+                info = (f"Lv {row['level'] + 1}: {money.format_price(row['cost'])}" if ready
+                        else f"at level {row['next_at']}")
+                it = font.render(info, True, ((230, 230, 230) if afford else (255, 110, 110)) if ready
+                                 else (130, 130, 140))
+                screen.blit(it, (br.x - it.get_width() - 10, y + 10))
+                if ready:
+                    ok = afford
+                    pygame.draw.rect(screen, (60, 110, 60) if ok else (70, 50, 50), br, border_radius=4)
+                    pygame.draw.rect(screen, GOLD if ok else (110, 90, 90), br, 1, border_radius=4)
+                    bt = font.render("Train", True, WHITE if ok else (160, 140, 140))
+                    screen.blit(bt, (br.centerx - bt.get_width() // 2, br.centery - bt.get_height() // 2))
+            Backpack.draw_money(screen, r.right - cls.PAD, r.bottom - cls.PAD - 8, hero.gold)
+            hint = font.render("Esc to close", True, (150, 150, 170))
+            screen.blit(hint, (r.x + cls.PAD, r.bottom - cls.PAD - 12))
+
+
 def draw_item_tooltip(screen, item, mx, my, footer=None):
     """Item name, what it does (and an optional hint line) in a small box by the mouse."""
     lines = [ITEMS[item]["name"]] + textwrap.wrap(describe_item(item), width=46)
@@ -964,7 +1110,8 @@ def get_npc_at_screen(sx, sy):
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
     wy = (sy - HEIGHT//2) / cam_zoom + hero.y
     for npc in view.npcs:
-        if abs(npc.x - wx) < TILE_SIZE and abs(npc.y - wy) < TILE_SIZE:
+        r = TILE_SIZE * NPC_SCALE * CHAR_SCALE * 0.6
+        if abs(npc.x - wx) < r and abs(npc.y - wy) < r:
             return npc
     return None
 
@@ -1093,7 +1240,8 @@ while running:
     if _input_script:
         _input_script.post_due(_tick, hero, view, view.npcs, WIDTH, HEIGHT, cam_zoom, slot_pos=Backpack.slot_center,
                                hotbar_pos=lambda i: Hotbar.rects(len(hotbar_order))[i].center,
-                               equip_pos=lambda s: CharacterWindow.slot_rects()[s].center)
+                               equip_pos=lambda s: CharacterWindow.slot_rects()[s].center,
+                               ui_pos=NpcWindow.script_pos)
     _tick += 1
 
     for event in pygame.event.get():
@@ -1124,6 +1272,8 @@ while running:
                 # one step back at a time: trade, backpack, channel, target, then the menu
                 if view.you.trade:
                     host.send(TradeCancel())
+                elif npc_window:
+                    npc_window = None
                 elif backpack_open:
                     backpack_open = False
                 elif character_open:
@@ -1183,6 +1333,17 @@ while running:
             if view.you.trade and TradeWindow.rect().collidepoint(mx_s, my_s):
                 if event.button == 1:
                     TradeWindow.click(view.you.trade, mx_s, my_s)
+                continue
+            # Open shop / trainer window: right-click goods to buy, click Train to learn
+            if npc_window and NpcWindow.rect().collidepoint(mx_s, my_s):
+                if npc_window[1] == "vendor" and event.button == 3:
+                    item = NpcWindow.item_at(mx_s, my_s)
+                    if item:
+                        host.send(Buy(npc_window[0], item))
+                elif npc_window[1] == "trainer" and event.button == 1:
+                    key = NpcWindow.skill_at(mx_s, my_s)
+                    if key:
+                        host.send(Train(npc_window[0], key))
                 continue
             if backpack_open and Backpack.rect().collidepoint(mx_s, my_s):
                 slot = Backpack.slot_at(mx_s, my_s)
@@ -1497,30 +1658,31 @@ while running:
     if r is not None:
         draw_status_effects(hero, *r)
 
-    # NPC rendering
+    # NPC rendering (1.2x a hero's size)
     for npc in view.npcs:
         npc_sx = int((npc.x - cx) * cam_zoom + WIDTH // 2)
         npc_sy = int((npc.y - cy) * cam_zoom + HEIGHT // 2)
-        # Draw NPC sprite
+        sz = int(CHAR_SIZE * NPC_SCALE * cam_zoom)
         if npc.sprite:
-            sz = int(TILE_SIZE * cam_zoom)
             scaled = pygame.transform.scale(npc.sprite, (sz, sz))
             screen.blit(scaled, (npc_sx - sz // 2, npc_sy - sz // 2))
         else:
-            pygame.draw.circle(screen, (100, 200, 100), (npc_sx, npc_sy), int(12 * cam_zoom))
-        # Quest indicator above NPC
-        indicator_y = npc_sy - int(38 * cam_zoom)
+            pygame.draw.circle(screen, (100, 200, 100), (npc_sx, npc_sy), sz // 2)
+        # NPC name above, its job ("<Fighter Trainer>") below
+        name_surf = font.render(npc.name, True, (100, 255, 100))
+        name_y = npc_sy - sz // 2 - name_surf.get_height() - 1
+        screen.blit(name_surf, (npc_sx - name_surf.get_width() // 2, name_y))
+        if getattr(npc, "title", ""):
+            title_surf = font.render(f"<{npc.title}>", True, (200, 200, 140))
+            screen.blit(title_surf, (npc_sx - title_surf.get_width() // 2, npc_sy + sz // 2 + 1))
+        # Quest indicator above the name
+        indicator_y = name_y - 22
         if npc.has_turn_in():
-            # Yellow "?" for turn-in ready
-            ind_surf = big_font.render("?", True, GOLD)
+            ind_surf = big_font.render("?", True, GOLD)        # turn-in ready
             screen.blit(ind_surf, (npc_sx - ind_surf.get_width() // 2, indicator_y))
         elif npc.has_available_quest():
-            # Yellow "!" for available quest
-            ind_surf = big_font.render("!", True, GOLD)
+            ind_surf = big_font.render("!", True, GOLD)        # quest available
             screen.blit(ind_surf, (npc_sx - ind_surf.get_width() // 2, indicator_y))
-        # NPC name
-        name_surf = font.render(npc.name, True, (100, 255, 100))
-        screen.blit(name_surf, (npc_sx - name_surf.get_width() // 2, npc_sy - int(22 * cam_zoom)))
 
     # Floating text
     for t in floating_texts: t.draw(screen, cx, cy)
@@ -1648,6 +1810,10 @@ while running:
         Backpack.draw(screen, view.you.inventory, hero.gold)
     if character_open:
         CharacterWindow.draw(screen, hero, view.you)
+    if npc_window and NpcWindow.should_close():
+        npc_window = None                                   # walked away (or the NPC is gone)
+    if npc_window:
+        NpcWindow.draw(screen)
     if view.you.trade:
         TradeWindow.draw(screen, view.you.trade)
     if bag_drag is not None:

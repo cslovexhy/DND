@@ -82,6 +82,21 @@ class Unequip:
 
 
 @dataclass
+class Buy:
+    """Buy one of `item` from vendor NPC `npc_id` (must be near it, with the money and backpack room)."""
+    npc_id: int
+    item: str
+
+
+@dataclass
+class Train:
+    """Learn the next level of skill `ab_key` from class trainer NPC `npc_id` (must be near it, at the level, with
+    the money)."""
+    npc_id: int
+    ab_key: str
+
+
+@dataclass
 class PickUp:
     """Pick up a ground item (click its icon): walk to it, then put it in the backpack."""
     item_id: int
@@ -148,7 +163,7 @@ class HoldPosition:
 _BY_NAME = {cls.__name__: cls for cls in (
     MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion, ToggleAutopilot, ToggleCompanion,
     CancelChannel, BindLeftSkill, HoldPosition, UseItem, Unequip, PickUp, SetTarget, MoveDir, TradeOpen,
-    TradeOffer, TradeTake, TradeAccept, TradeCancel)}
+    TradeOffer, TradeTake, TradeAccept, TradeCancel, Buy, Train)}
 
 
 def to_dict(cmd):

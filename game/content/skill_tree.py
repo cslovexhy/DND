@@ -46,15 +46,22 @@ def skill_levels(class_name: str, hero_level: int) -> dict:
 
 
 def apply_skill_levels(hero) -> list:
-    """Give `hero` the skills and skill levels of its current character level. Locked skills are removed from
-    hero.abilities (so the UI, the AI and the cast code never see them); existing Ability objects are kept, so
-    cooldowns survive a level-up. Returns the changes since the last call: [(key, new_level, is_new), ...]."""
+    """Give `hero` the skills and skill levels it has now. Locked skills are removed from hero.abilities (so the UI,
+    the AI and the cast code never see them); existing Ability objects are kept, so cooldowns survive a level-up.
+    Returns the changes since the last call: [(key, new_level, is_new), ...].
+
+    hero.trained None (companions, test / benchmark characters): every skill level the character level allows.
+    hero.trained {key: level} (player characters): only what was learned from a class trainer (and never more than
+    the character level allows)."""
     if hero.all_abilities is None:
         hero.all_abilities = dict(hero.abilities)          # the factory builds every skill at full strength
     if hero.class_name not in SKILL_SCHEDULE:
         return []
     old = hero.skill_levels or {}
     new = skill_levels(hero.class_name, hero.level)
+    trained = getattr(hero, "trained", None)
+    if trained is not None:
+        new = {k: min(lv, trained.get(k, 0)) for k, lv in new.items() if trained.get(k, 0) > 0}
     abilities = {}
     for key, ab in hero.all_abilities.items():              # canonical order: Q, R, E, F
         if key in new:
@@ -67,6 +74,73 @@ def apply_skill_levels(hero) -> list:
     if q is not None and q.range_levels:
         hero.attack_range = q.range
     return [(key, lvl, key not in old) for key, lvl in new.items() if old.get(key, 0) != lvl]
+
+
+# --- class trainers: learning skill levels (content/shop.py prices them) -----------------------------------------
+STARTING_TRAINED = {"Q": 1}       # a new character knows its at-will attack
+
+
+def unlock_level_of(class_name, key, skill_level):
+    """Character level at which `key` reaches `skill_level` in the class schedule (None if it never does)."""
+    n = 0
+    for step, k in enumerate(SKILL_SCHEDULE.get(class_name, ())):
+        if k == key:
+            n += 1
+            if n == skill_level:
+                return unlock_level(step)
+    return None
+
+
+def training_options(hero):
+    """What this hero's class trainer can teach, one row per skill in schedule order: key, name, trained level,
+    max level, the next level's unlock character level and cost (None when fully learned)."""
+    from game.content.shop import train_cost
+    rows, seen = [], set()
+    trained = hero.trained if getattr(hero, "trained", None) is not None else skill_levels(hero.class_name,
+                                                                                           hero.level)
+    abilities = hero.all_abilities or hero.abilities
+    for k in SKILL_SCHEDULE.get(hero.class_name, ()):
+        if k in seen or k not in abilities:
+            continue
+        seen.add(k)
+        have = trained.get(k, 0)
+        top = SKILL_SCHEDULE[hero.class_name].count(k)
+        nxt = unlock_level_of(hero.class_name, k, have + 1) if have < top else None
+        rows.append({"key": k, "name": abilities[k].name, "level": have, "max_level": top,
+                     "next_at": nxt, "cost": train_cost(nxt) if nxt is not None else None})
+    return rows
+
+
+def can_train(hero, key):
+    """(ok, reason, cost): can this hero learn the next level of `key` now?"""
+    row = next((r for r in training_options(hero) if r["key"] == key), None)
+    if row is None or getattr(hero, "trained", None) is None:
+        return False, "Nothing to learn", 0
+    if row["next_at"] is None:
+        return False, "Already mastered", 0
+    if hero.level < row["next_at"]:
+        return False, f"Requires level {row['next_at']}", row["cost"]
+    if hero.gold < row["cost"]:
+        return False, "Not enough money", row["cost"]
+    return True, "", row["cost"]
+
+
+def validate_trained(state, class_name, level):
+    """Trained skill levels from a save or a co-op client (None = automatic). Raises ValueError if malformed;
+    levels above what the character level allows are capped."""
+    if state is None:
+        return None
+    if not isinstance(state, dict) or len(state) > 10:
+        raise ValueError("bad trained skills")
+    allowed = skill_levels(class_name, level)
+    out = {}
+    for k, v in state.items():
+        if not isinstance(k, str) or not isinstance(v, int) or isinstance(v, bool) or v < 0:
+            raise ValueError("bad trained skill")
+        if k in allowed and v > 0:
+            out[k] = min(v, allowed[k])
+    out.setdefault("Q", 1)
+    return out
 
 
 # --- effect strengths shared by the cast code and the descriptions -----------------------------------------------

@@ -6,6 +6,7 @@ and later the dedicated/listen server), so both create the world in exactly the 
 import os
 
 from game.content.equipment import empty_equipment, validate_equipment
+from game.content.skill_tree import validate_trained
 from game.content.heroes import HERO_CLASS_BY_NAME
 from game.engine.entities import GameState
 from game.engine.player import PlayerState
@@ -28,7 +29,11 @@ def _make_hero(char_data, map_id, x, y, hooks=None):
     hero.xp = char_data["xp"]
     hero.gold = char_data["gold"]
     hero.kills = char_data["kills"]
-    set_hero_level(hero, char_data["level"])  # re-applies per-level stat growth
+    try:
+        hero.trained = validate_trained(char_data.get("trained"), hero.class_name, char_data["level"])
+    except ValueError:
+        hero.trained = None                   # a broken save: skills follow the level as they used to
+    set_hero_level(hero, char_data["level"])  # re-applies per-level stat growth (and the trained skills)
     try:
         hero.equipment = validate_equipment(char_data.get("equipment"), hero.class_name)
     except ValueError:
@@ -73,9 +78,11 @@ def sanitize_character(data):
     from game.engine.inventory import Inventory
     inventory = Inventory.from_state(data.get("inventory")).to_state()   # raises ValueError if malformed
     equipment = validate_equipment(data.get("equipment"), cls)            # raises ValueError if malformed
-    return {"name": name, "class_name": cls, "level": num("level", 1, MAX_LEVEL),
+    level = num("level", 1, MAX_LEVEL)
+    trained = validate_trained(data.get("trained"), cls, level)           # raises ValueError if malformed
+    return {"name": name, "class_name": cls, "level": level,
             "xp": num("xp", 0, 10 ** 9), "gold": num("gold", 0, 10 ** 9), "kills": num("kills", 0, 10 ** 9),
-            "quests": quests, "inventory": inventory, "equipment": equipment}
+            "quests": quests, "inventory": inventory, "equipment": equipment, "trained": trained}
 
 
 def create_world(map_path, char_data, debug=False, autopilot=False, auto_companion=False, hooks=None, pp=1):

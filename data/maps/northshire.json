@@ -38,6 +38,94 @@
       "y": 22,
       "sprite_col": 4,
       "sprite_row": 8
+    },
+    {
+      "name": "Llane Beshere",
+      "npc_id": "llane_beshere",
+      "gender": "male",
+      "x": 31,
+      "y": 28,
+      "sprite_col": 0,
+      "sprite_row": 8,
+      "role": "trainer",
+      "trains": "Fighter"
+    },
+    {
+      "name": "Brother Sammuel",
+      "npc_id": "brother_sammuel",
+      "gender": "male",
+      "x": 34,
+      "y": 30,
+      "sprite_col": 4,
+      "sprite_row": 7,
+      "role": "trainer",
+      "trains": "Paladin"
+    },
+    {
+      "name": "Priestess Anetta",
+      "npc_id": "priestess_anetta",
+      "gender": "female",
+      "x": 33,
+      "y": 33,
+      "sprite_col": 3,
+      "sprite_row": 8,
+      "role": "trainer",
+      "trains": "Cleric"
+    },
+    {
+      "name": "Jorik Kerridan",
+      "npc_id": "jorik_kerridan",
+      "gender": "male",
+      "x": 29,
+      "y": 33,
+      "sprite_col": 2,
+      "sprite_row": 7,
+      "role": "trainer",
+      "trains": "Rogue"
+    },
+    {
+      "name": "Khelden Bremen",
+      "npc_id": "khelden_bremen",
+      "gender": "male",
+      "x": 28,
+      "y": 30,
+      "sprite_col": 0,
+      "sprite_row": 7,
+      "role": "trainer",
+      "trains": "Wizard"
+    },
+    {
+      "name": "Brother Danil",
+      "npc_id": "brother_danil",
+      "gender": "male",
+      "x": 41,
+      "y": 22,
+      "sprite_col": 3,
+      "sprite_row": 9,
+      "role": "vendor",
+      "shop": "general"
+    },
+    {
+      "name": "Janos Hammerknuckle",
+      "npc_id": "janos_hammerknuckle",
+      "gender": "male",
+      "x": 39,
+      "y": 26,
+      "sprite_col": 3,
+      "sprite_row": 7,
+      "role": "vendor",
+      "shop": "weapons"
+    },
+    {
+      "name": "Godric Rothgar",
+      "npc_id": "godric_rothgar",
+      "gender": "male",
+      "x": 43,
+      "y": 26,
+      "sprite_col": 1,
+      "sprite_row": 7,
+      "role": "vendor",
+      "shop": "armor"
     }
   ],
   "monster_levels": {

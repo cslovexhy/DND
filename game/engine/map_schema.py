@@ -105,6 +105,11 @@ def validate_map(data, known_spawn_types=None):
                 and _is_int(n.get("sprite_col"), 0, MAX_SHEET_INDEX) and _is_int(n.get("sprite_row"), 0, MAX_SHEET_INDEX)
                 and n.get("gender", "male") in ("male", "female")):
             errors.append(f"npc {i}: needs name, npc_id, x/y inside the map, sprite_col/row")
+        elif not (n.get("role") is None
+                  or (n["role"] == "trainer" and isinstance(n.get("trains"), str) and len(n["trains"]) <= MAX_TEXT)
+                  or (n["role"] == "vendor" and isinstance(n.get("shop"), str) and len(n["shop"]) <= MAX_TEXT)):
+            errors.append(f"npc {i}: role must be \"trainer\" (with \"trains\": class) or \"vendor\" "
+                          f"(with \"shop\": kind)")
 
     levels = data.get("monster_levels", {})
     if not isinstance(levels, dict) or len(levels) > 200:

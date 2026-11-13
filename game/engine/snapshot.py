@@ -10,6 +10,7 @@ SNAPSHOT_VERSION = 1
 ATTACK_ANIM_SECS = 0.5        # an attack is sent to clients for this long (its animation is shorter)
 
 from game.engine.ai import is_fighting   # noqa: E402  (pure: no pygame)
+from game.content.skill_tree import training_options   # noqa: E402
 
 
 def _conditions(e):
@@ -108,6 +109,10 @@ def make_snapshot(world, player_id=0):
         d["sprite_tile"] = list(getattr(n, "sprite_tile", None) or ())
         d["turn_in"] = n.has_turn_in(player)
         d["quest_available"] = n.has_available_quest(player)
+        d["role"], d["title"] = n.role, n.title
+        d["npc_id"] = n.npc_id
+        d["shop"] = n.shop                   # vendor: what it sells (content/shop.SHOPS)
+        d["trains"] = n.trains               # trainer: which class
         entities.append(d)
     projectiles = [{"x": p.x, "y": p.y, "color": list(p.color), "radius": p.radius,
                     "target_id": p.target.eid if p.target is not None else None}
@@ -136,10 +141,13 @@ def make_snapshot(world, player_id=0):
         "quests": _quests(player),
         "equipment": dict(hero.equipment),
         "stats": hero_stats(hero),
+        # the class trainer's window: what can be learned (None: skills come with the level, nothing to train)
+        "training": training_options(hero) if hero.trained is not None else None,
         "progress": {"level": hero.level, "xp": hero.xp, "gold": hero.gold, "kills": hero.kills,
                      "quests": player.quests.to_state(),
                      "inventory": player.inventory.to_state(),     # what this player's machine saves
-                     "equipment": dict(hero.equipment)},
+                     "equipment": dict(hero.equipment),
+                     "trained": dict(hero.trained) if hero.trained is not None else None},
     }
     ground_items = [{"id": g.item_id, "item": g.item, "x": g.x, "y": g.y} for g in world.ground_items]
     hazards = [{"kind": z.kind, "x": z.x, "y": z.y, "radius": z.radius, "elapsed": z.elapsed,

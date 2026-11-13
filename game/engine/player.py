@@ -13,12 +13,14 @@ from game.engine.ai import AggroState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
                                   UseItem, Unequip, PickUp, SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake,
-                                  TradeAccept, TradeCancel)
+                                  TradeAccept, TradeCancel, Buy, Train)
 from game.engine.inventory import Inventory
 from game.content.items import (ITEMS, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT, DRINK_DURATION,
                                 DRINK_BUFF, DRINK_HOT)
 from game.content.equipment import equip, is_gear, slot_for
-from game.engine.events import BindRightSkill, GOLD
+from game.content.shop import PRICES, SHOPS
+from game.content.skill_tree import apply_skill_levels, can_train, describe
+from game.engine.events import BindRightSkill, GOLD, SkillUp
 from game.engine.hero_ai import create_hero_ai
 from game.content.heroes import HERO_CLASSES
 from game.engine.world_map import TILE_SIZE
@@ -142,6 +144,52 @@ class PlayerState:
         hero.equipment = equipment
         hero.refresh_gear()
         hero.swing_timer = min(hero.swing_timer, hero.weapon_speed)   # a faster weapon is ready no later
+
+    # --- vendors and class trainers (content/shop.py) ---
+    def _nearby_npc(self, npc_id, role):
+        npc = self.world.entity(npc_id)
+        if npc is None or npc not in self.world.npcs or npc.role != role:
+            return None
+        if not npc.can_deal_with(self.hero.x, self.hero.y):
+            self.world.float_text(self.hero.x, self.hero.y - 30, "Too far away", (255, 150, 100))
+            return None
+        return npc
+
+    def buy(self, npc_id, item):
+        """Buy one `item` from a vendor: it must sell it, and we need the money and backpack room."""
+        hero = self.hero
+        npc = self._nearby_npc(npc_id, "vendor")
+        if npc is None or item not in SHOPS.get(npc.shop, ()):
+            return
+        price = PRICES[item]
+        if hero.gold < price:
+            self.world.float_text(hero.x, hero.y - 30, "Not enough money", (255, 150, 100))
+            return
+        if not self.inventory.add(item):
+            self.world.float_text(hero.x, hero.y - 30, "Backpack full!", (255, 150, 100))
+            return
+        hero.gold -= price
+        self.world.float_text(hero.x, hero.y - 30, f"Bought {ITEMS[item]['name']}", (255, 220, 140))
+
+    def train(self, npc_id, key):
+        """Learn the next level of skill `key` from this hero's class trainer."""
+        hero = self.hero
+        npc = self._nearby_npc(npc_id, "trainer")
+        if npc is None:
+            return
+        if npc.trains != hero.class_name:
+            self.world.float_text(hero.x, hero.y - 30, f"I only train {npc.trains}s", (255, 150, 100))
+            return
+        ok, why, cost = can_train(hero, key)
+        if not ok:
+            self.world.float_text(hero.x, hero.y - 30, why, (255, 150, 100))
+            return
+        hero.gold -= cost
+        hero.trained[key] = hero.trained.get(key, 0) + 1
+        for k, skill_level, is_new in apply_skill_levels(hero):
+            ab = hero.abilities[k]
+            self.world.events.append(SkillUp(hero.level, k, ab.name, skill_level, ab.max_level, is_new,
+                                             describe(hero, ab), self.player_id))
 
     # --- backpack items ---
     def use_item(self, slot):
@@ -310,6 +358,12 @@ class PlayerState:
         elif isinstance(cmd, Unequip):
             if not self.is_companion:
                 self.unequip(cmd.slot)
+        elif isinstance(cmd, Buy):
+            if not self.is_companion:
+                self.buy(cmd.npc_id, cmd.item)
+        elif isinstance(cmd, Train):
+            if not self.is_companion:
+                self.train(cmd.npc_id, cmd.ab_key)
         elif isinstance(cmd, TradeOpen):
             world.open_trade(self, cmd.hero_id)
         elif isinstance(cmd, (TradeOffer, TradeTake)):

@@ -74,6 +74,28 @@ class NpcDialogue:
 
 
 @dataclass
+class OpenNpcWindow:
+    """The player talked to a vendor or trainer: the client opens its shop / training window (closed again when the
+    player walks away)."""
+    npc_id: int        # the NPC entity's id
+    role: str          # "vendor" / "trainer"
+    player_id: int = 0
+
+
+@dataclass
+class SkillTrainable:
+    """A level-up made a new skill level available at the class trainer (player characters learn it there)."""
+    hero_level: int
+    key: str
+    name: str
+    skill_level: int
+    is_new: bool       # a skill the hero doesn't have yet
+    cost: int          # bronze
+    trainer: str       # who teaches it, e.g. "Fighter Trainer"
+    player_id: int = 0
+
+
+@dataclass
 class SkillCast:
     """A monster used a skill from its kit (engine/monster_casting.py) on `target_id` (itself for self-buffs).
     Clients may ignore it; tools (tools/skill_playground.py) log it."""
@@ -88,7 +110,7 @@ HP_RED = (200, 50, 50)
 
 # --- (de)serialization for the network (design/06 phase 4) ---
 _BY_NAME = {cls.__name__: cls for cls in (FloatText, Ring, LevelUp, SkillUp, QuestReady, BindRightSkill, NpcDialogue,
-                                          SkillCast)}
+                                          SkillCast, OpenNpcWindow, SkillTrainable)}
 
 
 def to_dict(ev):

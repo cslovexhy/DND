@@ -13,7 +13,8 @@ from game.content.heroes import HERO_CLASSES, COMPANION_NAMES
 from game.engine.ai import (generate_patrol_route, setup_monster_aggro, aggro_monster, call_for_help,
                             run_monster_ai, drop_from_hate, credit_heal_hate, AggroState)
 from game.engine.entities import Condition, Monster, Projectile
-from game.engine.events import FloatText, LevelUp, SkillUp, QuestReady, NpcDialogue, GOLD, HP_RED
+from game.engine.events import (FloatText, LevelUp, SkillUp, QuestReady, NpcDialogue, GOLD, HP_RED, OpenNpcWindow,
+                                SkillTrainable)
 
 BLOCK_COLOR = (200, 210, 230)      # "BLOCK" over a hero whose shield took a hit
 from game.engine.npc import NPC
@@ -24,7 +25,8 @@ from game.engine.world_map import TILE_SIZE
 from game.content.monsters import (SPAWN_STATS, respawn_delay, hp_for_level, base_xp_for_level, kill_xp,
                                     monster_hp_mult, damage_for_level, MONSTER_SWING_TIME, humanoid_money,
                                     HUMANOID, monster_skill_level, monster_max_mana)
-from game.content.skill_tree import apply_skill_levels, describe
+from game.content.skill_tree import apply_skill_levels, describe, skill_levels, unlock_level_of
+from game.content.shop import train_cost
 from game.content.skill_library import make_skill
 from game.content.difficulty import PP_DEFAULT, clamp_pp, hp_multiplier, damage_multiplier, scaled_xp
 from game.content.items import roll_drops
@@ -305,7 +307,8 @@ class World:
             tx, ty = npc_def["x"], npc_def["y"]
             wx, wy = self.world_map.get_spawn_world_pos(tx, ty)
             npc = NPC(self, npc_def["name"], wx, wy, npc_id=npc_def["npc_id"],
-                      gender=npc_def.get("gender", "male"))
+                      gender=npc_def.get("gender", "male"), role=npc_def.get("role"),
+                      trains=npc_def.get("trains"), shop=npc_def.get("shop"))
             npc.sprite_tile = (npc_def["sprite_col"], npc_def["sprite_row"])  # art reference for clients
             if self.on_npc_spawned:
                 self.on_npc_spawned(npc, npc_def)
@@ -349,6 +352,11 @@ class World:
                 self.events.append(NpcDialogue(quest_info(q), mode, npc.name, q.description, voice, pid))
                 interacted = True
                 break  # One quest popup at a time
+
+        # Third: vendors and trainers open their window
+        if not interacted and npc.role in ("vendor", "trainer"):
+            self.events.append(OpenNpcWindow(npc.eid, npc.role, pid))
+            interacted = True
 
         return interacted
 
@@ -511,11 +519,20 @@ class World:
                 hero.level += 1
                 growth = growth_for(hero.class_name)
                 hp_before = hero.max_hp
+                could_learn = skill_levels(hero.class_name, hero.level - 1)
                 apply_level_growth(hero)  # also full-heals on level-up
                 for key, skill_level, is_new in apply_skill_levels(hero):   # new skill / next skill level (every 2 levels)
                     ab = hero.abilities[key]
                     self.events.append(SkillUp(hero.level, key, ab.name, skill_level, ab.max_level, is_new,
                                                describe(hero, ab), player.player_id))
+                if hero.trained is not None:      # player characters: a new level is learned at the trainer
+                    for key, lvl in skill_levels(hero.class_name, hero.level).items():
+                        if lvl > could_learn.get(key, 0):
+                            ab = hero.all_abilities[key]
+                            self.events.append(SkillTrainable(
+                                hero.level, key, ab.name, lvl, key not in hero.trained,
+                                train_cost(unlock_level_of(hero.class_name, key, lvl)),
+                                f"{hero.class_name} Trainer", player.player_id))
                 self.events.append(LevelUp(hero.x, hero.y, player.player_id))
                 self.float_text(hero.x, hero.y - 30,
                                 f"Lv {hero.level}! +{hero.max_hp - hp_before:.0f}HP +{growth['damage']:.0f}dmg", GOLD)

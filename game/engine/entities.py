@@ -634,6 +634,8 @@ class Hero(Entity):
         # Skill levels (content/skill_tree.py): None = every skill at full strength (no level gating)
         self.skill_levels = None
         self.all_abilities = None   # every ability of the class, locked ones included
+        # Skill levels learned from the class trainer ({key: level}); None = they come with the character level
+        self.trained = None
 
         # Max HP before the food buff (set by progression.apply_level_growth); max_hp = base x (1 + food bonus)
         self.base_max_hp = self.max_hp

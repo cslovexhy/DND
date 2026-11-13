@@ -10,6 +10,7 @@ Schema:
   "level": 16, "xp": 367, "gold": 112440, "kills": 757,
   "inventory": [{"slot": 0, "item": "health_potion", "count": 3}],   # backpack stacks (engine/inventory.py)
   "equipment": {"main": "staff", "off": null},  # what the hero wields (content/equipment.py)
+  "trained": {"Q": 3, "R": 2, "E": 2},  # skill levels learned from the class trainer (null = follow the level)
   "quests": {                       # quest progression is per character AND per map
     "northshire": {
       "completed": ["quest_id", ...],
@@ -26,6 +27,7 @@ import re
 
 from game.content.equipment import ICONIC, empty_equipment
 from game.content.items import STARTING_INVENTORY, starting_inventory
+from game.content.skill_tree import SKILL_SCHEDULE, STARTING_TRAINED, skill_levels
 from game.engine.inventory import Inventory
 
 SAVE_DIR = os.path.join("data", "saves")
@@ -94,6 +96,10 @@ def _migrate(data, name):
             if inv is not None and inv.count(iconic) == 0 and inv.add(iconic):
                 data["inventory"] = inv.to_state()
         changed = True
+    if "trained" not in data and data.get("class_name") in SKILL_SCHEDULE:
+        # Before class trainers: keep every skill level the character already had; new ones are learned
+        data["trained"] = skill_levels(data["class_name"], int(data.get("level", 1)))
+        changed = True
     for key, default in (("level", 1), ("xp", 0), ("gold", 0), ("kills", 0)):
         if key not in data:
             data[key] = default
@@ -145,11 +151,13 @@ def list_characters(save_dir=None):
 
 
 def create_character(name, class_name, save_dir=None):
-    """Validate and create a new level-1 character. Returns (data, error)."""
+    """Validate and create a new level-1 character. Returns (data, error). It knows only its at-will attack: every
+    further skill level is learned from its class trainer (content/skill_tree.py)."""
     err = validate_name(name, save_dir)
     if err:
         return None, err
     data = blank_character(name, class_name)
+    data["trained"] = dict(STARTING_TRAINED)
     save_character(data, save_dir)
     return data, None
 

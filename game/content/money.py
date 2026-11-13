@@ -29,3 +29,9 @@ def format_short(bronze):
 def format_long(bronze):
     """'1 gold 23 silver 45 bronze' (speech, panels)."""
     return " ".join(f"{n} {coin}" for n, coin in parts(bronze))
+
+
+def format_price(bronze):
+    """A price without the zero coins: 150 -> '1s 50b', 300 -> '3s', 5 -> '5b'."""
+    shown = [(n, c) for n, c in parts(bronze) if n] or [(0, "bronze")]
+    return " ".join(f"{n}{coin[0]}" for n, coin in shown)
