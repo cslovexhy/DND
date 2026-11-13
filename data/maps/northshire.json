@@ -27,8 +27,8 @@
       "gender": "male",
       "x": 22,
       "y": 25,
-      "sprite_col": 5,
-      "sprite_row": 8
+      "sprite_col": 4,
+      "sprite_row": 9
     },
     {
       "name": "Milly Osworth",
