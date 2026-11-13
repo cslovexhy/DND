@@ -72,9 +72,10 @@ for _key, _stats in SPAWN_STATS.items():
 #   (item, chance, min_lv, max_lv)  only from monsters of that level range
 # A map spawn point may override a type's list ("stats": {"drops": [...]}). Shared lists below are just a starting
 # point: give a type its own list to tune it.
-HUMANOID_DROPS = [            # people carry provisions (bread) and the odd potion or cooked meal
+HUMANOID_DROPS = [            # people carry provisions (bread, water) and the odd potion or cooked meal
     ("health_potion", 0.01),
     ("bread",         0.03),
+    ("water",         0.03),
     ("roast_chicken", 0.01),
     ("sushi_plate",   0.01),
     ("elven_nectar",  0.005, 10, 20),   # rare, high-level only: never in Northshire (L1-5)
@@ -86,13 +87,21 @@ DEMON_DROPS = [               # not designed yet (user): what level-1 demons dro
     ("health_potion", 0.01),
     ("bread",         0.01),
 ]
+# Northshire mobs (user-tuned): every one drops Minor Mana Potions; Garrick Padfoot (the unique) drops more.
+KOBOLD_DROPS = HUMANOID_DROPS + [("wine", 0.01), ("minor_mana_potion", 0.01)]
+CULTIST_DROPS = HUMANOID_DROPS + [("coffee", 0.01), ("wine", 0.02), ("minor_mana_potion", 0.01),
+                                  ("mana_potion", 0.005)]
+PADFOOT_DROPS = HUMANOID_DROPS + [("coffee", 0.03), ("wine", 0.03), ("minor_mana_potion", 0.03),
+                                  ("mana_potion", 0.03)]
+NORTHSHIRE_BEAST_DROPS = BEAST_DROPS + [("minor_mana_potion", 0.01)]   # wolf, snake
 MONSTER_DROPS = {
     # humanoids
-    "kobold_dragonshield": HUMANOID_DROPS, "orc_smasher": HUMANOID_DROPS, "orc_archer": HUMANOID_DROPS,
-    "duergar_guard": HUMANOID_DROPS, "human_cultist": HUMANOID_DROPS, "garrick_padfoot": HUMANOID_DROPS,
+    "kobold_dragonshield": KOBOLD_DROPS, "orc_smasher": HUMANOID_DROPS, "orc_archer": HUMANOID_DROPS,
+    "duergar_guard": HUMANOID_DROPS, "human_cultist": CULTIST_DROPS, "garrick_padfoot": PADFOOT_DROPS,
     "meerak": HUMANOID_DROPS, "margrath": HUMANOID_DROPS, "karash": HUMANOID_DROPS, "vecna": HUMANOID_DROPS,
     # beasts
-    "snake": BEAST_DROPS, "grey_wolf": BEAST_DROPS, "rage_drake": BEAST_DROPS, "ashardalon": BEAST_DROPS,
+    "snake": NORTHSHIRE_BEAST_DROPS, "grey_wolf": NORTHSHIRE_BEAST_DROPS, "rage_drake": BEAST_DROPS,
+    "ashardalon": BEAST_DROPS,
     # demons
     "legion_devil": DEMON_DROPS, "demogorgon": DEMON_DROPS, "demodog": DEMON_DROPS, "demobat": DEMON_DROPS,
     "gibbering_mouther": DEMON_DROPS, "grell": DEMON_DROPS, "otyugh": DEMON_DROPS, "bellax": DEMON_DROPS,
