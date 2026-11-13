@@ -15,7 +15,8 @@ from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, Ambus
                                   UseItem, PickUp, SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake,
                                   TradeAccept, TradeCancel)
 from game.engine.inventory import Inventory
-from game.content.items import ITEMS, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT
+from game.content.items import (ITEMS, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT, DRINK_DURATION,
+                                DRINK_BUFF, DRINK_HOT)
 from game.engine.events import BindRightSkill, GOLD
 from game.engine.hero_ai import create_hero_ai
 from game.content.heroes import HERO_CLASSES
@@ -103,26 +104,46 @@ class PlayerState:
 
     # --- backpack items ---
     def use_item(self, slot):
-        """Use one item from a backpack slot: the Health Potion heals now (shared cooldown), food heals over
-        FOOD_DURATION and may give the food buff (replacing any other)."""
+        """Use one item from a backpack slot: potions restore HP / mana now (one shared cooldown), food heals over
+        FOOD_DURATION and may give the food buff, drinks restore HP / mana over DRINK_DURATION and may give the drink
+        buff (each buff replacing the older one of its kind)."""
         hero = self.hero
         item = self.inventory.item_at(slot)
         if item is None:
             return
         info = ITEMS[item]
         if info["kind"] == "potion":
+            heal, mana = info.get("heal", 0), info.get("mana", 0)
             if self.potion_cooldown > 0:
                 self.world.float_text(hero.x, hero.y - 30, f"Potion ready in {self.potion_cooldown:.0f}s",
                                       (255, 150, 100))
-            elif hero.hp >= hero.max_hp:
-                self.world.float_text(hero.x, hero.y - 30, "Already at full health", (200, 200, 200))
+            elif not ((heal and hero.hp < hero.max_hp) or (mana and hero.mana < hero.max_mana)):
+                self.world.float_text(hero.x, hero.y - 30,
+                                      "Already at full health" if heal else "Already at full mana", (200, 200, 200))
             else:
                 self.inventory.take_from_slot(slot)
                 self.potion_cooldown = POTION_COOLDOWN
-                heal = hero.heal(info["heal"])
-                self.world.float_text(hero.x, hero.y - 30, f"+{heal:.0f}", (100, 255, 100))
+                if heal:
+                    healed = hero.heal(heal)
+                    self.world.float_text(hero.x, hero.y - 30, f"+{healed:.0f}", (100, 255, 100))
+                if mana:
+                    restored = hero.restore_mana(mana)
+                    self.world.float_text(hero.x, hero.y - 45, f"+{restored:.0f} mana", (100, 170, 255))
             return
         self.inventory.take_from_slot(slot)
+        if info["kind"] == "drink":
+            # the drink: HP / mana over time (a new drink replaces the one being drunk)
+            hot = {"remaining": DRINK_DURATION, "item": item}
+            if info.get("heal"):
+                hot["hot_per_sec"] = info["heal"] / DRINK_DURATION
+            if info.get("mana"):
+                hot["mana_per_sec"] = info["mana"] / DRINK_DURATION
+            hero.buffs[DRINK_HOT] = hot
+            if info.get("buff"):
+                # one drink buff at a time: the new one replaces the old
+                hero.buffs[DRINK_BUFF] = {"remaining": info["buff_duration"], "item": item, **info["buff"]}
+            self.world.float_text(hero.x, hero.y - 30, f"{info['name']}!", (140, 200, 255))
+            return
         # the meal: heal over time (a new meal replaces the one being eaten)
         hero.buffs[FOOD_HOT] = {"remaining": FOOD_DURATION, "hot_per_sec": info["heal"] / FOOD_DURATION,
                                 "item": item}

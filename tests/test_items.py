@@ -1,11 +1,12 @@
-"""Items: backpack stacks, Health Potion (120 HP, 90 s cooldown), food (heal over 20 s, one food buff), monster
-drops by level, picking drops up, saving the backpack."""
+"""Items: backpack stacks, potions (Health 120 HP, Mana 200/400 mana, one shared 30 s cooldown), food (heal over
+20 s, one food buff), drinks (HP/mana over 10 s, one drink buff), monster drops by level, picking drops up, saving the
+backpack."""
 import random
 import tempfile
 import unittest
 
 from game import saves
-from game.content.items import DROP_TABLE, ITEMS, roll_drops
+from game.content.items import DROP_TABLE, ITEMS, POTION_COOLDOWN, describe, roll_drops
 from game.engine import commands as C
 from game.engine.bootstrap import create_world, sanitize_character
 from game.engine.inventory import SIZE, Inventory
@@ -74,7 +75,7 @@ class PotionTest(unittest.TestCase):
         self.assertEqual(p.potions, 3)
         self.assertEqual(make_snapshot(world)["you"]["potions"], 3)
 
-    def test_potion_heals_120_now_with_a_90s_cooldown(self):
+    def test_potion_heals_120_now_with_a_30s_cooldown(self):
         world, p = solo()
         h = p.hero
         h.hp = 100
@@ -83,10 +84,12 @@ class PotionTest(unittest.TestCase):
         self.assertAlmostEqual(h.hp, 220, delta=1.5)            # +120 (plus a frame of regen)
         self.assertEqual(p.potions, 2)
         h.hp = 100
-        world.submit(C.UsePotion(), 0)                          # on cooldown: nothing
+        step(world, 29)
+        h.hp = 100
+        world.submit(C.UsePotion(), 0)                          # still on cooldown: nothing
         world.step(DT)
         self.assertEqual(p.potions, 2)
-        step(world, 90)
+        step(world, 1.1)
         h.hp = 100
         world.submit(C.UseItem(0), 0)                           # right-click the potion slot
         world.step(DT)
@@ -102,6 +105,130 @@ class PotionTest(unittest.TestCase):
         self.assertTrue(comp._potion_ready())
         comp._use_potion()
         self.assertFalse(comp._potion_ready())
+
+    def mana_hero(self, inventory):
+        world, p = solo("Wizard", level=20, inventory=inventory)    # Wizard L20: plenty of max mana
+        h = p.hero
+        h.mana_regen_ooc = h.mana_regen_combat = 0.0                 # measure the items alone
+        h.regen_rate_ooc = h.regen_rate_combat = 0.0
+        h.mana = 0.0
+        return world, p, h
+
+    def test_mana_potions_restore_200_and_400_now(self):
+        for item, amount in (("minor_mana_potion", 200), ("mana_potion", 400)):
+            world, p, h = self.mana_hero([{"slot": 0, "item": item, "count": 1}])
+            self.assertGreater(h.max_mana, 400)
+            world.submit(C.UseItem(0), 0)
+            world.step(DT)
+            self.assertAlmostEqual(h.mana, amount, delta=0.01)
+            self.assertEqual(p.inventory.count(item), 0)
+            self.assertEqual(p.potion_cooldown, POTION_COOLDOWN - DT)
+
+    def test_all_potions_share_one_cooldown(self):
+        world, p, h = self.mana_hero([{"slot": 0, "item": "health_potion", "count": 1},
+                                      {"slot": 1, "item": "mana_potion", "count": 1},
+                                      {"slot": 2, "item": "minor_mana_potion", "count": 1}])
+        h.hp = 100
+        world.submit(C.UseItem(0), 0)                           # health potion starts the cooldown
+        world.step(DT)
+        world.submit(C.UseItem(1), 0)                           # mana potion: blocked
+        world.step(DT)
+        self.assertEqual(h.mana, 0.0)
+        self.assertEqual(p.inventory.count("mana_potion"), 1)
+        step(world, POTION_COOLDOWN)
+        world.submit(C.UseItem(1), 0)
+        world.step(DT)
+        self.assertAlmostEqual(h.mana, 400, delta=0.01)
+        world.submit(C.UseItem(2), 0)                           # minor one is now blocked by the mana potion
+        world.step(DT)
+        self.assertEqual(p.inventory.count("minor_mana_potion"), 1)
+
+    def test_mana_potion_is_not_wasted_at_full_mana(self):
+        world, p, h = self.mana_hero([{"slot": 0, "item": "mana_potion", "count": 1}])
+        h.mana = h.max_mana
+        h.hp = 1                                                 # low HP doesn't matter for a mana potion
+        world.submit(C.UseItem(0), 0)
+        world.step(DT)
+        self.assertEqual(p.inventory.count("mana_potion"), 1)
+        self.assertEqual(p.potion_cooldown, 0.0)
+
+
+class DrinkTest(unittest.TestCase):
+    def drink(self, item, extra=()):
+        inv = [{"slot": 0, "item": item, "count": 2}] + list(extra)
+        world, p = solo("Wizard", level=30, inventory=inv)          # big pools: nothing caps
+        h = p.hero
+        h.regen_rate_ooc = h.regen_rate_combat = 0.0
+        h.mana_regen_ooc = h.mana_regen_combat = 0.0
+        h.hp, h.mana = 10, 0.0
+        world.submit(C.UseItem(0), 0)
+        world.step(DT)
+        return world, p, h
+
+    def test_drinks_restore_over_10s(self):
+        for item, hp, mana in (("water", 0, 300), ("coffee", 0, 600), ("wine", 300, 300), ("elven_nectar", 500, 500)):
+            world, p, h = self.drink(item)
+            self.assertEqual(p.inventory.count(item), 1)
+            self.assertEqual(p.potion_cooldown, 0.0)                # drinks don't use the potion cooldown
+            self.assertLess(h.mana, mana * 0.1 + 1)                 # not instant
+            step(world, 5)
+            self.assertAlmostEqual(h.mana, mana / 2, delta=mana * 0.03, msg=item)
+            self.assertAlmostEqual(h.hp, 10 + hp / 2, delta=hp * 0.03 + 0.01, msg=item)
+            step(world, 5.5)
+            self.assertAlmostEqual(h.mana, mana, delta=mana * 0.03, msg=item)
+            self.assertAlmostEqual(h.hp, 10 + hp, delta=hp * 0.03 + 0.01, msg=item)
+            self.assertNotIn("Drinking", h.buffs)
+
+    def test_coffee_doubles_mana_regen_for_10_minutes(self):
+        world, p, h = self.drink("coffee")
+        self.assertEqual(h.buffs["Refreshed"]["item"], "coffee")
+        self.assertEqual(h.regen_multipliers(), (1.0, 2.0))
+        step(world, 599)
+        self.assertIn("Refreshed", h.buffs)
+        step(world, 2)
+        self.assertNotIn("Refreshed", h.buffs)
+        self.assertEqual(h.regen_multipliers(), (1.0, 1.0))
+
+    def test_regen_buff_doubles_actual_regeneration(self):
+        world, p = solo("Wizard", level=30)
+        h = p.hero
+        h.hp, h.mana = 10, 0.0
+        world.step(DT)
+        plain_hp, plain_mana = h.hp - 10, h.mana
+        h.hp, h.mana = 10, 0.0
+        h.buffs["Refreshed"] = {"remaining": 600, "item": "elven_nectar", "hp_regen_pct": 1.0, "mana_regen_pct": 1.0}
+        world.step(DT)
+        self.assertAlmostEqual(h.hp - 10, plain_hp * 2)
+        self.assertAlmostEqual(h.mana, plain_mana * 2)
+
+    def test_eating_and_drinking_stack_and_new_drink_buff_replaces_old(self):
+        world, p, h = self.drink("coffee", extra=[{"slot": 1, "item": "roast_chicken", "count": 1},
+                                                  {"slot": 2, "item": "elven_nectar", "count": 1},
+                                                  {"slot": 3, "item": "water", "count": 1}])
+        world.submit(C.UseItem(1), 0)
+        world.step(DT)
+        self.assertEqual((h.buffs["Eating"]["item"], h.buffs["Drinking"]["item"]), ("roast_chicken", "coffee"))
+        self.assertIn("Well Fed", h.buffs)
+        world.submit(C.UseItem(2), 0)
+        world.step(DT)
+        self.assertEqual(h.buffs["Refreshed"]["item"], "elven_nectar")
+        self.assertEqual(h.regen_multipliers(), (2.0, 2.0))
+        world.submit(C.UseItem(3), 0)                           # water: no buff, keeps the nectar's
+        world.step(DT)
+        self.assertEqual(h.buffs["Drinking"]["item"], "water")
+        self.assertEqual(h.buffs["Refreshed"]["item"], "elven_nectar")
+        food = make_snapshot(world)["you"]["food"]
+        self.assertEqual({k: v["item"] for k, v in food.items()},
+                         {"eating": "roast_chicken", "buff": "roast_chicken", "drinking": "water",
+                          "drink_buff": "elven_nectar"})
+
+    def test_descriptions(self):
+        self.assertEqual(describe("mana_potion"),
+                         "Instantly restores 400 mana. 30s cooldown (shared by all potions).")
+        self.assertEqual(describe("wine"), "Restores 300 HP and 300 mana over 10s.")
+        self.assertEqual(describe("elven_nectar"),
+                         "Restores 500 HP and 500 mana over 10s. Refreshed: +100% HP regen and +100% mana regen "
+                         "for 10 min (replaces other drink buffs).")
 
 
 class FoodTest(unittest.TestCase):

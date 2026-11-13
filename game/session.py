@@ -1429,6 +1429,19 @@ while running:
         screen.blit(font.render(f"Well Fed: {', '.join(parts)} ({m_}:{s_:02d})", True, (255, 220, 140)),
                     (20, comp_hud_y))
         comp_hud_y += 16
+    if food.get("drinking"):
+        d = food["drinking"]
+        screen.blit(font.render(f"Drinking {ITEMS[d['item']]['name']} ({d['remaining']:.0f}s)", True, (140, 200, 255)),
+                    (20, comp_hud_y))
+        comp_hud_y += 16
+    if food.get("drink_buff"):
+        b = food["drink_buff"]
+        buff = ITEMS[b["item"]].get("buff", {})
+        parts = [f"+{v * 100:g}% {'HP regen' if k == 'hp_regen_pct' else 'mana regen'}" for k, v in buff.items()]
+        m_, s_ = divmod(int(b["remaining"]), 60)
+        screen.blit(font.render(f"Refreshed: {', '.join(parts)} ({m_}:{s_:02d})", True, (170, 210, 255)),
+                    (20, comp_hud_y))
+        comp_hud_y += 16
 
     # Companion health bars (top HUD, below the potion/food lines)
     for comp in view.companions:

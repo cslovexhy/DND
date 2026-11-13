@@ -73,16 +73,16 @@
   },
   "manual_rogue": {
     "deaths": "0",
-    "digest": "9e09151cd64d",
-    "hp": "146/150",
+    "digest": "4a54b71fde97",
+    "hp": "149/150",
     "kills": "9",
     "outcome": "TIMEOUT",
     "time": "60.0s"
   },
   "manual_wizard": {
     "deaths": "0",
-    "digest": "2a716e8047b3",
-    "hp": "59/100",
+    "digest": "5a79a30eff5e",
+    "hp": "93/100",
     "kills": "5",
     "outcome": "TIMEOUT",
     "time": "60.0s"

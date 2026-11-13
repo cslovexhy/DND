@@ -44,9 +44,11 @@ def _entity(e, kind, ctl=None):
 
 
 def _food(hero):
-    """The hero's food state for the HUD: the meal being eaten and the food buff (item, seconds left)."""
+    """The hero's food/drink state for the HUD: the meal being eaten, the food buff, the drink being drunk and the
+    drink buff (item, seconds left)."""
     out = {}
-    for key, buff in (("eating", hero.buffs.get("Eating")), ("buff", hero.buffs.get("Well Fed"))):
+    for key, name in (("eating", "Eating"), ("buff", "Well Fed"), ("drinking", "Drinking"), ("drink_buff", "Refreshed")):
+        buff = hero.buffs.get(name)
         if buff:
             out[key] = {"item": buff.get("item"), "remaining": buff["remaining"]}
     return out

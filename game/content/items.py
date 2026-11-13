@@ -5,16 +5,31 @@ Icons are (sheet, col, row) references the client turns into art: "dungeon" = as
 
 Food heals `heal` HP spread over FOOD_DURATION seconds (a new meal replaces the meal still being eaten). Food with a
 `buff` also gives the "Well Fed" buff for `buff_duration` seconds; only one food buff exists at a time, a new one
-replaces the old. The Health Potion heals instantly and shares one POTION_COOLDOWN.
+replaces the old. Potions (health and mana) restore `heal` HP / `mana` mana instantly and share one POTION_COOLDOWN.
+
+Drinks restore `heal` HP and/or `mana` mana over DRINK_DURATION seconds (separate from eating: you can eat and drink
+at once; a new drink replaces the drink still being drunk). A drink with a `buff` gives the "Refreshed" buff
+(hp_regen_pct / mana_regen_pct: +100% = regeneration doubled) for `buff_duration` seconds; one drink buff at a time.
 """
 
 FOOD_DURATION = 20.0      # seconds a meal takes to heal its full amount
-POTION_COOLDOWN = 90.0    # seconds between two Health Potions
+DRINK_DURATION = 10.0     # seconds a drink takes to restore its full amount
+POTION_COOLDOWN = 30.0    # seconds between two potions (health and mana potions share it)
 FOOD_BUFF = "Well Fed"    # hero.buffs key of the (single) food buff
 FOOD_HOT = "Eating"       # hero.buffs key of the meal being eaten (heal over time)
+DRINK_BUFF = "Refreshed"  # hero.buffs key of the (single) drink buff
+DRINK_HOT = "Drinking"    # hero.buffs key of the drink being drunk (HP / mana over time)
 
 ITEMS = {
     "health_potion": {"name": "Health Potion", "icon": ("dungeon", 7, 9), "kind": "potion", "heal": 120},
+    "minor_mana_potion": {"name": "Minor Mana Potion", "icon": ("dungeon", 8, 10), "kind": "potion", "mana": 200},
+    "mana_potion":   {"name": "Mana Potion", "icon": ("dungeon", 8, 9), "kind": "potion", "mana": 400},
+    "water":         {"name": "Water", "icon": ("rpg", 54, 17), "kind": "drink", "mana": 300},
+    "coffee":        {"name": "Coffee", "icon": ("rpg", 56, 15), "kind": "drink", "mana": 600,
+                      "buff": {"mana_regen_pct": 1.0}, "buff_duration": 600.0},
+    "wine":          {"name": "Wine", "icon": ("rpg", 56, 14), "kind": "drink", "heal": 300, "mana": 300},
+    "elven_nectar":  {"name": "Elven Nectar", "icon": ("rpg", 55, 15), "kind": "drink", "heal": 500, "mana": 500,
+                      "buff": {"hp_regen_pct": 1.0, "mana_regen_pct": 1.0}, "buff_duration": 600.0},
     "bread":         {"name": "Bread", "icon": ("rpg", 56, 12), "kind": "food", "heal": 120},
     "drumstick":     {"name": "Drumstick", "icon": ("rpg", 55, 13), "kind": "food", "heal": 200},
     "roast_chicken": {"name": "Roast Chicken", "icon": ("rpg", 54, 15), "kind": "food", "heal": 300,
@@ -48,11 +63,32 @@ def roll_drops(monster_level, rng, category=None):
             if lo <= monster_level <= hi and rng.random() < drop_chance(item, chance, category)]
 
 
+def _restores(it):
+    parts = []
+    if it.get("heal"):
+        parts.append(f"{it['heal']} HP")
+    if it.get("mana"):
+        parts.append(f"{it['mana']} mana")
+    return " and ".join(parts)
+
+
 def describe(item_id):
     """What the item does, in the player's words (backpack tooltip)."""
     it = ITEMS[item_id]
     if it["kind"] == "potion":
-        return f"Instantly restores {it['heal']} HP. {POTION_COOLDOWN:g}s cooldown."
+        return f"Instantly restores {_restores(it)}. {POTION_COOLDOWN:g}s cooldown (shared by all potions)."
+    if it["kind"] == "drink":
+        text = f"Restores {_restores(it)} over {DRINK_DURATION:g}s."
+        buff = it.get("buff")
+        if buff:
+            parts = []
+            if buff.get("hp_regen_pct"):
+                parts.append(f"+{buff['hp_regen_pct'] * 100:g}% HP regen")
+            if buff.get("mana_regen_pct"):
+                parts.append(f"+{buff['mana_regen_pct'] * 100:g}% mana regen")
+            text += (f" {DRINK_BUFF}: {' and '.join(parts)} for {it['buff_duration'] / 60:g} min"
+                     " (replaces other drink buffs).")
+        return text
     text = f"Restores {it['heal']} HP over {FOOD_DURATION:g}s."
     buff = it.get("buff")
     if buff:

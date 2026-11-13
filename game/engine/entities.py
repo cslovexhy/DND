@@ -386,6 +386,22 @@ class Entity:
         self.hp += actual
         return actual
 
+    def restore_mana(self, amount: float) -> float:
+        """Restore mana (potions, drinks). Returns the actual amount restored."""
+        if not self.alive:
+            return 0
+        actual = max(0.0, min(amount, self.max_mana - self.mana))
+        self.mana += actual
+        return actual
+
+    def regen_multipliers(self):
+        """(HP, mana) regeneration multipliers from buffs (hp_regen_pct / mana_regen_pct; 1.0 = no change)."""
+        hp_mult = mana_mult = 1.0
+        for v in self.buffs.values():
+            hp_mult += v.get("hp_regen_pct", 0.0)
+            mana_mult += v.get("mana_regen_pct", 0.0)
+        return hp_mult, mana_mult
+
     # --- what the entity can do right now (the same rules for heroes and monsters) ---
     @property
     def can_act(self) -> bool:
@@ -446,14 +462,15 @@ class Entity:
         # Ability cooldowns
         for ab in self.abilities.values():
             ab.update(dt)
-        # Health regeneration
+        # Health regeneration (drink buffs: hp_regen_pct / mana_regen_pct, +1.0 = doubled)
+        hp_regen_mult, mana_regen_mult = self.regen_multipliers()
         if self.alive and self.hp < self.max_hp:
             rate = self.regen_rate_combat if self.in_combat else self.regen_rate_ooc
-            self.hp = min(self.max_hp, self.hp + self.max_hp * rate * dt)
+            self.hp = min(self.max_hp, self.hp + self.max_hp * rate * hp_regen_mult * dt)
         # Mana regeneration
         if self.alive and self.mana < self.max_mana:
             rate = self.mana_regen_combat if self.in_combat else self.mana_regen_ooc
-            self.mana = min(self.max_mana, self.mana + self.max_mana * rate * dt)
+            self.mana = min(self.max_mana, self.mana + self.max_mana * rate * mana_regen_mult * dt)
         # Tick buff/debuff timers
         for k, v in list(self.buffs.items()):
             v["remaining"] -= dt
@@ -462,6 +479,9 @@ class Entity:
                 healed = self.heal(v["hot_per_sec"] * dt)
                 if v.get("source") is not None:
                     self.heal_credits.append((v["source"], healed))
+            # mana over time (drinks)
+            if "mana_per_sec" in v and v["remaining"] > -dt:
+                self.restore_mana(v["mana_per_sec"] * dt)
         expired = [k for k, v in self.buffs.items() if v["remaining"] <= 0]
         for k in expired:
             del self.buffs[k]
