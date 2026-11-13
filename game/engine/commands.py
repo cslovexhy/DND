@@ -70,8 +70,15 @@ class UsePotion:
 
 @dataclass
 class UseItem:
-    """Use the item in this backpack slot (right-click it in the open backpack)."""
+    """Use the item in this backpack slot (right-click it in the open backpack). Weapons and shields: equip it."""
     slot: int
+
+
+@dataclass
+class Unequip:
+    """Take the item in this equipment slot ("main" / "off") off, back into the backpack (right-click the slot in
+    the character window)."""
+    slot: str
 
 
 @dataclass
@@ -140,8 +147,8 @@ class HoldPosition:
 # --- (de)serialization: commands are plain data, so they can be logged and sent over a wire ---
 _BY_NAME = {cls.__name__: cls for cls in (
     MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion, ToggleAutopilot, ToggleCompanion,
-    CancelChannel, BindLeftSkill, HoldPosition, UseItem, PickUp, SetTarget, MoveDir, TradeOpen, TradeOffer,
-    TradeTake, TradeAccept, TradeCancel)}
+    CancelChannel, BindLeftSkill, HoldPosition, UseItem, Unequip, PickUp, SetTarget, MoveDir, TradeOpen,
+    TradeOffer, TradeTake, TradeAccept, TradeCancel)}
 
 
 def to_dict(cmd):

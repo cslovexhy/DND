@@ -39,8 +39,21 @@ def _entity(e, kind, ctl=None):
         d["buffs"] = sorted(e.buffs)
         d["chill_visual"] = getattr(e, "chill_visual", 0.0)
         d["weapon_speed"] = e.weapon_speed
+        d["equipment"] = [e.equipment.get("main"), e.equipment.get("off")]   # drawn in the hands (client art)
         d["xp"], d["gold"], d["kills"] = e.xp, e.gold, e.kills
     return d
+
+
+def hero_stats(hero):
+    """Character-window numbers: move speed (px/s), swing (s), basic-attack hit and DPS (with crits and the food
+    buff), block chance, gear weight."""
+    q = hero.abilities.get("Q")
+    hit = q.calc_damage(hero.base_damage) if q is not None else hero.base_damage
+    hit *= getattr(hero, "damage_bonus", 1.0)
+    swing = hero.weapon_speed
+    dps = hit * (1 + hero.crit_chance * (hero.crit_multiplier - 1)) / swing if swing > 0 else 0.0
+    return {"move_speed": hero.speed, "swing": swing, "hit": hit, "dps": dps,
+            "block": hero.block_chance, "weight": hero.gear_weight, "crit": hero.crit_chance}
 
 
 def _food(hero):
@@ -116,9 +129,12 @@ def make_snapshot(world, player_id=0):
                       for k, a in hero.abilities.items()],
         "player_id": player.player_id,
         "quests": _quests(player),
+        "equipment": dict(hero.equipment),
+        "stats": hero_stats(hero),
         "progress": {"level": hero.level, "xp": hero.xp, "gold": hero.gold, "kills": hero.kills,
                      "quests": player.quests.to_state(),
-                     "inventory": player.inventory.to_state()},   # what this player's machine saves
+                     "inventory": player.inventory.to_state(),     # what this player's machine saves
+                     "equipment": dict(hero.equipment)},
     }
     ground_items = [{"id": g.item_id, "item": g.item, "x": g.x, "y": g.y} for g in world.ground_items]
     hazards = [{"kind": z.kind, "x": z.x, "y": z.y, "radius": z.radius, "elapsed": z.elapsed,

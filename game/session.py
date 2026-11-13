@@ -38,9 +38,11 @@ from game.net.client import RemoteHost
 from types import SimpleNamespace
 from game.engine.player import PlayerState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
-                                  ToggleAutopilot, ToggleCompanion, CancelChannel, UseItem, PickUp, SetTarget,
-                                  MoveDir, TradeOpen, TradeOffer, TradeTake, TradeAccept, TradeCancel)
+                                  ToggleAutopilot, ToggleCompanion, CancelChannel, UseItem, Unequip, PickUp,
+                                  SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake, TradeAccept, TradeCancel)
 from game.content.items import ITEMS, describe as describe_item
+from game.content.equipment import GEAR, DUAL_WIELD_CLASSES
+from game.client import gear_art
 from game.content import money
 from game.engine.inventory import ROWS as BAG_ROWS, COLS as BAG_COLS
 from game.engine import abilities
@@ -228,14 +230,14 @@ def save_game():
     if world is None:
         # Co-op: the host tells us our progress in every snapshot
         prog = view.you.progress
-        char_data.update({k: prog[k] for k in ("level", "xp", "gold", "kills", "inventory")})
+        char_data.update({k: prog[k] for k in ("level", "xp", "gold", "kills", "inventory", "equipment")})
         char_data["hotbar"] = list(globals().get("hotbar_order") or char_data.get("hotbar") or [])
         char_data.setdefault("quests", {})[MAP_ID] = prog["quests"]
         saves.save_character(char_data)
         return
     h = world.hero
     char_data.update({"level": h.level, "xp": h.xp, "gold": h.gold, "kills": h.kills,
-                      "inventory": world.players[0].inventory.to_state()})
+                      "inventory": world.players[0].inventory.to_state(), "equipment": dict(h.equipment)})
     char_data["hotbar"] = list(globals().get("hotbar_order") or char_data.get("hotbar") or [])   # slot layout
     char_data.setdefault("quests", {})[MAP_ID] = world.quests.to_state()
     saves.save_character(char_data)
@@ -563,6 +565,7 @@ def item_icon(item, size):
 
 
 backpack_open = False   # B toggles the backpack
+character_open = False  # C toggles the character window
 
 
 class Backpack:
@@ -577,7 +580,10 @@ class Backpack:
     def rect(cls):
         w = cls.PAD * 2 + BAG_COLS * cls.SLOT + (BAG_COLS - 1) * cls.GAP
         h = cls.PAD * 2 + cls.TITLE + BAG_ROWS * cls.SLOT + (BAG_ROWS - 1) * cls.GAP + cls.MONEY
-        return pygame.Rect(WIDTH // 2 - w // 2, HEIGHT - 70 - h, w, h)
+        x = WIDTH // 2 - w // 2
+        if character_open:                  # both open: never on top of the character window (left)
+            x = max(x, min(CharacterWindow.rect().right + 10, WIDTH - w - 4))
+        return pygame.Rect(x, HEIGHT - 70 - h, w, h)
 
     @classmethod
     def slot_center(cls, i):
@@ -647,19 +653,119 @@ class Backpack:
         slot = cls.slot_at(mx, my)
         s = stacks.get(slot) if slot is not None else None
         if s:
-            lines = [ITEMS[s["item"]]["name"]] + textwrap.wrap(describe_item(s["item"]), width=46)
-            surfs = [big_font.render(lines[0], True, GOLD)] + [font.render(l, True, (220, 220, 220)) for l in lines[1:]]
-            tw = max(t.get_width() for t in surfs) + 16
-            th = sum(t.get_height() + 2 for t in surfs) + 12
-            tx, ty = min(mx + 16, WIDTH - tw - 4), max(4, my - th - 8)
-            tip = pygame.Surface((tw, th), pygame.SRCALPHA)
-            tip.fill((10, 10, 15, 240))
-            pygame.draw.rect(tip, (150, 150, 170), tip.get_rect(), 1, border_radius=4)
-            y = 6
-            for t in surfs:
-                tip.blit(t, (8, y))
-                y += t.get_height() + 2
-            screen.blit(tip, (tx, ty))
+            gear = ITEMS[s["item"]]["kind"] in ("weapon", "shield")
+            draw_item_tooltip(screen, s["item"], mx, my, "Right-click to equip" if gear else None)
+
+
+class CharacterWindow:
+    """The character window (C): your hero with its gear, the Main hand / Off hand slots and key stats. Right-click a
+    slot to take the item off; right-click a weapon or shield in the backpack to equip it. Opens on the left, so the
+    backpack can stay open next to it."""
+    W, PAD, SLOT, PORTRAIT_SCALE = 330, 14, 52, 5
+    SLOT_NAMES = {"main": "Main hand", "off": "Off hand"}
+
+    @classmethod
+    def _portrait_size(cls):
+        s = cls.PORTRAIT_SCALE
+        return (16 + 2 * gear_art.PAD_X) * s, (16 + gear_art.PAD_TOP + gear_art.PAD_BOTTOM) * s
+
+    @classmethod
+    def rect(cls):
+        pw, ph = cls._portrait_size()
+        h = cls.PAD * 2 + 30 + ph + 20 + 11 * 20 + 24
+        return pygame.Rect(16, max(110, HEIGHT // 2 - h // 2), cls.W, h)
+
+    @classmethod
+    def slot_rects(cls):
+        """Screen rects of the two slots: off hand left of the portrait, main hand right (as the hero holds them)."""
+        r = cls.rect()
+        pw, ph = cls._portrait_size()
+        y = r.y + cls.PAD + 30 + ph // 2 - cls.SLOT // 2
+        return {"off": pygame.Rect(r.x + cls.PAD, y, cls.SLOT, cls.SLOT),
+                "main": pygame.Rect(r.right - cls.PAD - cls.SLOT, y, cls.SLOT, cls.SLOT)}
+
+    @classmethod
+    def slot_at(cls, mx, my):
+        return next((s for s, rr in cls.slot_rects().items() if rr.collidepoint(mx, my)), None)
+
+    @classmethod
+    def draw(cls, screen, me, you):
+        r = cls.rect()
+        eq = getattr(you, "equipment", None) or {"main": None, "off": None}
+        st = getattr(you, "stats", None) or {}
+        panel = pygame.Surface(r.size, pygame.SRCALPHA)
+        panel.fill((20, 20, 30, 235))
+        pygame.draw.rect(panel, GOLD, panel.get_rect(), 2, border_radius=6)
+        panel.blit(big_font.render(me.name, True, GOLD), (cls.PAD, cls.PAD - 2))
+        sub = font.render(f"Level {me.level} {me.class_name}", True, (200, 200, 210))
+        panel.blit(sub, (r.w - cls.PAD - sub.get_width(), cls.PAD + 2))
+        hint = font.render("Right-click a slot to take it off  ·  C to close", True, (150, 150, 170))
+        panel.blit(hint, (r.w // 2 - hint.get_width() // 2, r.h - cls.PAD - hint.get_height() + 4))
+        # portrait: the hero with its gear, big and pixel-crisp
+        key = HERO_CLASS_BY_NAME[me.class_name]["sprite_key"]
+        pw, ph = cls._portrait_size()
+        comp = gear_art.compose(HERO_TILES_RAW[key], key, eq.get("main"), eq.get("off"))
+        panel.blit(pygame.transform.scale(comp, (pw, ph)), (r.w // 2 - pw // 2, cls.PAD + 30))
+        screen.blit(panel, r.topleft)
+        # slots
+        two_hand = eq.get("main") is not None and GEAR[eq["main"]]["hands"] == "2h"
+        for slot, sr in cls.slot_rects().items():
+            locked = slot == "off" and two_hand
+            pygame.draw.rect(screen, (40, 40, 50) if locked else (55, 55, 70), sr, border_radius=4)
+            pygame.draw.rect(screen, (110, 110, 130), sr, 1, border_radius=4)
+            item = eq.get(slot)
+            if item:
+                screen.blit(item_icon(item, cls.SLOT - 8), (sr.x + 4, sr.y + 4))
+            elif locked:                           # a 2h weapon holds both hands
+                t = big_font.render("2H", True, (110, 110, 120))
+                screen.blit(t, (sr.centerx - t.get_width() // 2, sr.centery - t.get_height() // 2))
+            label = font.render(cls.SLOT_NAMES[slot], True, (110, 110, 120) if locked else (190, 190, 200))
+            screen.blit(label, (sr.centerx - label.get_width() // 2, sr.bottom + 3))
+        # stats
+        swing = st.get("swing", 0.0)
+        lines = [
+            ("HP", f"{me.hp:.0f} / {me.max_hp}"),
+            ("Mana", f"{me.mana:.0f} / {me.max_mana}"),
+            ("Move speed", f"{st.get('move_speed', 0):.1f} px/s"),
+            ("Attack speed", f"{swing:.2f} s  ({1 / swing:.2f} / s)" if swing else "-"),
+            ("Damage per hit", f"{st.get('hit', 0):.1f}"),
+            ("DPS", f"{st.get('dps', 0):.1f}"),
+            ("Crit chance", f"{st.get('crit', 0) * 100:.0f}%"),
+            ("Block chance", f"{st.get('block', 0) * 100:.0f}%"),
+            ("Gear weight", f"{st.get('weight', 0)}  (-{st.get('weight', 0)}% move speed)"),
+            ("Dual wield", "yes" if me.class_name in DUAL_WIELD_CLASSES else "no"),
+        ]
+        y = r.y + cls.PAD + 30 + ph + 20
+        for name, value in lines:
+            screen.blit(font.render(name, True, (170, 170, 190)), (r.x + cls.PAD, y))
+            v = font.render(value, True, WHITE)
+            screen.blit(v, (r.right - cls.PAD - v.get_width(), y))
+            y += 20
+        # tooltip for a hovered slot
+        mx, my = pygame.mouse.get_pos()
+        slot = cls.slot_at(mx, my)
+        item = eq.get(slot) if slot else None
+        if item:
+            draw_item_tooltip(screen, item, mx, my, "Right-click to take it off")
+
+
+def draw_item_tooltip(screen, item, mx, my, footer=None):
+    """Item name, what it does (and an optional hint line) in a small box by the mouse."""
+    lines = [ITEMS[item]["name"]] + textwrap.wrap(describe_item(item), width=46)
+    surfs = [big_font.render(lines[0], True, GOLD)] + [font.render(l, True, (220, 220, 220)) for l in lines[1:]]
+    if footer:
+        surfs.append(font.render(footer, True, (150, 150, 170)))
+    tw = max(t.get_width() for t in surfs) + 16
+    th = sum(t.get_height() + 2 for t in surfs) + 12
+    tx, ty = min(mx + 16, WIDTH - tw - 4), max(4, my - th - 8)
+    tip = pygame.Surface((tw, th), pygame.SRCALPHA)
+    tip.fill((10, 10, 15, 240))
+    pygame.draw.rect(tip, (150, 150, 170), tip.get_rect(), 1, border_radius=4)
+    y = 6
+    for t in surfs:
+        tip.blit(t, (8, y))
+        y += t.get_height() + 2
+    screen.blit(tip, (tx, ty))
 
 
 class TradeWindow:
@@ -870,6 +976,39 @@ def status_tint(e, s):
     return s
 
 
+def draw_hero_figure(v, cx, cy, flash=False):
+    """Draw a hero / other player / companion with the gear in its hands (client/gear_art.py). Returns the body's
+    screen rect (sx, sy, sw, sh) — where the bare sprite would be — for bars, name tags and status effects, or None
+    when it is off screen."""
+    spr = v.sprite
+    sw, sh = int(spr.get_width() * cam_zoom), int(spr.get_height() * cam_zoom)
+    sx = int((v.x - cx) * cam_zoom + WIDTH // 2 - sw // 2)
+    sy = int((v.y - cy) * cam_zoom + HEIGHT // 2 - sh // 2)
+    if sx < -2 * sw or sx > WIDTH + sw or sy < -2 * sh or sy > HEIGHT + sh:
+        return None
+    main, off = (getattr(v, "equipment", None) or [None, None])[:2]
+    if main or off:
+        key = HERO_CLASS_BY_NAME[v.class_name]["sprite_key"]
+        comp = gear_art.compose(HERO_TILES_RAW[key], key, main, off)
+        k = sw / 16                                       # screen px per source pixel
+        img = pygame.transform.scale(comp, (int(comp.get_width() * k), int(comp.get_height() * k)))
+        ox, oy = gear_art.body_offset(k)
+        if v.facing_left:
+            img = pygame.transform.flip(img, True, False)
+            ox = img.get_width() - ox - sw
+        dx, dy = sx - int(ox), sy - int(oy)
+    else:
+        img = pygame.transform.flip(spr, True, False) if v.facing_left else spr
+        img = pygame.transform.scale(img, (sw, sh))
+        dx, dy = sx, sy
+    img = status_tint(v, img)
+    if flash:
+        img = img.copy()
+        img.fill((200, 50, 50), special_flags=pygame.BLEND_RGB_ADD)
+    screen.blit(img, (dx, dy))
+    return sx, sy, sw, sh
+
+
 def draw_status_effects(e, sx, sy, sw, sh):
     """Rings, shield bubble and cast bar around a hero drawn at (sx, sy, sw, sh) — used for your hero, other
     players and companions alike, so everyone sees the same effects (status_visuals decides which)."""
@@ -943,7 +1082,8 @@ while running:
 
     if _input_script:
         _input_script.post_due(_tick, hero, view, view.npcs, WIDTH, HEIGHT, cam_zoom, slot_pos=Backpack.slot_center,
-                               hotbar_pos=lambda i: Hotbar.rects(len(hotbar_order))[i].center)
+                               hotbar_pos=lambda i: Hotbar.rects(len(hotbar_order))[i].center,
+                               equip_pos=lambda s: CharacterWindow.slot_rects()[s].center)
     _tick += 1
 
     for event in pygame.event.get():
@@ -963,6 +1103,9 @@ while running:
             if event.key == pygame.K_b:
                 backpack_open = not backpack_open
                 continue
+            if event.key == pygame.K_c:
+                character_open = not character_open
+                continue
             if event.key == pygame.K_t:
                 t = view.you.target
                 host.send(TradeOpen(t.eid if t is not None and t.kind == "ally" else None))   # trade with that player
@@ -973,6 +1116,8 @@ while running:
                     host.send(TradeCancel())
                 elif backpack_open:
                     backpack_open = False
+                elif character_open:
+                    character_open = False
                 elif view.you.frostbolt_channeling:
                     host.send(CancelChannel())
                 elif view.you.target is not None:
@@ -1035,6 +1180,12 @@ while running:
                     host.send(UseItem(slot))
                 elif event.button == 1 and slot is not None and any(s["slot"] == slot for s in view.you.inventory):
                     bag_drag = slot                            # drag it (onto the trade window)
+                continue
+            # Open character window: clicks on it never reach the world; right-click a slot takes the item off
+            if character_open and CharacterWindow.rect().collidepoint(mx_s, my_s):
+                eq_slot = CharacterWindow.slot_at(mx_s, my_s)
+                if event.button == 3 and eq_slot is not None:
+                    host.send(Unequip(eq_slot))
                 continue
             # If quest popup panel is open, intercept clicks
             if quest_popup_panel and quest_popup_panel.active:
@@ -1268,24 +1419,12 @@ while running:
 
     # Companions
     for comp in view.companions:
-        if not comp.alive:
+        if not comp.alive or not comp.sprite:
             continue
-        cspr = comp.sprite
-        if not cspr:
+        r = draw_hero_figure(comp, cx, cy, flash=comp.flash_timer > 0)
+        if r is None:
             continue
-        csw, csh = int(cspr.get_width() * cam_zoom), int(cspr.get_height() * cam_zoom)
-        csx = int((comp.x - cx) * cam_zoom + WIDTH//2 - csw//2)
-        csy = int((comp.y - cy) * cam_zoom + HEIGHT//2 - csh//2)
-        if csx < -csw or csx > WIDTH or csy < -csh or csy > HEIGHT:
-            continue
-        cs = pygame.transform.flip(cspr, True, False) if comp.facing_left else cspr
-        cs = pygame.transform.scale(cs, (csw, csh))
-        cs = status_tint(comp, cs)
-        if comp.flash_timer > 0:
-            f = cs.copy(); f.fill((200, 50, 50), special_flags=pygame.BLEND_RGB_ADD)
-            screen.blit(f, (csx, csy))
-        else:
-            screen.blit(cs, (csx, csy))
+        csx, csy, csw, csh = r
         draw_status_effects(comp, csx, csy, csw, csh)
         # HP bar for companions
         if comp.hp < comp.max_hp:
@@ -1300,15 +1439,10 @@ while running:
     for ally in view.allies:
         if not ally.alive or not ally.sprite:
             continue
-        asw, ash = int(ally.sprite.get_width() * cam_zoom), int(ally.sprite.get_height() * cam_zoom)
-        asx = int((ally.x - cx) * cam_zoom + WIDTH//2 - asw//2)
-        asy = int((ally.y - cy) * cam_zoom + HEIGHT//2 - ash//2)
-        if asx < -asw or asx > WIDTH or asy < -ash or asy > HEIGHT:
+        r = draw_hero_figure(ally, cx, cy)
+        if r is None:
             continue
-        a_s = pygame.transform.flip(ally.sprite, True, False) if ally.facing_left else ally.sprite
-        a_s = pygame.transform.scale(a_s, (asw, ash))
-        a_s = status_tint(ally, a_s)
-        screen.blit(a_s, (asx, asy))
+        asx, asy, asw, ash = r
         draw_status_effects(ally, asx, asy, asw, ash)
         pygame.draw.rect(screen, HP_BG, (asx-1, asy-9, asw+2, 6))
         pygame.draw.rect(screen, HP_RED, (asx, asy-8, asw, 4))
@@ -1349,15 +1483,9 @@ while running:
             pygame.draw.circle(screen, (*proj.color[:3], 100) if len(proj.color) == 4 else proj.color, (psx, psy), max(3, int(proj.radius * cam_zoom) + 3), 1)
 
     # Hero
-    spr = hero.sprite
-    sw, sh = int(spr.get_width() * cam_zoom), int(spr.get_height() * cam_zoom)
-    sx = int((hero.x - cx) * cam_zoom + WIDTH//2 - sw//2)
-    sy = int((hero.y - cy) * cam_zoom + HEIGHT//2 - sh//2)
-    s = pygame.transform.flip(spr, True, False) if hero.facing_left else spr
-    s = pygame.transform.scale(s, (sw, sh))
-    s = status_tint(hero, s)
-    screen.blit(s, (sx, sy))
-    draw_status_effects(hero, sx, sy, sw, sh)
+    r = draw_hero_figure(hero, cx, cy)
+    if r is not None:
+        draw_status_effects(hero, *r)
 
     # NPC rendering
     for npc in view.npcs:
@@ -1508,6 +1636,8 @@ while running:
     _trade_was_open = bool(view.you.trade)
     if backpack_open:
         Backpack.draw(screen, view.you.inventory, hero.gold)
+    if character_open:
+        CharacterWindow.draw(screen, hero, view.you)
     if view.you.trade:
         TradeWindow.draw(screen, view.you.trade)
     if bag_drag is not None:
@@ -1539,6 +1669,8 @@ while running:
         pygame.draw.rect(screen, (20, 20, 30), (WIDTH//2 - wait.get_width()//2 - 16, HEIGHT//3 - 12,
                                                 wait.get_width() + 32, wait.get_height() + 24))
         screen.blit(wait, (WIDTH//2 - wait.get_width()//2, HEIGHT//3))
+    if _input_script:
+        _input_script.take_screenshot(screen)
     pygame.display.flip()
 
 if world is not None and world.record_commands:

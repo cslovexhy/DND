@@ -189,13 +189,20 @@ SPR_FLOOR2 = get_rpg_tile(8, 10)  # same for now
 SPR_WALL = get_rpg_tile(13, 9)    # wall
 
 # Hero sprites
-HERO_SPRITES = {  # keyed by HERO_CLASSES[...]["sprite_key"]
-    "fighter": get_dungeon_tile(0, 8),
-    "cleric": get_dungeon_tile(3, 8),
-    "paladin": get_dungeon_tile(4, 7),
-    "rogue": get_dungeon_tile(2, 7),
-    "wizard": get_dungeon_tile(0, 7),
+HERO_TILES = {  # keyed by HERO_CLASSES[...]["sprite_key"]: dungeon-sheet (col, row)
+    "fighter": (0, 8), "cleric": (3, 8), "paladin": (4, 7), "rogue": (2, 7), "wizard": (0, 7),
 }
+HERO_SPRITES = {k: get_dungeon_tile(c, r) for k, (c, r) in HERO_TILES.items()}
+
+
+def get_dungeon_tile_raw(col, row):
+    """A raw 16x16 dungeon tile (not scaled)."""
+    s = pygame.Surface((TILE_SRC, TILE_SRC), pygame.SRCALPHA)
+    s.blit(dungeon_img, (0, 0), (col * (TILE_SRC + 1), row * (TILE_SRC + 1), TILE_SRC, TILE_SRC))
+    return s
+
+
+HERO_TILES_RAW = {k: get_dungeon_tile_raw(c, r) for k, (c, r) in HERO_TILES.items()}   # for the gear composite
 
 # Monster sprites
 def load_sprite_file(path, scale=None):

@@ -9,6 +9,7 @@ Schema:
   "name": "heskan", "class_name": "Wizard",
   "level": 16, "xp": 367, "gold": 112440, "kills": 757,
   "inventory": [{"slot": 0, "item": "health_potion", "count": 3}],   # backpack stacks (engine/inventory.py)
+  "equipment": {"main": "staff", "off": null},  # what the hero wields (content/equipment.py)
   "quests": {                       # quest progression is per character AND per map
     "northshire": {
       "completed": ["quest_id", ...],
@@ -23,7 +24,9 @@ import json
 import os
 import re
 
-from game.content.items import STARTING_INVENTORY
+from game.content.equipment import ICONIC, empty_equipment
+from game.content.items import STARTING_INVENTORY, starting_inventory
+from game.engine.inventory import Inventory
 
 SAVE_DIR = os.path.join("data", "saves")
 MAX_NAME_LEN = 12
@@ -54,7 +57,9 @@ def blank_character(name, class_name, level=1):
         "name": name, "class_name": class_name,
         "level": level, "xp": 0, "gold": 0, "kills": 0,
         "quests": {},
-        "inventory": [dict(s) for s in STARTING_INVENTORY],   # backpack (engine/inventory.py): 3 Health Potions
+        # backpack (engine/inventory.py): 3 Health Potions + the class's iconic weapon (content/equipment.py)
+        "inventory": starting_inventory(class_name),
+        "equipment": empty_equipment(),
     }
 
 
@@ -76,6 +81,18 @@ def _migrate(data, name):
     if "inventory" not in data:
         # Before the backpack every session started with 3 potions: start existing characters with that.
         data["inventory"] = [dict(s) for s in STARTING_INVENTORY]
+        changed = True
+    if "equipment" not in data:
+        # Before equipment: nothing equipped, and the class's iconic weapon is put in the backpack (if it has room).
+        data["equipment"] = empty_equipment()
+        iconic = ICONIC.get(data.get("class_name"))
+        if iconic is not None:
+            try:
+                inv = Inventory.from_state(data["inventory"])
+            except ValueError:
+                inv = None
+            if inv is not None and inv.count(iconic) == 0 and inv.add(iconic):
+                data["inventory"] = inv.to_state()
         changed = True
     for key, default in (("level", 1), ("xp", 0), ("gold", 0), ("kills", 0)):
         if key not in data:

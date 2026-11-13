@@ -8,6 +8,7 @@ from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import Optional
 
+from game.content.equipment import NO_GEAR, empty_equipment, gear_stats
 # === SCALING CONSTANTS ===
 # Board game HP 1-12 → ARPG HP (×50 for granularity)
 HP_SCALE = 50
@@ -187,6 +188,8 @@ class Projectile:
     alive: bool = True
     source: 'Entity' = None    # who fired it (for aggro)
     threat: float = 1.0        # threat modifier of the skill that fired it
+    blockable: bool = False    # a monster's basic ranged attack (arrow): a shield can block it
+    blocked: bool = False      # it hit and was blocked
 
     def update(self, dt: float):
         if not self.alive or not self.target or not self.target.alive:
@@ -198,6 +201,9 @@ class Projectile:
         if dist < 15:
             # Hit! Returns (damage_dealt, target) so caller can handle aggro
             self.alive = False
+            if self.blockable and self.target.try_block():
+                self.blocked = True
+                return (0.0, self.target)
             dmg = self.target.take_damage(self.damage, source=self.source, threat=self.threat)
             return (dmg, self.target)
         move = min(self.speed * dt, dist)
@@ -527,11 +533,67 @@ class Entity:
         self.last_crit = random.random() < self.crit_chance
         if self.last_crit:
             damage *= self.crit_multiplier
+        self.last_blocked = target.try_block()
+        if self.last_blocked:
+            return 0.0                    # a shield took the hit (Hero.block_chance)
         return target.take_damage(damage, source=self)
+
+    block_chance = 0.0                    # share of monster basic attacks this entity blocks (heroes: a shield)
+    last_blocked = False                  # the last basic attack (try_basic_attack) was blocked
+
+    def try_block(self) -> bool:
+        """Roll to block a monster's basic attack (only rolls, and so only uses random numbers, with a shield)."""
+        if self.block_chance <= 0:
+            return False
+        import random
+        return random.random() < self.block_chance
 
 
 class Hero(Entity):
-    """Player-controlled hero with abilities, XP, gold, equipment."""
+    """Player-controlled hero with abilities, XP, gold, equipment.
+
+    Gear (content/equipment.py) changes three class stats, which are stored bare and read through properties:
+    base_damage = a x class_damage + b, weapon_speed = slower of (class_swing, weapon swing), speed = class_speed x
+    (100 - gear weight) / 100. Setting base_damage / weapon_speed / speed sets the bare class value."""
+
+    _gear = NO_GEAR                       # gear_stats(self.equipment), refreshed by refresh_gear()
+
+    @property
+    def base_damage(self) -> float:
+        g = self._gear
+        return g["a"] * self.class_damage + g["b"]
+
+    @base_damage.setter
+    def base_damage(self, value):
+        self.class_damage = value
+
+    @property
+    def weapon_speed(self) -> float:
+        return max(self.class_swing, self._gear["swing"])
+
+    @weapon_speed.setter
+    def weapon_speed(self, value):
+        self.class_swing = value
+
+    @property
+    def speed(self) -> float:
+        return self.class_speed * self._gear["move_mult"]
+
+    @speed.setter
+    def speed(self, value):
+        self.class_speed = value
+
+    @property
+    def block_chance(self) -> float:
+        return self._gear["block"]
+
+    @property
+    def gear_weight(self) -> int:
+        return self._gear["weight"]
+
+    def refresh_gear(self):
+        """Recompute the gear's effect after self.equipment changed."""
+        self._gear = gear_stats(self.equipment)
 
     def __init__(self, name: str, class_name: str,
                  x: float, y: float,
@@ -547,8 +609,9 @@ class Hero(Entity):
         self.kills = 0
         self.deaths = 0   # times this hero fell and respawned (no game over)
 
-        # Equipment (slot -> item)
-        self.equipment: dict[str, dict] = {}
+        # Equipment (content/equipment.py): slot ("main" / "off") -> item id or None
+        self.equipment = empty_equipment()
+        self.refresh_gear()
 
         # Skill levels (content/skill_tree.py): None = every skill at full strength (no level gating)
         self.skill_levels = None

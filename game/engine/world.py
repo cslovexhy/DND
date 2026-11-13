@@ -14,6 +14,8 @@ from game.engine.ai import (generate_patrol_route, setup_monster_aggro, aggro_mo
                             run_monster_ai, drop_from_hate, credit_heal_hate, AggroState)
 from game.engine.entities import Condition, Monster, Projectile
 from game.engine.events import FloatText, LevelUp, SkillUp, QuestReady, NpcDialogue, GOLD, HP_RED
+
+BLOCK_COLOR = (200, 210, 230)      # "BLOCK" over a hero whose shield took a hit
 from game.engine.npc import NPC
 from game.engine import abilities, actions, casting, combat, skills
 from game.engine.snapshot import quest_info
@@ -527,7 +529,8 @@ class World:
                 dmg, hit_target = result
                 src = proj.source
                 if hit_target.faction == "heroes":
-                    self.float_text(hit_target.x + random.randint(-10, 10), hit_target.y - 30, f"{dmg:.0f}", HP_RED)
+                    self.float_text(hit_target.x + random.randint(-10, 10), hit_target.y - 30,
+                                    "BLOCK" if proj.blocked else f"{dmg:.0f}", BLOCK_COLOR if proj.blocked else HP_RED)
                 else:
                     self.float_text(hit_target.x, hit_target.y - 20, f"{dmg:.0f}", proj.color)
                 if src is not None:
@@ -654,8 +657,10 @@ class World:
             result = run_monster_ai(m, all_heroes, dt, self.is_wall, all_monsters=gs.monsters)
             if result and result[0] in ("attack", "ranged_attack", "aoe_attack"):
                 hit_hero = result[1]
-                self.float_text(hit_hero.x+random.randint(-10,10), hit_hero.y-30, f"{result[2]:.0f}", HP_RED)
-                if result[0] == "attack":
+                blocked = result[0] == "attack" and m.last_blocked
+                self.float_text(hit_hero.x+random.randint(-10,10), hit_hero.y-30,
+                                "BLOCK" if blocked else f"{result[2]:.0f}", BLOCK_COLOR if blocked else HP_RED)
+                if result[0] == "attack" and not blocked:
                     abilities.poison_on_hit(self, m, hit_hero)   # an armed Poison Dagger rides on this hit
                 # Demogorgon reveals when it attacks; stealth timer restarts from now.
                 if m.name == "Demogorgon":
@@ -666,7 +671,7 @@ class World:
                 proj_damage = result[2]
                 proj = Projectile(x=m.x, y=m.y, target=target_hero,
                                   speed=350.0, damage=proj_damage,
-                                  color=(255, 80, 80), source=m)
+                                  color=(255, 80, 80), source=m, blockable=True)
                 self.projectiles.append(proj)
             if m.abilities and m.alive and m.aggro_state == AggroState.AGGROED:
                 casting.monster_turn(self, m)              # its kit: the same cast path as a hero's

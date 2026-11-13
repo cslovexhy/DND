@@ -13,6 +13,8 @@ at once; a new drink replaces the drink still being drunk). A drink with a `buff
 (hp_regen_pct / mana_regen_pct: +100% = regeneration doubled) for `buff_duration` seconds; one drink buff at a time.
 """
 
+from game.content.equipment import GEAR, ICONIC, describe as describe_gear
+
 FOOD_DURATION = 20.0      # seconds a meal takes to heal its full amount
 DRINK_DURATION = 10.0     # seconds a drink takes to restore its full amount
 POTION_COOLDOWN = 30.0    # seconds between two potions (health and mana potions share it)
@@ -38,8 +40,14 @@ ITEMS = {
     "sushi_plate":   {"name": "Sushi Plate", "icon": ("rpg", 56, 13), "kind": "food", "heal": 200,
                       "buff": {"damage_pct": 0.10}, "buff_duration": 600.0},
 }
+ITEMS.update(GEAR)          # weapons and shields (content/equipment.py) are backpack items too
 
 STARTING_INVENTORY = [{"slot": 0, "item": "health_potion", "count": 3}]
+
+
+def starting_inventory(class_name):
+    """A new character's backpack: 3 Health Potions and the class's iconic weapon (not equipped)."""
+    return [dict(s) for s in STARTING_INVENTORY] + [{"slot": 1, "item": ICONIC[class_name], "count": 1}]
 
 
 def roll_drops(table, monster_level, rng):
@@ -67,6 +75,8 @@ def _restores(it):
 def describe(item_id):
     """What the item does, in the player's words (backpack tooltip)."""
     it = ITEMS[item_id]
+    if it["kind"] in ("weapon", "shield"):
+        return describe_gear(item_id)
     if it["kind"] == "potion":
         return f"Instantly restores {_restores(it)}. {POTION_COOLDOWN:g}s cooldown (shared by all potions)."
     if it["kind"] == "drink":

@@ -62,11 +62,15 @@ class ClientReadsOnlySnapshotsTest(unittest.TestCase):
 class SameEffectsForEveryHeroTest(unittest.TestCase):
     def test_every_hero_kind_is_drawn_with_the_shared_status_effects(self):
         """Your hero, other players and companions must all go through status_tint + draw_status_effects,
-        so a buff looks the same on every player's screen."""
+        so a buff looks the same on every player's screen. All three are drawn by draw_hero_figure (which applies
+        status_tint), then get draw_status_effects."""
         with open(os.path.join(ROOT, "game", "session.py"), encoding="utf-8") as f:
             src = f.read()
+        fig = src[src.index("def draw_hero_figure("):]
+        fig = fig[:fig.index("\ndef ")]
+        self.assertIn("status_tint(v,", fig)
         for who in ("hero", "comp", "ally"):
-            self.assertIn(f"status_tint({who},", src)
+            self.assertIn(f"draw_hero_figure({who},", src)
             self.assertIn(f"draw_status_effects({who},", src)
 
 

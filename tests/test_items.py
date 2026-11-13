@@ -465,7 +465,10 @@ class SaveTest(unittest.TestCase):
             json.dump({"name": "old", "class_name": "Rogue", "level": 3, "xp": 1, "gold": 2, "kills": 3,
                        "quests": {}}, f)
         data = saves.load_character("old", d)
-        self.assertEqual(data["inventory"], [{"slot": 0, "item": "health_potion", "count": 3}])
+        # no backpack yet: the 3 potions; no equipment yet: nothing worn, the iconic weapon (Rogue: dagger) added
+        self.assertEqual(data["inventory"], [{"slot": 0, "item": "health_potion", "count": 3},
+                                             {"slot": 1, "item": "dagger", "count": 1}])
+        self.assertEqual(data["equipment"], {"main": None, "off": None})
         data["inventory"] = [{"slot": 4, "item": "bread", "count": 7}]
         saves.save_character(data, d)
         random.seed(1)

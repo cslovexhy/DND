@@ -5,6 +5,7 @@ and later the dedicated/listen server), so both create the world in exactly the 
 """
 import os
 
+from game.content.equipment import empty_equipment, validate_equipment
 from game.content.heroes import HERO_CLASS_BY_NAME
 from game.engine.entities import GameState
 from game.engine.player import PlayerState
@@ -28,6 +29,11 @@ def _make_hero(char_data, map_id, x, y, hooks=None):
     hero.gold = char_data["gold"]
     hero.kills = char_data["kills"]
     set_hero_level(hero, char_data["level"])  # re-applies per-level stat growth
+    try:
+        hero.equipment = validate_equipment(char_data.get("equipment"), hero.class_name)
+    except ValueError:
+        hero.equipment = empty_equipment()    # a hand-edited / broken save: start bare-handed
+    hero.refresh_gear()
     # Quest definitions come from data/quests/<map>.json; progress is per character AND per map.
     quests = load_quest_log(map_id)
     quests.load_state(char_data.get("quests", {}).get(map_id))
@@ -66,9 +72,10 @@ def sanitize_character(data):
         raise ValueError("bad quests")
     from game.engine.inventory import Inventory
     inventory = Inventory.from_state(data.get("inventory")).to_state()   # raises ValueError if malformed
+    equipment = validate_equipment(data.get("equipment"), cls)            # raises ValueError if malformed
     return {"name": name, "class_name": cls, "level": num("level", 1, MAX_LEVEL),
             "xp": num("xp", 0, 10 ** 9), "gold": num("gold", 0, 10 ** 9), "kills": num("kills", 0, 10 ** 9),
-            "quests": quests, "inventory": inventory}
+            "quests": quests, "inventory": inventory, "equipment": equipment}
 
 
 def create_world(map_path, char_data, debug=False, autopilot=False, auto_companion=False, hooks=None, pp=1):

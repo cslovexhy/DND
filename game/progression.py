@@ -133,7 +133,10 @@ def apply_level_growth(hero, levels=1):
     """Add `levels` levels worth of weapon-damage growth and set max HP and max mana for hero.level (call AFTER
     raising hero.level). Full-heals and refills mana."""
     growth = growth_for(hero.class_name)
-    hero.base_damage += growth["damage"] * levels
+    if hasattr(hero, "class_damage"):
+        hero.class_damage += growth["damage"] * levels     # the bare class value (gear applies on top)
+    else:
+        hero.base_damage += growth["damage"] * levels
     base = getattr(hero, "base_max_hp", hero.max_hp)
     if hero.class_name in HERO_HP:
         base = hero_max_hp(hero.class_name, hero.level)

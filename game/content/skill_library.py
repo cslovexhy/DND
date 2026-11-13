@@ -162,7 +162,8 @@ def poison_dagger():
 
 # --- Wizard ----------------------------------------------------------------------------------------------------
 def frostbolt():
-    return Ability("Frostbolt", mana_weight=3.0, cooldown=1.2, a_levels=(1.0,), b_levels=(1, 2, 3),
+    # 2.0 s swing (was 1.2 s): a / b scaled x5/3 (1.0 -> 5/3, 1/2/3 -> 5/3, 10/3, 5) to keep the same DPS
+    return Ability("Frostbolt", mana_weight=3.0, cooldown=2.0, a_levels=(5 / 3,), b_levels=(5 / 3, 10 / 3, 5),
                    radius=0, range=260,
                    effect="Channeled ranged bolt. Immobile while casting. Slows 25% for 3s.",
                    power_type="at_will", color=(150, 200, 255), range_levels=WIZARD_BOLT_RANGES)

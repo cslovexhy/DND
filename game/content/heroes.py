@@ -80,9 +80,10 @@ def create_wizard(name: str, x: float, y: float) -> Hero:
     h = Hero(name, "Wizard", x, y, hp=6, ac=14, speed=6, surge_value=3)
     h.max_hp = h.hp = h.base_max_hp = hero_max_hp("Wizard", 1)   # level-1 HP (progression.HERO_HP)
     h.max_mana = h.mana = hero_max_mana("Wizard", 1)   # level-1 mana (progression.HERO_MANA)
-    # Weapon: Staff — channeled ranged (36 base / 1.2s = 30 dps, 120% of baseline)
+    # Weapon: Staff — slow channeled ranged (2.0 s per Frostbolt; Frostbolt's a / b are x5/3 so the DPS is what
+    # it was at 1.2 s, and its mana cost follows the swing so mana per second is unchanged too)
     h.base_damage = 9
-    h.weapon_speed = 1.2
+    h.weapon_speed = 2.0
     h.attack_range = 260  # Ranged (long range caster)
     h.add_ability("Q", S.frostbolt())
     h.add_ability("R", S.fire_blast())

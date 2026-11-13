@@ -10,8 +10,9 @@ A script is a JSON list of events keyed by simulation tick (one tick = one headl
   {"tick": 30, "type": "click", "button": 3, "at": [1200, 900]}            # absolute world position
 
 `at` may also be "nearest_npc", "nearest_ally" (other player / companion), "hero", "nearest_item" (a ground
-item / monster drop), {"backpack_slot": N} (that slot of the open backpack panel, on screen) or {"hotbar_slot": N}
-(slot N of the hotbar, 0 = the first). A drag presses the left button on one place and releases it on another:
+item / monster drop), {"backpack_slot": N} (that slot of the open backpack panel, on screen), {"hotbar_slot": N}
+(slot N of the hotbar, 0 = the first) or {"equip_slot": "main" / "off"} (a slot of the open character window).
+A drag presses the left button on one place and releases it on another:
 
   {"tick": 40, "type": "drag", "from": {"hotbar_slot": 4}, "to": {"hotbar_slot": 1}}   # swap hotbar slots 5 and 2 The events are posted as real pygame events, so the
 normal input code path is exercised exactly as if a human had clicked.
@@ -53,14 +54,18 @@ class InputScript:
             return hero.x + at.get("dx", 0), hero.y + at.get("dy", 0)
         return at[0], at[1]
 
-    def post_due(self, tick, hero, game_state, npcs, width, height, cam_zoom, slot_pos=None, hotbar_pos=None):
-        """Post every event scheduled for this tick as pygame events. `slot_pos(i)` / `hotbar_pos(i)` -> screen
-        (x, y) of backpack slot i / hotbar slot i (the client's layout)."""
+    def post_due(self, tick, hero, game_state, npcs, width, height, cam_zoom, slot_pos=None, hotbar_pos=None,
+                 equip_pos=None):
+        """Post every event scheduled for this tick as pygame events. `slot_pos(i)` / `hotbar_pos(i)` /
+        `equip_pos(name)` -> screen (x, y) of backpack slot i / hotbar slot i / character-window slot "main" or "off"
+        (the client's layout)."""
         def screen_at(at):
             if isinstance(at, dict) and "backpack_slot" in at:
                 return slot_pos(at["backpack_slot"])
             if isinstance(at, dict) and "hotbar_slot" in at:
                 return hotbar_pos(at["hotbar_slot"])
+            if isinstance(at, dict) and "equip_slot" in at:
+                return equip_pos(at["equip_slot"])
             wx, wy = self._resolve(at, hero, game_state, npcs)
             return int((wx - hero.x) * cam_zoom + width // 2), int((wy - hero.y) * cam_zoom + height // 2)
 
@@ -87,5 +92,16 @@ class InputScript:
             elif kind == "drag":
                 pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=screen_at(e["from"]), button=1))
                 pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=screen_at(e["to"]), button=1))
+            elif kind == "screenshot":
+                self.screenshot_path = e["path"]       # the client saves the next drawn frame there
             else:
                 raise ValueError(f"unknown input script event type: {kind}")
+
+    screenshot_path = None
+
+    def take_screenshot(self, surface):
+        """After a frame is drawn: save it if a "screenshot" event asked for one ({"type": "screenshot",
+        "path": "/tmp/x.png"})."""
+        if self.screenshot_path:
+            pygame.image.save(surface, self.screenshot_path)
+            self.screenshot_path = None

@@ -12,11 +12,12 @@ from game.engine import actions, casting
 from game.engine.ai import AggroState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
-                                  UseItem, PickUp, SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake,
+                                  UseItem, Unequip, PickUp, SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake,
                                   TradeAccept, TradeCancel)
 from game.engine.inventory import Inventory
 from game.content.items import (ITEMS, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT, DRINK_DURATION,
                                 DRINK_BUFF, DRINK_HOT)
+from game.content.equipment import equip, is_gear, slot_for
 from game.engine.events import BindRightSkill, GOLD
 from game.engine.hero_ai import create_hero_ai
 from game.content.heroes import HERO_CLASSES
@@ -102,6 +103,46 @@ class PlayerState:
         heal = self.hero.heal(ITEMS["health_potion"]["heal"])
         self.world.float_text(self.hero.x, self.hero.y - 30, f"+{heal:.0f}", (100, 255, 100))
 
+    # --- equipment (content/equipment.py) ---
+    def equip_from_slot(self, slot):
+        """Equip the weapon / shield in this backpack slot (where: equipment.slot_for). Whatever it replaces goes
+        back into the backpack; if that does not fit, nothing changes."""
+        hero = self.hero
+        item = self.inventory.item_at(slot)
+        if item is None or not is_gear(item):
+            return
+        where = slot_for(hero.class_name, item, hero.equipment)
+        try:
+            new_eq, removed = equip(hero.class_name, hero.equipment, item, where)
+        except ValueError as e:
+            self.world.float_text(hero.x, hero.y - 30, str(e).capitalize(), (255, 150, 100))
+            return
+        inv = self.inventory.copy()
+        inv.take_from_slot(slot)
+        if not all(inv.add(r) for r in removed):
+            self.world.float_text(hero.x, hero.y - 30, "Backpack full!", (255, 150, 100))
+            return
+        self.inventory.slots = inv.slots
+        self._set_equipment(new_eq)
+        self.world.float_text(hero.x, hero.y - 30, f"Equipped {ITEMS[item]['name']}", (220, 220, 255))
+
+    def unequip(self, slot):
+        """Take the item in an equipment slot off, into the backpack (not if the backpack is full)."""
+        hero = self.hero
+        item = hero.equipment.get(slot) if slot in ("main", "off") else None
+        if item is None:
+            return
+        if not self.inventory.add(item):
+            self.world.float_text(hero.x, hero.y - 30, "Backpack full!", (255, 150, 100))
+            return
+        self._set_equipment({**hero.equipment, slot: None})
+
+    def _set_equipment(self, equipment):
+        hero = self.hero
+        hero.equipment = equipment
+        hero.refresh_gear()
+        hero.swing_timer = min(hero.swing_timer, hero.weapon_speed)   # a faster weapon is ready no later
+
     # --- backpack items ---
     def use_item(self, slot):
         """Use one item from a backpack slot: potions restore HP / mana now (one shared cooldown), food heals over
@@ -112,6 +153,9 @@ class PlayerState:
         if item is None:
             return
         info = ITEMS[item]
+        if info["kind"] in ("weapon", "shield"):
+            self.equip_from_slot(slot)
+            return
         if info["kind"] == "potion":
             heal, mana = info.get("heal", 0), info.get("mana", 0)
             if self.potion_cooldown > 0:
@@ -263,6 +307,9 @@ class PlayerState:
         elif isinstance(cmd, UseItem):
             if not self.is_companion:
                 self.use_item(cmd.slot)
+        elif isinstance(cmd, Unequip):
+            if not self.is_companion:
+                self.unequip(cmd.slot)
         elif isinstance(cmd, TradeOpen):
             world.open_trade(self, cmd.hero_id)
         elif isinstance(cmd, (TradeOffer, TradeTake)):
