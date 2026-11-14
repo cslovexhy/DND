@@ -126,8 +126,8 @@
       "description": "I was working in the vineyard behind the abbey when those wretched Defias thugs ran me off! I left behind a whole bushel of grapes. Could you go get them for me? You'll need to fight through those bandits to reach them.",
       "objectives": [
         {
-          "count": 8,
-          "monster": 9
+          "item": 25,
+          "count": 8
         }
       ],
       "rewards_xp": 350,

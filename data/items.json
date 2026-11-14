@@ -1,4 +1,4 @@
-{"version": 1, "next_id": 25, "items": [
+{"version": 1, "next_id": 26, "items": [
   {"id": 1, "name": "Health Potion", "icon": ["dungeon", 7, 9], "kind": "potion", "heal": 120},
   {"id": 2, "name": "Minor Mana Potion", "icon": ["dungeon", 8, 10], "kind": "potion", "mana": 200},
   {"id": 3, "name": "Mana Potion", "icon": ["dungeon", 8, 9], "kind": "potion", "mana": 400},
@@ -22,5 +22,6 @@
   {"id": 21, "name": "Double Axe", "icon": ["dungeon", 10, 9], "kind": "weapon", "price": 600, "weapon_type": "double_axe", "hands": "2h", "swing": 2.0, "a": 1.4, "b": 5, "weight": 8},
   {"id": 22, "name": "Warhammer", "icon": ["dungeon", 9, 9], "kind": "weapon", "price": 800, "weapon_type": "warhammer", "hands": "2h", "swing": 2.2, "a": 1.5, "b": 6, "weight": 10},
   {"id": 23, "name": "Round Shield", "icon": ["dungeon", 5, 8], "kind": "shield", "price": 200, "weapon_type": "round_shield", "hands": "offhand", "block": 0.03, "weight": 3},
-  {"id": 24, "name": "Buckler", "icon": ["dungeon", 6, 8], "kind": "shield", "price": 400, "weapon_type": "buckler", "hands": "offhand", "block": 0.05, "weight": 5}
+  {"id": 24, "name": "Buckler", "icon": ["dungeon", 6, 8], "kind": "shield", "price": 400, "weapon_type": "buckler", "hands": "offhand", "block": 0.05, "weight": 5},
+  {"id": 25, "name": "A bucket of grapes", "icon": ["rpg", 34, 9], "kind": "misc"}
 ]}
