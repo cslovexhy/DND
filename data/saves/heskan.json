@@ -2,69 +2,113 @@
   "name": "heskan",
   "class_name": "Wizard",
   "level": 20,
-  "xp": 1135,
-  "gold": 197551,
-  "kills": 2129,
+  "xp": 1675,
+  "gold": 193905,
+  "kills": 2250,
   "quests": {
-    "northshire": {
-      "completed": [
-        "a_threat_within",
-        "kobold_camp_cleanup",
-        "wolves_across_the_border",
-        "investigate_echo_ridge",
-        "brotherhood_of_thieves",
-        "millys_harvest",
-        "skirmish_at_echo_ridge",
-        "bounty_on_garrick_padfoot"
-      ],
-      "active": [],
-      "progress": {}
-    },
-    "haycock": {
-      "completed": [],
-      "active": [],
-      "progress": {}
-    },
-    "upside_down": {
-      "completed": [],
-      "active": [],
-      "progress": {}
-    },
-    "goldshire": {
-      "completed": [],
-      "active": [],
-      "progress": {}
-    },
-    "bossTestRoom": {
-      "completed": [],
-      "active": [],
-      "progress": {}
-    }
+    "completed": [
+      "a_threat_within",
+      "kobold_camp_cleanup",
+      "wolves_across_the_border",
+      "investigate_echo_ridge",
+      "brotherhood_of_thieves",
+      "millys_harvest",
+      "skirmish_at_echo_ridge",
+      "bounty_on_garrick_padfoot"
+    ],
+    "active": [],
+    "delivered": [],
+    "progress": {}
   },
   "inventory": [
     {
       "slot": 0,
-      "item": "health_potion",
-      "count": 10
-    },
-    {
-      "slot": 1,
-      "item": "drumstick",
-      "count": 5
-    },
-    {
-      "slot": 2,
-      "item": "bread",
+      "item": 1,
       "count": 11
     },
     {
+      "slot": 1,
+      "item": 9,
+      "count": 8
+    },
+    {
+      "slot": 2,
+      "item": 8,
+      "count": 13
+    },
+    {
       "slot": 3,
-      "item": "sushi_plate",
+      "item": 11,
       "count": 1
     },
     {
       "slot": 4,
-      "item": "roast_chicken",
+      "item": 10,
+      "count": 1
+    },
+    {
+      "slot": 5,
+      "item": 4,
+      "count": 4
+    },
+    {
+      "slot": 6,
+      "item": 15,
+      "count": 1
+    },
+    {
+      "slot": 7,
+      "item": 12,
+      "count": 1
+    },
+    {
+      "slot": 8,
+      "item": 13,
+      "count": 1
+    },
+    {
+      "slot": 9,
+      "item": 14,
+      "count": 1
+    },
+    {
+      "slot": 10,
+      "item": 16,
+      "count": 1
+    },
+    {
+      "slot": 11,
+      "item": 17,
+      "count": 1
+    },
+    {
+      "slot": 12,
+      "item": 19,
+      "count": 1
+    },
+    {
+      "slot": 13,
+      "item": 20,
+      "count": 2
+    },
+    {
+      "slot": 14,
+      "item": 18,
+      "count": 1
+    },
+    {
+      "slot": 16,
+      "item": 21,
+      "count": 1
+    },
+    {
+      "slot": 17,
+      "item": 23,
+      "count": 1
+    },
+    {
+      "slot": 18,
+      "item": 24,
       "count": 1
     }
   ],
@@ -72,5 +116,14 @@
     "Q",
     "R",
     "E"
-  ]
+  ],
+  "equipment": {
+    "main": 22,
+    "off": null
+  },
+  "trained": {
+    "Q": 3,
+    "R": 3,
+    "E": 3
+  }
 }

@@ -1,0 +1,54 @@
+{
+  "name": "priest",
+  "class_name": "Cleric",
+  "level": 9,
+  "xp": 239,
+  "gold": 633,
+  "kills": 124,
+  "quests": {
+    "completed": [
+      "a_threat_within",
+      "wolves_across_the_border",
+      "kobold_camp_cleanup",
+      "investigate_echo_ridge",
+      "skirmish_at_echo_ridge",
+      "brotherhood_of_thieves",
+      "millys_harvest",
+      "bounty_on_garrick_padfoot"
+    ],
+    "active": [],
+    "delivered": [],
+    "progress": {}
+  },
+  "inventory": [
+    {
+      "slot": 0,
+      "item": 1,
+      "count": 3
+    },
+    {
+      "slot": 1,
+      "item": 8,
+      "count": 3
+    },
+    {
+      "slot": 2,
+      "item": 15,
+      "count": 1
+    }
+  ],
+  "hotbar": [
+    "Q",
+    "R",
+    "E"
+  ],
+  "equipment": {
+    "main": null,
+    "off": null
+  },
+  "trained": {
+    "Q": 2,
+    "R": 2,
+    "E": 1
+  }
+}

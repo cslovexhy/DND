@@ -1,0 +1,47 @@
+{
+  "name": "f",
+  "class_name": "Fighter",
+  "level": 2,
+  "xp": 76,
+  "gold": 0,
+  "kills": 10,
+  "quests": {
+    "completed": [
+      "a_threat_within"
+    ],
+    "active": [
+      "kobold_camp_cleanup",
+      "brotherhood_of_thieves",
+      "wolves_across_the_border"
+    ],
+    "delivered": [],
+    "progress": {
+      "kobold_camp_cleanup": {
+        "Kobold Dragonshield": 1
+      },
+      "brotherhood_of_thieves": {},
+      "wolves_across_the_border": {
+        "Grey Wolf": 5
+      }
+    }
+  },
+  "inventory": [
+    {
+      "slot": 0,
+      "item": 1,
+      "count": 3
+    }
+  ],
+  "equipment": {
+    "main": 17,
+    "off": null
+  },
+  "trained": {
+    "Q": 1,
+    "R": 1
+  },
+  "hotbar": [
+    "Q",
+    "R"
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "name": "p",
+  "class_name": "Paladin",
+  "level": 9,
+  "xp": 385,
+  "gold": 708,
+  "kills": 135,
+  "quests": {
+    "completed": [
+      "a_threat_within",
+      "wolves_across_the_border",
+      "kobold_camp_cleanup",
+      "investigate_echo_ridge",
+      "skirmish_at_echo_ridge",
+      "brotherhood_of_thieves",
+      "millys_harvest",
+      "bounty_on_garrick_padfoot"
+    ],
+    "active": [],
+    "delivered": [],
+    "progress": {}
+  },
+  "inventory": [
+    {
+      "slot": 0,
+      "item": 1,
+      "count": 6
+    },
+    {
+      "slot": 1,
+      "item": 8,
+      "count": 7
+    },
+    {
+      "slot": 2,
+      "item": 4,
+      "count": 5
+    },
+    {
+      "slot": 3,
+      "item": 2,
+      "count": 1
+    },
+    {
+      "slot": 4,
+      "item": 6,
+      "count": 1
+    },
+    {
+      "slot": 5,
+      "item": 11,
+      "count": 1
+    },
+    {
+      "slot": 6,
+      "item": 3,
+      "count": 1
+    }
+  ],
+  "equipment": {
+    "main": 22,
+    "off": null
+  },
+  "trained": {
+    "Q": 2,
+    "R": 1,
+    "E": 1,
+    "F": 1
+  },
+  "hotbar": [
+    "Q",
+    "R",
+    "E",
+    "F"
+  ]
+}

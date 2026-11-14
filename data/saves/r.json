@@ -1,0 +1,66 @@
+{
+  "name": "r",
+  "class_name": "Rogue",
+  "level": 8,
+  "xp": 436,
+  "gold": 350,
+  "kills": 107,
+  "quests": {
+    "completed": [
+      "a_threat_within",
+      "wolves_across_the_border",
+      "kobold_camp_cleanup",
+      "brotherhood_of_thieves",
+      "millys_harvest"
+    ],
+    "active": [
+      "investigate_echo_ridge",
+      "bounty_on_garrick_padfoot"
+    ],
+    "delivered": [],
+    "progress": {
+      "investigate_echo_ridge": {
+        "1": 10
+      },
+      "bounty_on_garrick_padfoot": {}
+    }
+  },
+  "inventory": [
+    {
+      "slot": 0,
+      "item": 1,
+      "count": 3
+    },
+    {
+      "slot": 2,
+      "item": 6,
+      "count": 1
+    },
+    {
+      "slot": 3,
+      "item": 4,
+      "count": 4
+    },
+    {
+      "slot": 5,
+      "item": 8,
+      "count": 1
+    }
+  ],
+  "equipment": {
+    "main": 12,
+    "off": 12
+  },
+  "trained": {
+    "Q": 2,
+    "F": 1,
+    "R": 1,
+    "E": 1
+  },
+  "hotbar": [
+    "Q",
+    "F",
+    "R",
+    "E"
+  ]
+}

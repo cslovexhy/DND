@@ -6,40 +6,39 @@
   "gold": 588,
   "kills": 86,
   "quests": {
-    "haycock": {
-      "completed": [],
-      "active": [],
-      "progress": {}
-    },
-    "northshire": {
-      "completed": [
-        "a_threat_within",
-        "wolves_across_the_border",
-        "kobold_camp_cleanup",
-        "investigate_echo_ridge",
-        "skirmish_at_echo_ridge",
-        "brotherhood_of_thieves",
-        "millys_harvest",
-        "bounty_on_garrick_padfoot"
-      ],
-      "active": [],
-      "progress": {}
-    }
+    "completed": [
+      "a_threat_within",
+      "wolves_across_the_border",
+      "kobold_camp_cleanup",
+      "investigate_echo_ridge",
+      "skirmish_at_echo_ridge",
+      "brotherhood_of_thieves",
+      "millys_harvest",
+      "bounty_on_garrick_padfoot"
+    ],
+    "active": [],
+    "delivered": [],
+    "progress": {}
   },
   "inventory": [
     {
       "slot": 0,
-      "item": "health_potion",
+      "item": 1,
       "count": 2
     },
     {
       "slot": 1,
-      "item": "bread",
+      "item": 8,
       "count": 2
     },
     {
       "slot": 2,
-      "item": "sushi_plate",
+      "item": 11,
+      "count": 1
+    },
+    {
+      "slot": 3,
+      "item": 17,
       "count": 1
     }
   ],
@@ -49,5 +48,16 @@
     "E",
     "F",
     "G"
-  ]
+  ],
+  "equipment": {
+    "main": null,
+    "off": null
+  },
+  "trained": {
+    "Q": 1,
+    "R": 1,
+    "F": 1,
+    "E": 1,
+    "G": 1
+  }
 }
