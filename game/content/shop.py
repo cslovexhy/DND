@@ -5,25 +5,22 @@ bronze (31-35 kills at ~5 bronze, plus the quest rewards; measured with the ques
 that (save up / grind for it), cheap food stays cheap, and training a skill costs TRAIN_COST_PER_LEVEL_SQ x (level it
 unlocks at)^2: 5 bronze at level 2, 45 at 6, 125 at 10, 500 at 20, 1125 at 30.
 """
-from game.content.equipment import GEAR
-from game.content.items import ITEMS
+PRICES = {}   # {item id: bronze}: every item with a "price" (data/items.json; set it in the editor's Items screen)
+SHOPS = {}    # shop kind -> the item ids it sells, cheapest first: general = food and drink, weapons, armor = shields
 
-PRICES = {
-    # --- general goods: food and drink ---
-    "bread": 10, "water": 10, "drumstick": 20, "wine": 40, "coffee": 60,
-    "roast_chicken": 100, "sushi_plate": 100, "elven_nectar": 500,
-    # --- weapons ---
-    "wooden_sword": 50, "dagger": 100, "wand": 100, "short_sword": 150, "cleaver": 200, "axe": 300,
-    "spear": 300, "staff": 350, "broadsword": 400, "double_axe": 600, "warhammer": 800,
-    # --- armor ---
-    "round_shield": 200, "buckler": 400,
-}
+SHOP_KINDS = {"general": ("food", "drink"), "weapons": ("weapon",), "armor": ("shield",)}
 
-SHOPS = {  # shop kind -> what it sells, cheapest first
-    "general": sorted((k for k, it in ITEMS.items() if it["kind"] in ("food", "drink")), key=lambda k: PRICES[k]),
-    "weapons": sorted((k for k, g in GEAR.items() if g["kind"] == "weapon"), key=lambda k: PRICES[k]),
-    "armor": sorted((k for k, g in GEAR.items() if g["kind"] == "shield"), key=lambda k: PRICES[k]),
-}
+
+def rebuild():
+    """Fill PRICES and SHOPS (in place) from content/items.ITEMS: an item is sold by the vendor of its kind if it has
+    a price."""
+    from game.content.items import ITEMS
+    PRICES.clear()
+    PRICES.update({iid: it["price"] for iid, it in ITEMS.items() if it.get("price")})
+    for shop, kinds in SHOP_KINDS.items():
+        SHOPS[shop] = sorted((iid for iid in PRICES if ITEMS[iid]["kind"] in kinds), key=lambda iid: PRICES[iid])
+
+
 SHOP_TITLES = {"general": "General Goods", "weapons": "Weaponsmith", "armor": "Armorer"}
 
 TRAIN_COST_PER_LEVEL_SQ = 1.25

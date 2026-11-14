@@ -208,6 +208,21 @@ _item_cache = {}
 _hero_cache = {}
 
 
+def art_key(item):
+    """The SPRITES key of an equipped item id: its weapon type (every dagger is drawn as a dagger, whatever its name).
+    A type with no art of its own is drawn like a short sword / round shield; None for no item."""
+    if item is None:
+        return None
+    from game.content.equipment import GEAR
+    g = GEAR.get(item)
+    if g is None:
+        return None
+    t = g.get("art") or g.get("weapon_type")       # (an item can name the picture it is drawn with)
+    if t in SPRITES:
+        return t
+    return "round_shield" if g["kind"] == "shield" else "short_sword"
+
+
 def _item_surface(item):
     if item not in _item_cache:
         rows, _ = SPRITES[item]
@@ -232,6 +247,7 @@ def _place(canvas, item, hand, hand_color):
 def compose(hero_tile, sprite_key, main=None, off=None):
     """The 16 px hero tile with its gear, at native size: a (16 + 2*PAD_X) x (16 + PAD_TOP + PAD_BOTTOM) surface,
     the body at (PAD_X, PAD_TOP). `hero_tile` is the 16x16 tile; cached per (sprite_key, main, off)."""
+    main, off = art_key(main), art_key(off)
     key = (sprite_key, main, off)
     if key not in _hero_cache:
         canvas = pygame.Surface((16 + 2 * PAD_X, 16 + PAD_TOP + PAD_BOTTOM), pygame.SRCALPHA)
@@ -437,6 +453,7 @@ def figure(hero_tile, sprite_key, main=None, off=None, style=None, frame="idle")
     style/frame from STYLES; frame "idle" (or no style) is the plain gear composite. Cached per pose."""
     if style is None or frame == "idle":
         return compose(hero_tile, sprite_key, main, off), (PAD_X, PAD_TOP)
+    main, off = art_key(main), art_key(off)
     key = (sprite_key, main, off, style, frame)
     if key not in _pose_cache:
         _pose_cache[key] = _draw_pose(hero_tile, sprite_key, main, off, style, frame)

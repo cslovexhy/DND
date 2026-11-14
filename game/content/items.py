@@ -13,7 +13,8 @@ at once; a new drink replaces the drink still being drunk). A drink with a `buff
 (hp_regen_pct / mana_regen_pct: +100% = regeneration doubled) for `buff_duration` seconds; one drink buff at a time.
 """
 
-from game.content.equipment import GEAR, ICONIC, describe as describe_gear
+from game.content import item_defs
+from game.content.equipment import GEAR, ICONIC, describe as describe_gear, load_gear
 
 FOOD_DURATION = 20.0      # seconds a meal takes to heal its full amount
 DRINK_DURATION = 10.0     # seconds a drink takes to restore its full amount
@@ -23,31 +24,39 @@ FOOD_HOT = "Eating"       # hero.buffs key of the meal being eaten (heal over ti
 DRINK_BUFF = "Refreshed"  # hero.buffs key of the (single) drink buff
 DRINK_HOT = "Drinking"    # hero.buffs key of the drink being drunk (HP / mana over time)
 
-ITEMS = {
-    "health_potion": {"name": "Health Potion", "icon": ("dungeon", 7, 9), "kind": "potion", "heal": 120},
-    "minor_mana_potion": {"name": "Minor Mana Potion", "icon": ("dungeon", 8, 10), "kind": "potion", "mana": 200},
-    "mana_potion":   {"name": "Mana Potion", "icon": ("dungeon", 8, 9), "kind": "potion", "mana": 400},
-    "water":         {"name": "Water", "icon": ("rpg", 54, 17), "kind": "drink", "mana": 300},
-    "coffee":        {"name": "Coffee", "icon": ("rpg", 56, 15), "kind": "drink", "mana": 600,
-                      "buff": {"mana_regen_pct": 1.0}, "buff_duration": 600.0},
-    "wine":          {"name": "Wine", "icon": ("rpg", 56, 14), "kind": "drink", "heal": 300, "mana": 300},
-    "elven_nectar":  {"name": "Elven Nectar", "icon": ("rpg", 55, 15), "kind": "drink", "heal": 500, "mana": 500,
-                      "buff": {"hp_regen_pct": 1.0, "mana_regen_pct": 1.0}, "buff_duration": 600.0},
-    "bread":         {"name": "Bread", "icon": ("rpg", 54, 13), "kind": "food", "heal": 120},
-    "drumstick":     {"name": "Drumstick", "icon": ("rpg", 56, 12), "kind": "food", "heal": 200},
-    "roast_chicken": {"name": "Roast Chicken", "icon": ("rpg", 54, 15), "kind": "food", "heal": 300,
-                      "buff": {"damage_pct": 0.05, "max_hp_pct": 0.05}, "buff_duration": 600.0},
-    "sushi_plate":   {"name": "Sushi Plate", "icon": ("rpg", 56, 13), "kind": "food", "heal": 200,
-                      "buff": {"damage_pct": 0.10}, "buff_duration": 600.0},
-}
-ITEMS.update(GEAR)          # weapons and shields (content/equipment.py) are backpack items too
+HEALTH_POTION = 1         # the Health Potion every character starts with and the potion key (Q) uses (never deleted)
 
-STARTING_INVENTORY = [{"slot": 0, "item": "health_potion", "count": 3}]
+ITEMS = {}                # {item id: item}: every item, from data/items.json (gear entries are the content/equipment.GEAR ones)
+
+
+def reload(defs):
+    """(Re)fill ITEMS (and GEAR, the shops) in place from item definitions. Invalid definitions are skipped with a
+    message; returns the ids that were loaded."""
+    load_gear(defs)
+    ITEMS.clear()
+    for iid, d in defs.items():
+        errs = item_defs.validate(iid, d)
+        if errs:
+            print(f"[ITEMS] skipping item {iid!r}: {'; '.join(errs)}")
+            continue
+        ITEMS[iid] = GEAR[iid] if iid in GEAR else item_defs.to_item(d)
+    from game.content import shop            # (the shops follow the prices and kinds)
+    shop.rebuild()
+    return list(ITEMS)
+
+
+DEFS = item_defs.load()   # the definitions as loaded (the editor works on copies)
+reload(DEFS)
+
+STARTING_INVENTORY = [{"slot": 0, "item": HEALTH_POTION, "count": 3}]
 
 
 def starting_inventory(class_name):
     """A new character's backpack: 3 Health Potions and the class's iconic weapon (not equipped)."""
-    return [dict(s) for s in STARTING_INVENTORY] + [{"slot": 1, "item": ICONIC[class_name], "count": 1}]
+    inv = [dict(s) for s in STARTING_INVENTORY]
+    if class_name in ICONIC:
+        inv.append({"slot": 1, "item": ICONIC[class_name], "count": 1})
+    return inv
 
 
 def roll_drops(table, monster_level, rng):
@@ -73,10 +82,19 @@ def _restores(it):
 
 
 def describe(item_id):
-    """What the item does, in the player's words (backpack tooltip)."""
+    """What the item does, in the player's words (backpack tooltip), plus its own description if it has one."""
+    text = _effect_text(item_id)
+    extra = ITEMS[item_id].get("description")
+    return f"{text} {extra}".strip() if extra and ITEMS[item_id]["kind"] not in ("misc", "weapon", "shield") else text
+
+
+def _effect_text(item_id):
     it = ITEMS[item_id]
     if it["kind"] in ("weapon", "shield"):
-        return describe_gear(item_id)
+        text = describe_gear(item_id)
+        return f"{it['description']} {text}".strip() if it.get("description") else text
+    if it["kind"] == "misc":
+        return it.get("description") or "A curiosity."
     if it["kind"] == "potion":
         return f"Instantly restores {_restores(it)}. {POTION_COOLDOWN:g}s cooldown (shared by all potions)."
     if it["kind"] == "drink":

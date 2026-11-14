@@ -15,7 +15,7 @@ from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, Ambus
                                   UseItem, Unequip, PickUp, SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake,
                                   TradeAccept, TradeCancel, Buy, Train)
 from game.engine.inventory import Inventory
-from game.content.items import (ITEMS, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT, DRINK_DURATION,
+from game.content.items import (ITEMS, HEALTH_POTION, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT, DRINK_DURATION,
                                 DRINK_BUFF, DRINK_HOT)
 from game.content.equipment import equip, is_gear, slot_for
 from game.content.shop import PRICES, SHOPS
@@ -94,16 +94,16 @@ class PlayerState:
     @property
     def potions(self):
         """Health Potions left (None = unlimited, companions)."""
-        return None if self.unlimited_potions else self.inventory.count("health_potion")
+        return None if self.unlimited_potions else self.inventory.count(HEALTH_POTION)
 
     def _potion_ready(self):
         return self.potion_cooldown <= 0 and (self.unlimited_potions or self.potions > 0)
 
     def _use_potion(self):
-        if not self.unlimited_potions and not self.inventory.take("health_potion"):
+        if not self.unlimited_potions and not self.inventory.take(HEALTH_POTION):
             return
         self.potion_cooldown = POTION_COOLDOWN
-        heal = self.hero.heal(ITEMS["health_potion"]["heal"])
+        heal = self.hero.heal(ITEMS[HEALTH_POTION]["heal"])
         self.world.float_text(self.hero.x, self.hero.y - 30, f"+{heal:.0f}", (100, 255, 100))
 
     # --- equipment (content/equipment.py) ---

@@ -8,6 +8,7 @@ from game.engine import commands as C
 from game.engine.bootstrap import create_world, join_player
 from game.engine.snapshot import make_snapshot
 from game.engine.trade import TOO_FAR
+from tests import item_ids as I
 
 MAP = "data/maps/northshire.json"
 DT = 1 / 30
@@ -17,11 +18,11 @@ saves.SAVE_DIR = tempfile.mkdtemp()
 def two_players(near=True):
     random.seed(1)
     a_char = saves.blank_character("ann", "Fighter", level=5)
-    a_char["inventory"] = [{"slot": 0, "item": "health_potion", "count": 3}, {"slot": 1, "item": "bread", "count": 5}]
+    a_char["inventory"] = [{"slot": 0, "item": I.HEALTH_POTION, "count": 3}, {"slot": 1, "item": I.BREAD, "count": 5}]
     w, a = create_world(MAP, a_char)
     w.game_state.monsters.clear()
     b_char = saves.blank_character("bob", "Wizard", level=5)
-    b_char["inventory"] = [{"slot": 0, "item": "sushi_plate", "count": 2}]
+    b_char["inventory"] = [{"slot": 0, "item": I.SUSHI_PLATE, "count": 2}]
     b = join_player(w, 1, b_char, MAP)
     b.hero.x, b.hero.y = a.hero.x + (60 if near else 600), a.hero.y
     return w, a, b
@@ -43,14 +44,14 @@ class TradeTest(unittest.TestCase):
         w, a, b = two_players()
         do(w, C.TradeOpen(b.hero.eid), 0)
         do(w, C.TradeOffer(1), 0)                     # bread x5 in slot 1 -> offer 1
-        self.assertEqual(make_snapshot(w, 0)["you"]["trade"]["mine"], [{"item": "bread", "count": 1}])
+        self.assertEqual(make_snapshot(w, 0)["you"]["trade"]["mine"], [{"item": I.BREAD, "count": 1}])
         do(w, C.TradeOffer(1), 0)
-        self.assertEqual(make_snapshot(w, 1)["you"]["trade"]["theirs"], [{"item": "bread", "count": 2}])
-        do(w, C.TradeTake("bread"), 0)
-        self.assertEqual(make_snapshot(w, 0)["you"]["trade"]["mine"], [{"item": "bread", "count": 1}])
+        self.assertEqual(make_snapshot(w, 1)["you"]["trade"]["theirs"], [{"item": I.BREAD, "count": 2}])
+        do(w, C.TradeTake(I.BREAD), 0)
+        self.assertEqual(make_snapshot(w, 0)["you"]["trade"]["mine"], [{"item": I.BREAD, "count": 1}])
         for _ in range(9):
             do(w, C.TradeOffer(1), 0)                 # can't offer more than you have
-        self.assertEqual(make_snapshot(w, 0)["you"]["trade"]["mine"], [{"item": "bread", "count": 5}])
+        self.assertEqual(make_snapshot(w, 0)["you"]["trade"]["mine"], [{"item": I.BREAD, "count": 5}])
 
     def test_both_accept_swaps_the_items(self):
         w, a, b = two_players()
@@ -59,10 +60,10 @@ class TradeTest(unittest.TestCase):
         do(w, C.TradeOffer(1), 0)                     # 2 bread from ann
         do(w, C.TradeOffer(0), 1)                     # 1 sushi from bob
         do(w, C.TradeAccept(), 0)
-        self.assertEqual(a.inventory.count("bread"), 5)              # nothing yet: bob hasn't accepted
+        self.assertEqual(a.inventory.count(I.BREAD), 5)              # nothing yet: bob hasn't accepted
         do(w, C.TradeAccept(), 1)
-        self.assertEqual((a.inventory.count("bread"), a.inventory.count("sushi_plate")), (3, 1))
-        self.assertEqual((b.inventory.count("bread"), b.inventory.count("sushi_plate")), (2, 1))
+        self.assertEqual((a.inventory.count(I.BREAD), a.inventory.count(I.SUSHI_PLATE)), (3, 1))
+        self.assertEqual((b.inventory.count(I.BREAD), b.inventory.count(I.SUSHI_PLATE)), (2, 1))
         self.assertIsNone(make_snapshot(w, 0)["you"]["trade"])        # closed for both
         self.assertIsNone(make_snapshot(w, 1)["you"]["trade"])
 
@@ -74,7 +75,7 @@ class TradeTest(unittest.TestCase):
         do(w, C.TradeOffer(1), 0)                     # ann changes her offer
         self.assertFalse(make_snapshot(w, 1)["you"]["trade"]["my_accept"])
         do(w, C.TradeAccept(), 0)
-        self.assertEqual(a.inventory.count("bread"), 5)              # bob has to accept again
+        self.assertEqual(a.inventory.count(I.BREAD), 5)              # bob has to accept again
 
     def test_too_far_says_get_closer_and_nothing_moves(self):
         w, a, b = two_players(near=False)
@@ -82,7 +83,7 @@ class TradeTest(unittest.TestCase):
         do(w, C.TradeOffer(1), 0)
         do(w, C.TradeAccept(), 0)
         do(w, C.TradeAccept(), 1)
-        self.assertEqual(a.inventory.count("bread"), 5)
+        self.assertEqual(a.inventory.count(I.BREAD), 5)
         view = make_snapshot(w, 0)["you"]["trade"]
         self.assertEqual(view["message"], TOO_FAR)
         self.assertEqual(TOO_FAR, "Need to be closer to complete trade")
@@ -90,7 +91,7 @@ class TradeTest(unittest.TestCase):
         b.hero.x = a.hero.x + 100                     # walk closer, accept again: works
         do(w, C.TradeAccept(), 0)
         do(w, C.TradeAccept(), 1)
-        self.assertEqual(b.inventory.count("bread"), 1)
+        self.assertEqual(b.inventory.count(I.BREAD), 1)
 
     def test_cancel_closes_it_for_both(self):
         w, a, b = two_players()
@@ -113,7 +114,7 @@ class TradeTest(unittest.TestCase):
         self.assertIsNone(w.trade_of(a))
 
     def test_trade_commands_round_trip(self):
-        for cmd in (C.TradeOpen(3), C.TradeOffer(4), C.TradeTake("bread"), C.TradeAccept(), C.TradeCancel()):
+        for cmd in (C.TradeOpen(3), C.TradeOffer(4), C.TradeTake(I.BREAD), C.TradeAccept(), C.TradeCancel()):
             self.assertEqual(C.from_dict(C.to_dict(cmd)), cmd)
 
 
@@ -122,19 +123,19 @@ class AutopilotPickupTest(unittest.TestCase):
         random.seed(1)
         w, p = create_world(MAP, saves.blank_character("t", "Fighter", level=5), autopilot=True)
         w.game_state.monsters.clear()
-        g = w.drop_item("bread", p.hero.x + offset, p.hero.y)
+        g = w.drop_item(I.BREAD, p.hero.x + offset, p.hero.y)
         return w, p, g
 
     def test_picks_up_any_item_not_just_food(self):
         random.seed(1)
         w, p = create_world(MAP, saves.blank_character("t", "Fighter", level=5), autopilot=True)
         w.game_state.monsters.clear()
-        w.drop_item("health_potion", p.hero.x + 120, p.hero.y)
+        w.drop_item(I.HEALTH_POTION, p.hero.x + 120, p.hero.y)
         for _ in range(30 * 5):
             w.step(DT)
             if not w.ground_items:
                 break
-        self.assertEqual(p.inventory.count("health_potion"), 4)        # 3 starting + the one picked up
+        self.assertEqual(p.inventory.count(I.HEALTH_POTION), 4)        # 3 starting + the one picked up
 
     def test_picks_up_food_within_200(self):
         w, p, g = self.setup(150)
@@ -142,7 +143,7 @@ class AutopilotPickupTest(unittest.TestCase):
             w.step(DT)
             if not w.ground_items:
                 break
-        self.assertEqual(p.inventory.count("bread"), 1)
+        self.assertEqual(p.inventory.count(I.BREAD), 1)
 
     def test_ignores_food_further_than_200(self):
         w, p, g = self.setup(260)

@@ -17,6 +17,7 @@ from game.engine import casting
 from game.engine import commands as C
 from game.engine.bootstrap import create_world
 from game.engine.snapshot import make_snapshot, ATTACK_ANIM_SECS
+from tests import item_ids as I
 
 MAP = "data/maps/northshire.json"
 DT = 1 / 30
@@ -47,7 +48,7 @@ def ability(world, key):
 
 class SimReportsAttacksTest(unittest.TestCase):
     def test_melee_swing_is_reported_then_expires(self):
-        world, p, h, m = setup("Fighter", equipment={"main": "axe", "off": None})
+        world, p, h, m = setup("Fighter", equipment={"main": I.AXE, "off": None})
         self.assertIsNone(me(world)["attack"])
         self.assertTrue(casting.try_cast(world, h, h.abilities["Q"], m).ok)       # Strike with an axe: chop
         a = me(world)["attack"]
@@ -62,7 +63,7 @@ class SimReportsAttacksTest(unittest.TestCase):
         self.assertEqual(me(world)["attack"][0], "thrust")
 
     def test_spells_raise(self):
-        world, p, h, m = setup("Cleric", dist=150, equipment={"main": "wand", "off": None})
+        world, p, h, m = setup("Cleric", dist=150, equipment={"main": I.WAND, "off": None})
         self.assertTrue(casting.try_cast(world, h, h.abilities["Q"], m).ok)       # Wanding
         self.assertEqual(me(world)["attack"][0], "raise")
 
@@ -81,46 +82,46 @@ class SimReportsAttacksTest(unittest.TestCase):
         self.assertEqual(d["attack"][0], "release")
 
     def test_dual_wield_alternates_hands_only_with_an_allowed_off_hand_weapon(self):
-        world, p, h, m = setup("Rogue", equipment={"main": "dagger", "off": "short_sword"})
+        world, p, h, m = setup("Rogue", equipment={"main": I.DAGGER, "off": I.SHORT_SWORD})
         hands = []
         for _ in range(4):
             h.swing_timer = 0
             self.assertTrue(casting.try_cast(world, h, h.abilities["Q"], m).ok)   # Stab
             hands.append(me(world)["attack"][3])
         self.assertEqual(hands, ["main", "off", "main", "off"])
-        # a cleaver can't Stab: the off hand never swings it
-        eq = {"main": "dagger", "off": "cleaver"}
+        # an axe can't Stab: the off hand never swings it
+        eq = {"main": I.DAGGER, "off": I.AXE}
         self.assertEqual([attack_hand("Stab", eq, n) for n in (1, 2, 3, 4)], ["main"] * 4)
         # a shield never swings
-        self.assertEqual(attack_hand("Strike", {"main": "axe", "off": "buckler"}, 2), "main")
+        self.assertEqual(attack_hand("Strike", {"main": I.AXE, "off": I.BUCKLER}, 2), "main")
         # spells never use the off hand
-        self.assertEqual(attack_hand("Fire Blast", {"main": "axe", "off": "axe"}, 2), "main")
+        self.assertEqual(attack_hand("Fire Blast", {"main": I.AXE, "off": I.AXE}, 2), "main")
 
 
 class SkillWeaponRulesTest(unittest.TestCase):
     def test_rules(self):
-        for item in ("dagger", "short_sword", "wooden_sword", "spear", None):
+        for item in (I.DAGGER, I.SHORT_SWORD, I.WOODEN_SWORD, I.CLEAVER, I.BROADSWORD, I.SPEAR, None):   # (all 1h swords)
             self.assertTrue(skill_allows("Stab", item), item)
-        for item in ("axe", "double_axe", "warhammer", "staff", "cleaver", "broadsword", "wand"):
+        for item in (I.AXE, I.DOUBLE_AXE, I.WARHAMMER, I.STAFF, I.WAND):
             self.assertFalse(skill_allows("Stab", item), item)
-        self.assertFalse(skill_allows("Strike", "wand"))
-        self.assertFalse(skill_allows("Cleave", "dagger"))
-        self.assertFalse(skill_allows("Cleave", "spear"))
-        self.assertTrue(skill_allows("Cleave", "double_axe"))
+        self.assertFalse(skill_allows("Strike", I.WAND))
+        self.assertFalse(skill_allows("Cleave", I.DAGGER))
+        self.assertFalse(skill_allows("Cleave", I.SPEAR))
+        self.assertTrue(skill_allows("Cleave", I.DOUBLE_AXE))
         for spell in ("Frostbolt", "Fire Blast", "Holy Light", "Renew", "Wanding", "Judgement"):
             self.assertNotIn(spell, SKILL_WEAPONS)                  # spells: any weapon
-            self.assertEqual(skill_anim(spell, "warhammer"), "raise")
+            self.assertEqual(skill_anim(spell, I.WARHAMMER), "raise")
 
     def test_animation_style_per_skill(self):
-        self.assertEqual(skill_anim("Stab", "spear"), "thrust")
-        self.assertEqual(skill_anim("Strike", "axe"), "chop")
-        self.assertEqual(skill_anim("Strike", "dagger"), "thrust")
-        self.assertEqual(skill_anim("Smite", "warhammer"), "chop")
-        self.assertEqual(skill_anim("Cleave", "double_axe"), "sweep")
-        self.assertIsNone(skill_anim("Stealth", "dagger"))
+        self.assertEqual(skill_anim("Stab", I.SPEAR), "thrust")
+        self.assertEqual(skill_anim("Strike", I.AXE), "chop")
+        self.assertEqual(skill_anim("Strike", I.DAGGER), "thrust")
+        self.assertEqual(skill_anim("Smite", I.WARHAMMER), "chop")
+        self.assertEqual(skill_anim("Cleave", I.DOUBLE_AXE), "sweep")
+        self.assertIsNone(skill_anim("Stealth", I.DAGGER))
 
     def test_wrong_weapon_makes_the_skill_not_ready_everywhere(self):
-        world, p, h, m = setup("Rogue", equipment={"main": "axe", "off": None})
+        world, p, h, m = setup("Rogue", equipment={"main": I.AXE, "off": None})
         q = h.abilities["Q"]                                        # Stab
         self.assertFalse(q.weapon_ok())
         self.assertFalse(q.is_ready())                              # the AI and the hotbar see it as unusable
@@ -130,7 +131,7 @@ class SkillWeaponRulesTest(unittest.TestCase):
         world.submit(C.Cast("Q", m.x, m.y, m.eid), 0)
         world.step(DT)
         self.assertEqual(m.hp, m.max_hp)                            # nothing happened
-        p._set_equipment({"main": "dagger", "off": None})
+        p._set_equipment({"main": I.DAGGER, "off": None})
         self.assertTrue(q.is_ready())
         self.assertTrue(ability(world, "Q")["weapon_ok"])
 
@@ -145,7 +146,7 @@ class SkillWeaponRulesTest(unittest.TestCase):
     def test_skill_description_lists_the_weapons(self):
         from game.content.skill_tree import describe
         world, p, h, m = setup("Rogue")
-        self.assertIn("Needs bare hands or: Dagger, Wooden Sword, Short Sword, Spear.", describe(h, h.abilities["Q"]))
+        self.assertIn("Needs bare hands or: Dagger, 1H Sword, Spear.", describe(h, h.abilities["Q"]))
 
 
 class PoseChoiceTest(unittest.TestCase):
@@ -171,6 +172,7 @@ class PoseChoiceTest(unittest.TestCase):
     def test_every_pose_draws_for_every_class_and_weapon(self):
         """(In a subprocess: the art needs pygame, and other tests check the sim runs without it loaded.)"""
         code = """
+from tests import item_ids as I
 import os; os.environ["SDL_VIDEODRIVER"] = "dummy"
 import pygame; pygame.init(); pygame.display.set_mode((1, 1))
 from game.client import gear_art as G
@@ -180,7 +182,7 @@ weapons = [k for k, g in GEAR.items() if g["kind"] == "weapon"] + [None]
 n = 0
 for key in G.ARM_COLORS:
     for main in weapons:
-        for off in (None, "buckler", "dagger", "axe"):
+        for off in (None, I.BUCKLER, I.DAGGER, I.AXE):
             for style, frames in G.STYLES.items():
                 for frame in frames:
                     surf, pad = G.figure(tile, key, main, off, style, frame)
@@ -192,6 +194,27 @@ print("OK", n)
         r = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stderr[-1500:])
         self.assertIn("OK", r.stdout)
+
+
+
+
+class WeaponTypeTest(unittest.TestCase):
+    def test_skills_check_the_weapon_type_not_the_item(self):
+        from game.content import equipment, item_defs
+        defs = item_defs.load()
+        kingsfall = defs.add(dict(defs[I.DAGGER], name="Kingsfall", b=40))      # a new dagger, same type
+        from game.content import items
+        items.reload(defs)
+        try:
+            self.assertEqual(equipment.type_of(kingsfall), "dagger")
+            for skill in ("Stab", "Ambush", "Poison Dagger"):
+                self.assertTrue(skill_allows(skill, kingsfall), skill)
+            self.assertFalse(skill_allows("Cleave", kingsfall))
+            self.assertEqual(equipment.weapon_move(kingsfall), "thrust")
+        finally:
+            items.reload(item_defs.load())
+        self.assertEqual({equipment.type_of(i) for i in (I.WOODEN_SWORD, I.SHORT_SWORD, I.CLEAVER, I.BROADSWORD)},
+                         {"1h_sword"})
 
 
 if __name__ == "__main__":

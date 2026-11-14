@@ -1,6 +1,6 @@
 {
  "version": 3,
- "next_id": 29,
+ "next_id": 30,
  "monsters": [
   {
    "id": 1,
@@ -22,11 +22,11 @@
    "skills": [],
    "drops": [
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ]
    ],
@@ -57,11 +57,11 @@
    ],
    "drops": [
     [
-     "drumstick",
+     9,
      0.03
     ],
     [
-     "minor_mana_potion",
+     2,
      0.01
     ]
    ],
@@ -90,27 +90,27 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "roast_chicken",
+     10,
      0.01
     ],
     [
-     "sushi_plate",
+     11,
      0.01
     ],
     [
-     "elven_nectar",
+     7,
      0.005,
      10,
      20
@@ -141,27 +141,27 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "roast_chicken",
+     10,
      0.01
     ],
     [
-     "sushi_plate",
+     11,
      0.01
     ],
     [
-     "elven_nectar",
+     7,
      0.005,
      10,
      20
@@ -192,11 +192,11 @@
    "skills": [],
    "drops": [
     [
-     "drumstick",
+     9,
      0.03
     ],
     [
-     "minor_mana_potion",
+     2,
      0.01
     ]
    ],
@@ -225,27 +225,27 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "roast_chicken",
+     10,
      0.01
     ],
     [
-     "sushi_plate",
+     11,
      0.01
     ],
     [
-     "elven_nectar",
+     7,
      0.005,
      10,
      20
@@ -276,11 +276,11 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.01
     ]
    ],
@@ -311,11 +311,11 @@
    ],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.01
     ]
    ],
@@ -344,31 +344,31 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "roast_chicken",
+     10,
      0.01
     ],
     [
-     "coffee",
+     5,
      0.01
     ],
     [
-     "minor_mana_potion",
+     2,
      0.01
     ],
     [
-     "mana_potion",
+     3,
      0.005
     ]
    ],
@@ -397,11 +397,11 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.01
     ]
    ],
@@ -429,11 +429,11 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.01
     ]
    ],
@@ -471,11 +471,11 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.01
     ]
    ],
@@ -504,11 +504,11 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.01
     ]
    ],
@@ -538,27 +538,27 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "roast_chicken",
+     10,
      0.01
     ],
     [
-     "sushi_plate",
+     11,
      0.01
     ],
     [
-     "elven_nectar",
+     7,
      0.005,
      10,
      20
@@ -590,27 +590,27 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "roast_chicken",
+     10,
      0.01
     ],
     [
-     "sushi_plate",
+     11,
      0.01
     ],
     [
-     "elven_nectar",
+     7,
      0.005,
      10,
      20
@@ -642,7 +642,7 @@
    "skills": [],
    "drops": [
     [
-     "drumstick",
+     9,
      0.03
     ]
    ],
@@ -691,11 +691,11 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.01
     ]
    ],
@@ -725,27 +725,27 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "roast_chicken",
+     10,
      0.01
     ],
     [
-     "sushi_plate",
+     11,
      0.01
     ],
     [
-     "elven_nectar",
+     7,
      0.005,
      10,
      20
@@ -777,27 +777,27 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "roast_chicken",
+     10,
      0.01
     ],
     [
-     "sushi_plate",
+     11,
      0.01
     ],
     [
-     "elven_nectar",
+     7,
      0.005,
      10,
      20
@@ -829,7 +829,7 @@
    "skills": [],
    "drops": [
     [
-     "drumstick",
+     9,
      0.03
     ]
    ],
@@ -859,11 +859,11 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.01
     ]
    ],
@@ -893,45 +893,45 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "roast_chicken",
+     10,
      0.01
     ],
     [
-     "sushi_plate",
+     11,
      0.01
     ],
     [
-     "elven_nectar",
+     7,
      0.005,
      10,
      20
     ],
     [
-     "coffee",
+     5,
      0.03
     ],
     [
-     "wine",
+     6,
      0.03
     ],
     [
-     "minor_mana_potion",
+     2,
      0.03
     ],
     [
-     "mana_potion",
+     3,
      0.03
     ]
    ],
@@ -963,23 +963,23 @@
    ],
    "drops": [
     [
-     "dagger",
+     12,
      0.02
     ],
     [
-     "water",
+     4,
      0.01
     ],
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "minor_mana_potion",
+     2,
      0.01
     ],
     [
-     "bread",
+     8,
      0.01
     ]
    ],
@@ -1008,37 +1008,37 @@
    "skills": [],
    "drops": [
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "roast_chicken",
+     10,
      0.01
     ],
     [
-     "sushi_plate",
+     11,
      0.01
     ],
     [
-     "elven_nectar",
+     7,
      0.005,
      10,
      20
     ],
     [
-     "wine",
+     6,
      0.01
     ],
     [
-     "minor_mana_potion",
+     2,
      0.01
     ]
    ],
@@ -1067,15 +1067,15 @@
    "skills": [],
    "drops": [
     [
-     "drumstick",
+     9,
      0.03
     ],
     [
-     "minor_mana_potion",
+     2,
      0.01
     ],
     [
-     "axe",
+     17,
      0.02
     ]
    ],
@@ -1106,11 +1106,11 @@
    ],
    "drops": [
     [
-     "drumstick",
+     9,
      0.03
     ],
     [
-     "minor_mana_potion",
+     2,
      0.01
     ]
    ],
@@ -1139,19 +1139,19 @@
    "skills": [],
    "drops": [
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "wooden_sword",
+     13,
      0.01
     ]
    ],
@@ -1180,23 +1180,23 @@
    "skills": [],
    "drops": [
     [
-     "bread",
+     8,
      0.03
     ],
     [
-     "water",
+     4,
      0.03
     ],
     [
-     "health_potion",
+     1,
      0.01
     ],
     [
-     "minor_mana_potion",
+     2,
      0.01
     ],
     [
-     "axe",
+     17,
      0.01
     ]
    ],
@@ -1204,6 +1204,29 @@
     4,
     4
    ]
+  },
+  {
+   "id": 29,
+   "name": "Yeti",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 5,
+    "row": 1
+   },
+   "level": [
+    12,
+    13
+   ],
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 14,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "sense_range": 170,
+   "skills": [],
+   "drops": []
   }
  ]
 }

@@ -25,7 +25,7 @@ A definition (only name, sprite, level and drops have no default):
   hive_mind              {"range": px, "types": [monster ids]} aggros when one of those is attacked in range
   skills                 castable skills the AI uses (content/skill_library.py)
   boss_skills            HP-triggered boss skills: {"deep_breath": {...}, "enrage": {...}} (engine/skills.py)
-  drops                  [[item, chance 0-1], [item, chance, min monster level, max monster level]]: this type's own
+  drops                  [[item id, chance 0-1], [item id, chance, min monster level, max monster level]]: this type's own
                          list, nothing is shared or inherited
 """
 import json

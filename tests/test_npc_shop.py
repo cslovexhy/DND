@@ -17,6 +17,7 @@ from game.engine import commands as C
 from game.engine import events as E
 from game.engine.bootstrap import create_world, sanitize_character
 from game.engine.snapshot import make_snapshot
+from tests import item_ids as I
 
 MAP = "data/maps/northshire.json"
 DT = 1 / 30
@@ -67,14 +68,14 @@ class NorthshireNpcsTest(unittest.TestCase):
         from game.content.items import ITEMS
         self.assertEqual(set(SHOPS["general"]), {k for k, it in ITEMS.items() if it["kind"] in ("food", "drink")})
         self.assertEqual(set(SHOPS["weapons"]), {k for k, g in GEAR.items() if g["kind"] == "weapon"})
-        self.assertEqual(set(SHOPS["armor"]), {"round_shield", "buckler"})
+        self.assertEqual(set(SHOPS["armor"]), {I.ROUND_SHIELD, I.BUCKLER})
         self.assertTrue(all(PRICES[i] > 0 for s in SHOPS.values() for i in s))
 
     def test_gear_costs_several_times_a_northshire_run(self):
         """Questing Northshire to level 6 earns ~150-200 bronze; the best weapons cost several times that."""
-        self.assertGreaterEqual(PRICES["warhammer"], 4 * 200)
-        self.assertGreaterEqual(PRICES["buckler"], 2 * 200)
-        self.assertLessEqual(PRICES["bread"], 20)
+        self.assertGreaterEqual(PRICES[I.WARHAMMER], 4 * 200)
+        self.assertGreaterEqual(PRICES[I.BUCKLER], 2 * 200)
+        self.assertLessEqual(PRICES[I.BREAD], 20)
 
 
 class BuyTest(unittest.TestCase):
@@ -82,29 +83,29 @@ class BuyTest(unittest.TestCase):
         world, p = world_with(gold=1000)
         janos = npc(world, "janos_hammerknuckle")
         go_to(p, janos)
-        world.submit(C.Buy(janos.eid, "short_sword"), 0)
+        world.submit(C.Buy(janos.eid, I.SHORT_SWORD), 0)
         world.step(DT)
-        self.assertEqual(p.hero.gold, 1000 - PRICES["short_sword"])
-        self.assertEqual(p.inventory.count("short_sword"), 1)
+        self.assertEqual(p.hero.gold, 1000 - PRICES[I.SHORT_SWORD])
+        self.assertEqual(p.inventory.count(I.SHORT_SWORD), 1)
 
     def test_refused_without_money_far_away_wrong_shop_or_full_backpack(self):
         from game.engine.inventory import SIZE
         world, p = world_with(gold=100)
         janos, danil = npc(world, "janos_hammerknuckle"), npc(world, "brother_danil")
         go_to(p, janos)
-        world.submit(C.Buy(janos.eid, "warhammer"), 0)        # 8 silver: too poor
-        world.submit(C.Buy(janos.eid, "bread"), 0)            # the weaponsmith doesn't sell bread
-        world.submit(C.Buy(danil.eid, "bread"), 0)            # too far from Brother Danil
+        world.submit(C.Buy(janos.eid, I.WARHAMMER), 0)        # 8 silver: too poor
+        world.submit(C.Buy(janos.eid, I.BREAD), 0)            # the weaponsmith doesn't sell bread
+        world.submit(C.Buy(danil.eid, I.BREAD), 0)            # too far from Brother Danil
         world.step(DT)
-        self.assertEqual((p.hero.gold, p.inventory.count("warhammer"), p.inventory.count("bread")), (100, 0, 0))
+        self.assertEqual((p.hero.gold, p.inventory.count(I.WARHAMMER), p.inventory.count(I.BREAD)), (100, 0, 0))
         go_to(p, danil)
-        p.inventory.slots = [{"item": "wine", "count": 1}] * SIZE
-        world.submit(C.Buy(danil.eid, "bread"), 0)            # backpack full
+        p.inventory.slots = [{"item": I.WINE, "count": 1}] * SIZE
+        world.submit(C.Buy(danil.eid, I.BREAD), 0)            # backpack full
         world.step(DT)
         self.assertEqual(p.hero.gold, 100)
-        world.submit(C.Buy(danil.eid, "wine"), 0)             # stacks: fits
+        world.submit(C.Buy(danil.eid, I.WINE), 0)             # stacks: fits
         world.step(DT)
-        self.assertEqual(p.hero.gold, 100 - PRICES["wine"])
+        self.assertEqual(p.hero.gold, 100 - PRICES[I.WINE])
 
     def test_talking_to_a_vendor_opens_its_window(self):
         world, p = world_with()
@@ -214,7 +215,7 @@ class SaveTest(unittest.TestCase):
             sanitize_character({**base, "trained": [1]})
 
     def test_commands_and_events_round_trip(self):
-        for cmd in (C.Buy(3, "axe"), C.Train(4, "R")):
+        for cmd in (C.Buy(3, I.AXE), C.Train(4, "R")):
             self.assertEqual(C.from_dict(C.to_dict(cmd)), cmd)
         for ev in (E.OpenNpcWindow(5, "trainer", 1), E.SkillTrainable(2, "R", "Charge", 1, True, 5, "Fighter Trainer")):
             self.assertEqual(E.from_dict(E.to_dict(ev)), ev)
@@ -238,7 +239,7 @@ class ClientWindowTest(unittest.TestCase):
                            {"tick": 215, "type": "click", "button": 1, "at": {"train_skill": "R"}},
                            {"tick": 230, "type": "click", "button": 3, "at": {"npc": "janos_hammerknuckle"}},
                            {"tick": 450, "type": "click", "button": 3, "at": {"npc": "janos_hammerknuckle"}},
-                           {"tick": 465, "type": "click", "button": 3, "at": {"shop_item": "short_sword"}}], f)
+                           {"tick": 465, "type": "click", "button": 3, "at": {"shop_item": I.SHORT_SWORD}}], f)
             code = (f"import sys; sys.argv = ['game.main', '--headless', '--seed', '3', '--max-time', '17', "
                     f"'--hero', '0', '--level', '4', '--map', {MAP!r}, '--input-script', {script!r}, "
                     f"'--record-commands', {rec!r}, '--no-companion']\n"
@@ -249,7 +250,7 @@ class ClientWindowTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr[-1500:])
             cmds = [c["cmd"] for c in replay.load_recording(rec)["commands"]]
         self.assertTrue(any(c["type"] == "Train" and c["ab_key"] == "R" for c in cmds), cmds)
-        self.assertTrue(any(c["type"] == "Buy" and c["item"] == "short_sword" for c in cmds), cmds)
+        self.assertTrue(any(c["type"] == "Buy" and c["item"] == I.SHORT_SWORD for c in cmds), cmds)
 
 
 if __name__ == "__main__":

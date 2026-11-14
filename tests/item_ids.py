@@ -1,0 +1,6 @@
+"""Stable item ids for tests (data/items.json ids are permanent; names can be edited)."""
+from game.content.item_defs import LEGACY_NAME_IDS
+
+HEALTH_POTION, MINOR_MANA_POTION, MANA_POTION, WATER, COFFEE, WINE, ELVEN_NECTAR, BREAD, DRUMSTICK, ROAST_CHICKEN, \
+    SUSHI_PLATE, DAGGER, WOODEN_SWORD, SHORT_SWORD, WAND, CLEAVER, AXE, BROADSWORD, SPEAR, STAFF, DOUBLE_AXE, \
+    WARHAMMER, ROUND_SHIELD, BUCKLER = range(1, 25)

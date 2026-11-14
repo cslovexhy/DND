@@ -8,7 +8,7 @@ Schema:
 {
   "name": "heskan", "class_name": "Wizard",
   "level": 16, "xp": 367, "gold": 112440, "kills": 757,
-  "inventory": [{"slot": 0, "item": "health_potion", "count": 3}],   # backpack stacks (engine/inventory.py)
+  "inventory": [{"slot": 0, "item": 1, "count": 3}],   # backpack stacks (engine/inventory.py)
   "equipment": {"main": "staff", "off": null},  # what the hero wields (content/equipment.py)
   "trained": {"Q": 3, "R": 2, "E": 2},  # skill levels learned from the class trainer (null = follow the level)
   "quests": {                       # quest progression belongs to the character (quests are not tied to maps)
@@ -99,6 +99,18 @@ def _migrate(data, name):
                 inv = None
             if inv is not None and inv.count(iconic) == 0 and inv.add(iconic):
                 data["inventory"] = inv.to_state()
+        changed = True
+    # Items used to be saved by name ("bread"); they are numbered now (content/item_defs.py).
+    from game.content.item_defs import item_id
+    inv = data.get("inventory")
+    if isinstance(inv, list) and any(isinstance(s, dict) and isinstance(s.get("item"), str) for s in inv):
+        data["inventory"] = [dict(s, item=item_id(s["item"])) for s in inv
+                             if not isinstance(s, dict) or not isinstance(s.get("item"), str)
+                             or item_id(s["item"]) is not None]
+        changed = True
+    eq = data.get("equipment")
+    if isinstance(eq, dict) and any(isinstance(v, str) for v in eq.values()):
+        data["equipment"] = {k: (item_id(v) if isinstance(v, str) else v) for k, v in eq.items()}
         changed = True
     if "trained" not in data and data.get("class_name") in SKILL_SCHEDULE:
         # Before class trainers: keep every skill level the character already had; new ones are learned

@@ -8,6 +8,7 @@ from game import saves
 from game.content.heroes import HERO_CLASSES
 from game.progression import set_hero_level, growth_for, hero_max_hp, MAX_LEVEL, HERO_HP
 from game.quests import load_quest_log
+from tests import item_ids as I
 
 
 class SavesTest(unittest.TestCase):
@@ -122,7 +123,7 @@ class QuestTest(unittest.TestCase):
 def three_npc_log():
     from game.engine.inventory import Inventory
     from game.quests import Quest, QuestLog
-    quests = [Quest("fetch", "Fetch", "", [{"item": "bread", "count": 2}, {"monster": 1, "count": 1}], 100, 5,
+    quests = [Quest("fetch", "Fetch", "", [{"item": I.BREAD, "count": 2}, {"monster": 1, "count": 1}], 100, 5,
                     giver="a", turn_in="b", reward_npc="c"),
               Quest("after", "After", "", [], 10, 0, giver="a", prerequisites=["fetch"]),
               Quest("hello", "Hello", "", [], 7, 0, giver="a", turn_in="b")]
@@ -137,13 +138,13 @@ class ThreeNpcQuestTest(unittest.TestCase):
         self.assertFalse(log.accept("fetch"))
         log.record_kill(1)
         self.assertEqual(log.turn_ins_for_npc("b"), [])                                     # items still missing
-        inv.add("bread")
-        inv.add("bread")
+        inv.add(I.BREAD)
+        inv.add(I.BREAD)
         self.assertTrue(log.quests["fetch"].get_progress_text().startswith("Bread: 2/2"))
         self.assertEqual((log.turn_ins_for_npc("a"), log.turn_ins_for_npc("b")), ([], ["fetch"]))
         q, paid = log.hand_in("fetch")
         self.assertFalse(paid)                                                              # B only takes the items
-        self.assertEqual(inv.count("bread"), 0)
+        self.assertEqual(inv.count(I.BREAD), 0)
         self.assertEqual((log.turn_ins_for_npc("b"), log.rewards_for_npc("a"), log.rewards_for_npc("c")),
                          ([], [], ["fetch"]))
         self.assertEqual(log.available_for_npc("a", 1), ["hello"])                          # not done until C pays

@@ -5,10 +5,13 @@ import subprocess
 import sys
 import unittest
 
+from tests import item_ids as I
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SCRIPT = r'''
 import os, sys, json
+from tests import item_ids as I
 os.environ["SDL_VIDEODRIVER"] = "dummy"; os.environ["SDL_AUDIODRIVER"] = "dummy"
 import pygame
 pygame.init()
@@ -60,15 +63,18 @@ class MenuTest(unittest.TestCase):
 
 
 FRESH_SCRIPT = r'''
-import os, sys, json, tempfile
+import os, sys, json
+import tempfile
+from tests import item_ids as I
 os.environ["SDL_VIDEODRIVER"] = "dummy"; os.environ["SDL_AUDIODRIVER"] = "dummy"
 from game import saves
 saves.SAVE_DIR = tempfile.mkdtemp()
 from game.menus import fresh_character
+from tests import item_ids as I
 stale = saves.blank_character("pal", "Paladin", level=4)
 saves.save_character(stale)
 listed = saves.list_characters()[0]                   # what the character screen read when it opened
-newer = dict(stale, inventory=[{"slot": 1, "item": "sushi_plate", "count": 1}])
+newer = dict(stale, inventory=[{"slot": 1, "item": I.SUSHI_PLATE, "count": 1}])
 saves.save_character(newer)                           # another window (a co-op session) saved meanwhile
 print(json.dumps(fresh_character(listed)["inventory"]))
 '''
@@ -81,7 +87,7 @@ class FreshCharacterTest(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         import json
         self.assertEqual(json.loads(p.stdout.strip().splitlines()[-1]),
-                         [{"slot": 1, "item": "sushi_plate", "count": 1}])
+                         [{"slot": 1, "item": I.SUSHI_PLATE, "count": 1}])
 
 
 if __name__ == "__main__":

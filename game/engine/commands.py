@@ -85,7 +85,7 @@ class Unequip:
 class Buy:
     """Buy one of `item` from vendor NPC `npc_id` (must be near it, with the money and backpack room)."""
     npc_id: int
-    item: str
+    item: int
 
 
 @dataclass
@@ -117,7 +117,7 @@ class TradeOffer:
 @dataclass
 class TradeTake:
     """Take 1 of this item back out of your offer."""
-    item: str
+    item: int
 
 
 @dataclass

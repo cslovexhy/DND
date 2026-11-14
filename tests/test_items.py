@@ -1,6 +1,8 @@
 """Items: backpack stacks, potions (Health 120 HP, Mana 200/400 mana, one shared 30 s cooldown), food (heal over
 20 s, one food buff), drinks (HP/mana over 10 s, one drink buff), monster drops by level, picking drops up, saving the
 backpack."""
+import json
+import os
 import random
 import tempfile
 import unittest
@@ -11,6 +13,7 @@ from game.engine import commands as C
 from game.engine.bootstrap import create_world, sanitize_character
 from game.engine.inventory import SIZE, Inventory
 from game.engine.snapshot import make_snapshot
+from tests import item_ids as I
 
 MAP = "data/maps/northshire.json"
 DT = 1 / 30
@@ -44,27 +47,27 @@ class InventoryTest(unittest.TestCase):
     def test_stacks_without_limit_and_first_empty_slot(self):
         inv = Inventory.from_state([])
         for _ in range(500):
-            self.assertTrue(inv.add("bread"))
-        inv.add("drumstick")
-        self.assertEqual(inv.to_state(), [{"slot": 0, "item": "bread", "count": 500},
-                                          {"slot": 1, "item": "drumstick", "count": 1}])
-        self.assertEqual(inv.take_from_slot(1), "drumstick")
+            self.assertTrue(inv.add(I.BREAD))
+        inv.add(I.DRUMSTICK)
+        self.assertEqual(inv.to_state(), [{"slot": 0, "item": I.BREAD, "count": 500},
+                                          {"slot": 1, "item": I.DRUMSTICK, "count": 1}])
+        self.assertEqual(inv.take_from_slot(1), I.DRUMSTICK)
         self.assertIsNone(inv.slots[1])
-        inv.add("sushi_plate")
-        self.assertEqual(inv.item_at(1), "sushi_plate")          # reuses the emptied slot
+        inv.add(I.SUSHI_PLATE)
+        self.assertEqual(inv.item_at(1), I.SUSHI_PLATE)          # reuses the emptied slot
 
     def test_full_backpack_refuses_new_items_but_still_stacks(self):
         inv = Inventory()
-        inv.slots = [{"item": "drumstick", "count": 1} for _ in range(SIZE)]
-        inv.slots[0] = {"item": "bread", "count": 1}
-        self.assertFalse(inv.add("sushi_plate"))
-        self.assertTrue(inv.add("bread"))
+        inv.slots = [{"item": I.DRUMSTICK, "count": 1} for _ in range(SIZE)]
+        inv.slots[0] = {"item": I.BREAD, "count": 1}
+        self.assertFalse(inv.add(I.SUSHI_PLATE))
+        self.assertTrue(inv.add(I.BREAD))
 
     def test_from_state_validates(self):
-        self.assertEqual(Inventory.from_state(None).to_state(), [{"slot": 0, "item": "health_potion", "count": 3}])
-        for bad in ("x", [{"slot": 40, "item": "bread", "count": 1}], [{"slot": 0, "item": "gold_bar", "count": 1}],
-                    [{"slot": 0, "item": "bread", "count": 0}],
-                    [{"slot": 0, "item": "bread", "count": 1}, {"slot": 0, "item": "bread", "count": 1}]):
+        self.assertEqual(Inventory.from_state(None).to_state(), [{"slot": 0, "item": I.HEALTH_POTION, "count": 3}])
+        for bad in ("x", [{"slot": 40, "item": I.BREAD, "count": 1}], [{"slot": 0, "item": "gold_bar", "count": 1}],
+                    [{"slot": 0, "item": I.BREAD, "count": 0}],
+                    [{"slot": 0, "item": I.BREAD, "count": 1}, {"slot": 0, "item": I.BREAD, "count": 1}]):
             with self.assertRaises(ValueError):
                 Inventory.from_state(bad)
 
@@ -115,7 +118,7 @@ class PotionTest(unittest.TestCase):
         return world, p, h
 
     def test_mana_potions_restore_200_and_400_now(self):
-        for item, amount in (("minor_mana_potion", 200), ("mana_potion", 400)):
+        for item, amount in ((I.MINOR_MANA_POTION, 200), (I.MANA_POTION, 400)):
             world, p, h = self.mana_hero([{"slot": 0, "item": item, "count": 1}])
             self.assertGreater(h.max_mana, 400)
             world.submit(C.UseItem(0), 0)
@@ -125,31 +128,31 @@ class PotionTest(unittest.TestCase):
             self.assertEqual(p.potion_cooldown, POTION_COOLDOWN - DT)
 
     def test_all_potions_share_one_cooldown(self):
-        world, p, h = self.mana_hero([{"slot": 0, "item": "health_potion", "count": 1},
-                                      {"slot": 1, "item": "mana_potion", "count": 1},
-                                      {"slot": 2, "item": "minor_mana_potion", "count": 1}])
+        world, p, h = self.mana_hero([{"slot": 0, "item": I.HEALTH_POTION, "count": 1},
+                                      {"slot": 1, "item": I.MANA_POTION, "count": 1},
+                                      {"slot": 2, "item": I.MINOR_MANA_POTION, "count": 1}])
         h.hp = 100
         world.submit(C.UseItem(0), 0)                           # health potion starts the cooldown
         world.step(DT)
         world.submit(C.UseItem(1), 0)                           # mana potion: blocked
         world.step(DT)
         self.assertEqual(h.mana, 0.0)
-        self.assertEqual(p.inventory.count("mana_potion"), 1)
+        self.assertEqual(p.inventory.count(I.MANA_POTION), 1)
         step(world, POTION_COOLDOWN)
         world.submit(C.UseItem(1), 0)
         world.step(DT)
         self.assertAlmostEqual(h.mana, 400, delta=0.01)
         world.submit(C.UseItem(2), 0)                           # minor one is now blocked by the mana potion
         world.step(DT)
-        self.assertEqual(p.inventory.count("minor_mana_potion"), 1)
+        self.assertEqual(p.inventory.count(I.MINOR_MANA_POTION), 1)
 
     def test_mana_potion_is_not_wasted_at_full_mana(self):
-        world, p, h = self.mana_hero([{"slot": 0, "item": "mana_potion", "count": 1}])
+        world, p, h = self.mana_hero([{"slot": 0, "item": I.MANA_POTION, "count": 1}])
         h.mana = h.max_mana
         h.hp = 1                                                 # low HP doesn't matter for a mana potion
         world.submit(C.UseItem(0), 0)
         world.step(DT)
-        self.assertEqual(p.inventory.count("mana_potion"), 1)
+        self.assertEqual(p.inventory.count(I.MANA_POTION), 1)
         self.assertEqual(p.potion_cooldown, 0.0)
 
 
@@ -166,7 +169,7 @@ class DrinkTest(unittest.TestCase):
         return world, p, h
 
     def test_drinks_restore_over_10s(self):
-        for item, hp, mana in (("water", 0, 300), ("coffee", 0, 600), ("wine", 300, 300), ("elven_nectar", 500, 500)):
+        for item, hp, mana in ((I.WATER, 0, 300), (I.COFFEE, 0, 600), (I.WINE, 300, 300), (I.ELVEN_NECTAR, 500, 500)):
             world, p, h = self.drink(item)
             self.assertEqual(p.inventory.count(item), 1)
             self.assertEqual(p.potion_cooldown, 0.0)                # drinks don't use the potion cooldown
@@ -180,8 +183,8 @@ class DrinkTest(unittest.TestCase):
             self.assertNotIn("Drinking", h.buffs)
 
     def test_coffee_doubles_mana_regen_for_10_minutes(self):
-        world, p, h = self.drink("coffee")
-        self.assertEqual(h.buffs["Refreshed"]["item"], "coffee")
+        world, p, h = self.drink(I.COFFEE)
+        self.assertEqual(h.buffs["Refreshed"]["item"], I.COFFEE)
         self.assertEqual(h.regen_multipliers(), (1.0, 2.0))
         step(world, 599)
         self.assertIn("Refreshed", h.buffs)
@@ -196,37 +199,37 @@ class DrinkTest(unittest.TestCase):
         world.step(DT)
         plain_hp, plain_mana = h.hp - 10, h.mana
         h.hp, h.mana = 10, 0.0
-        h.buffs["Refreshed"] = {"remaining": 600, "item": "elven_nectar", "hp_regen_pct": 1.0, "mana_regen_pct": 1.0}
+        h.buffs["Refreshed"] = {"remaining": 600, "item": I.ELVEN_NECTAR, "hp_regen_pct": 1.0, "mana_regen_pct": 1.0}
         world.step(DT)
         self.assertAlmostEqual(h.hp - 10, plain_hp * 2)
         self.assertAlmostEqual(h.mana, plain_mana * 2)
 
     def test_eating_and_drinking_stack_and_new_drink_buff_replaces_old(self):
-        world, p, h = self.drink("coffee", extra=[{"slot": 1, "item": "roast_chicken", "count": 1},
-                                                  {"slot": 2, "item": "elven_nectar", "count": 1},
-                                                  {"slot": 3, "item": "water", "count": 1}])
+        world, p, h = self.drink(I.COFFEE, extra=[{"slot": 1, "item": I.ROAST_CHICKEN, "count": 1},
+                                                  {"slot": 2, "item": I.ELVEN_NECTAR, "count": 1},
+                                                  {"slot": 3, "item": I.WATER, "count": 1}])
         world.submit(C.UseItem(1), 0)
         world.step(DT)
-        self.assertEqual((h.buffs["Eating"]["item"], h.buffs["Drinking"]["item"]), ("roast_chicken", "coffee"))
+        self.assertEqual((h.buffs["Eating"]["item"], h.buffs["Drinking"]["item"]), (I.ROAST_CHICKEN, I.COFFEE))
         self.assertIn("Well Fed", h.buffs)
         world.submit(C.UseItem(2), 0)
         world.step(DT)
-        self.assertEqual(h.buffs["Refreshed"]["item"], "elven_nectar")
+        self.assertEqual(h.buffs["Refreshed"]["item"], I.ELVEN_NECTAR)
         self.assertEqual(h.regen_multipliers(), (2.0, 2.0))
         world.submit(C.UseItem(3), 0)                           # water: no buff, keeps the nectar's
         world.step(DT)
-        self.assertEqual(h.buffs["Drinking"]["item"], "water")
-        self.assertEqual(h.buffs["Refreshed"]["item"], "elven_nectar")
+        self.assertEqual(h.buffs["Drinking"]["item"], I.WATER)
+        self.assertEqual(h.buffs["Refreshed"]["item"], I.ELVEN_NECTAR)
         food = make_snapshot(world)["you"]["food"]
         self.assertEqual({k: v["item"] for k, v in food.items()},
-                         {"eating": "roast_chicken", "buff": "roast_chicken", "drinking": "water",
-                          "drink_buff": "elven_nectar"})
+                         {"eating": I.ROAST_CHICKEN, "buff": I.ROAST_CHICKEN, "drinking": I.WATER,
+                          "drink_buff": I.ELVEN_NECTAR})
 
     def test_descriptions(self):
-        self.assertEqual(describe("mana_potion"),
+        self.assertEqual(describe(I.MANA_POTION),
                          "Instantly restores 400 mana. 30s cooldown (shared by all potions).")
-        self.assertEqual(describe("wine"), "Restores 300 HP and 300 mana over 10s.")
-        self.assertEqual(describe("elven_nectar"),
+        self.assertEqual(describe(I.WINE), "Restores 300 HP and 300 mana over 10s.")
+        self.assertEqual(describe(I.ELVEN_NECTAR),
                          "Restores 500 HP and 500 mana over 10s. Refreshed: +100% HP regen and +100% mana regen "
                          "for 10 min (replaces other drink buffs).")
 
@@ -241,7 +244,7 @@ class FoodTest(unittest.TestCase):
         return world, p
 
     def test_bread_and_drumstick_heal_over_20s(self):
-        for item, total in (("bread", 120), ("drumstick", 200)):
+        for item, total in ((I.BREAD, 120), (I.DRUMSTICK, 200)):
             world, p = self.eat(item)
             self.assertEqual(p.inventory.count(item), 1)
             self.assertLess(p.hero.hp, 10 + total * 0.1)        # not instant
@@ -252,7 +255,7 @@ class FoodTest(unittest.TestCase):
             self.assertNotIn("Eating", p.hero.buffs)
 
     def test_roast_chicken_heals_300_and_buffs_damage_and_max_hp(self):
-        world, p = self.eat("roast_chicken")
+        world, p = self.eat(I.ROAST_CHICKEN)
         h = p.hero
         base = h.base_max_hp
         self.assertEqual(h.max_hp, round(base * 1.05))
@@ -265,21 +268,21 @@ class FoodTest(unittest.TestCase):
         self.assertLessEqual(h.hp, h.max_hp)
 
     def test_one_food_buff_new_one_replaces_old(self):
-        world, p = solo(inventory=[{"slot": 0, "item": "roast_chicken", "count": 1},
-                                   {"slot": 1, "item": "sushi_plate", "count": 1},
-                                   {"slot": 2, "item": "bread", "count": 1}])
+        world, p = solo(inventory=[{"slot": 0, "item": I.ROAST_CHICKEN, "count": 1},
+                                   {"slot": 1, "item": I.SUSHI_PLATE, "count": 1},
+                                   {"slot": 2, "item": I.BREAD, "count": 1}])
         h = p.hero
         world.submit(C.UseItem(0), 0)
         world.step(DT)
         world.submit(C.UseItem(1), 0)
         world.step(DT)
-        self.assertEqual(h.buffs["Well Fed"]["item"], "sushi_plate")
+        self.assertEqual(h.buffs["Well Fed"]["item"], I.SUSHI_PLATE)
         self.assertAlmostEqual(h.damage_bonus, 1.10)
         self.assertEqual(h.max_hp, h.base_max_hp)               # sushi has no max HP bonus
         world.submit(C.UseItem(2), 0)                           # bread: no buff, keeps sushi's
         world.step(DT)
-        self.assertEqual(h.buffs["Well Fed"]["item"], "sushi_plate")
-        self.assertEqual(h.buffs["Eating"]["item"], "bread")
+        self.assertEqual(h.buffs["Well Fed"]["item"], I.SUSHI_PLATE)
+        self.assertEqual(h.buffs["Eating"]["item"], I.BREAD)
 
     def test_damage_buff_applies_to_hits(self):
         random.seed(5)
@@ -289,7 +292,7 @@ class FoodTest(unittest.TestCase):
         before = m.hp
         m.take_damage(100, source=p.hero)
         plain = before - m.hp
-        p.hero.buffs["Well Fed"] = {"remaining": 600, "item": "sushi_plate", "damage_pct": 0.10}
+        p.hero.buffs["Well Fed"] = {"remaining": 600, "item": I.SUSHI_PLATE, "damage_pct": 0.10}
         before = m.hp
         m.take_damage(100, source=p.hero)
         self.assertAlmostEqual(before - m.hp, plain * 1.10)
@@ -312,19 +315,19 @@ class DropTest(unittest.TestCase):
         self.assertEqual(len(set(lists)), len(lists))
 
     def test_level_bounded_entries(self):
-        table = [("bread", 0.5), ("elven_nectar", 0.005, 10, 20)]
+        table = [(I.BREAD, 0.5), (I.ELVEN_NECTAR, 0.005, 10, 20)]
         always = FixedRng(0.0)
-        self.assertEqual(roll_drops(table, 9, always), ["bread"])
-        self.assertEqual(roll_drops(table, 10, always), ["bread", "elven_nectar"])
-        self.assertEqual(roll_drops(table, 20, always), ["bread", "elven_nectar"])
-        self.assertEqual(roll_drops(table, 21, always), ["bread"])
-        self.assertEqual(roll_drops(table, 15, FixedRng(0.006)), ["bread"])     # nectar 0.5%
+        self.assertEqual(roll_drops(table, 9, always), [I.BREAD])
+        self.assertEqual(roll_drops(table, 10, always), [I.BREAD, I.ELVEN_NECTAR])
+        self.assertEqual(roll_drops(table, 20, always), [I.BREAD, I.ELVEN_NECTAR])
+        self.assertEqual(roll_drops(table, 21, always), [I.BREAD])
+        self.assertEqual(roll_drops(table, 15, FixedRng(0.006)), [I.BREAD])     # nectar 0.5%
 
     def test_drop_rate_matches_the_table(self):
         from game.content.monsters import SPAWN_STATS
         rng = random.Random(7)
         n = 20000
-        table = [("bread", 0.03), ("water", 0.01)]
+        table = [(I.BREAD, 0.03), (I.WATER, 0.01)]
         got = sum(len(roll_drops(table, 2, rng)) for _ in range(n))
         self.assertAlmostEqual(got / n, 0.04, delta=0.005)
 
@@ -332,9 +335,9 @@ class DropTest(unittest.TestCase):
         random.seed(2)
         world, p = create_world(MAP, saves.blank_character("t", "Fighter", level=10))
         sp = next(m.spawn_point for m in world.game_state.monsters if m.spawn_type == 5)
-        sp.stats = {"drops": [("wine", 1.0)]}
+        sp.stats = {"drops": [(I.WINE, 1.0)]}
         m = world.spawn_single_world_monster(sp)
-        self.assertEqual(m.drops, [("wine", 1.0)])
+        self.assertEqual(m.drops, [(I.WINE, 1.0)])
 
     def test_kill_drops_on_the_ground_and_pickup_puts_it_in_the_backpack(self):
         random.seed(2)
@@ -343,7 +346,7 @@ class DropTest(unittest.TestCase):
         m.x, m.y = p.hero.x + 60, p.hero.y            # (a corpse the hero can reach: monster content is editable)
         import game.engine.world as W
         orig = W.roll_drops
-        W.roll_drops = lambda *a: ["roast_chicken"]
+        W.roll_drops = lambda *a: [I.ROAST_CHICKEN]
         try:
             m.take_damage(10 ** 6, source=p.hero)
             world.process_kills()
@@ -351,9 +354,9 @@ class DropTest(unittest.TestCase):
             W.roll_drops = orig
         self.assertEqual(len(world.ground_items), 1)
         g = world.ground_items[0]
-        self.assertEqual((g.item, round(g.x), round(g.y)), ("roast_chicken", round(m.x), round(m.y)))
+        self.assertEqual((g.item, round(g.x), round(g.y)), (I.ROAST_CHICKEN, round(m.x), round(m.y)))
         snap = make_snapshot(world)
-        self.assertEqual(snap["ground_items"], [{"id": g.item_id, "item": "roast_chicken", "x": g.x, "y": g.y}])
+        self.assertEqual(snap["ground_items"], [{"id": g.item_id, "item": I.ROAST_CHICKEN, "x": g.x, "y": g.y}])
         world.game_state.monsters.clear()
         world.submit(C.PickUp(g.item_id), 0)                     # far away: walks there first
         for _ in range(30 * 120):
@@ -361,16 +364,16 @@ class DropTest(unittest.TestCase):
             if not world.ground_items:
                 break
         self.assertEqual(world.ground_items, [])
-        self.assertEqual(p.inventory.count("roast_chicken"), 1)
+        self.assertEqual(p.inventory.count(I.ROAST_CHICKEN), 1)
 
     def test_full_backpack_leaves_the_item_on_the_ground(self):
         world, p = solo()
-        p.inventory.slots = [{"item": "drumstick", "count": 1} for _ in range(SIZE)]   # every slot taken
-        g = world.drop_item("sushi_plate", p.hero.x, p.hero.y)
+        p.inventory.slots = [{"item": I.DRUMSTICK, "count": 1} for _ in range(SIZE)]   # every slot taken
+        g = world.drop_item(I.SUSHI_PLATE, p.hero.x, p.hero.y)
         world.submit(C.PickUp(g.item_id), 0)
         world.step(DT)
         self.assertIn(g, world.ground_items)
-        self.assertEqual(p.inventory.count("sushi_plate"), 0)
+        self.assertEqual(p.inventory.count(I.SUSHI_PLATE), 0)
 
 
 class LootByCategoryTest(unittest.TestCase):
@@ -428,20 +431,20 @@ class SaveTest(unittest.TestCase):
                        "quests": {}}, f)
         data = saves.load_character("old", d)
         # no backpack yet: the 3 potions; no equipment yet: nothing worn, the iconic weapon (Rogue: dagger) added
-        self.assertEqual(data["inventory"], [{"slot": 0, "item": "health_potion", "count": 3},
-                                             {"slot": 1, "item": "dagger", "count": 1}])
+        self.assertEqual(data["inventory"], [{"slot": 0, "item": I.HEALTH_POTION, "count": 3},
+                                             {"slot": 1, "item": I.DAGGER, "count": 1}])
         self.assertEqual(data["equipment"], {"main": None, "off": None})
-        data["inventory"] = [{"slot": 4, "item": "bread", "count": 7}]
+        data["inventory"] = [{"slot": 4, "item": I.BREAD, "count": 7}]
         saves.save_character(data, d)
         random.seed(1)
         world, p = create_world(MAP, saves.load_character("old", d))
-        self.assertEqual(p.inventory.count("bread"), 7)
+        self.assertEqual(p.inventory.count(I.BREAD), 7)
         self.assertEqual(p.potions, 0)
 
     def test_remote_characters_bring_a_validated_backpack(self):
         ok = sanitize_character({"name": "kid", "class_name": "Rogue", "level": 3, "xp": 0, "gold": 0, "kills": 0,
-                                 "inventory": [{"slot": 2, "item": "bread", "count": 5}]})
-        self.assertEqual(ok["inventory"], [{"slot": 2, "item": "bread", "count": 5}])
+                                 "inventory": [{"slot": 2, "item": I.BREAD, "count": 5}]})
+        self.assertEqual(ok["inventory"], [{"slot": 2, "item": I.BREAD, "count": 5}])
         with self.assertRaises(ValueError):
             sanitize_character({"name": "kid", "class_name": "Rogue", "inventory": [{"slot": 0, "item": "x",
                                                                                      "count": 1}]})
@@ -484,3 +487,48 @@ class RealInputTest(unittest.TestCase):
             cmds = [c["cmd"] for c in replay.load_recording(rec)["commands"]]
         self.assertIn({"type": "UseItem", "slot": 0}, cmds)
         self.assertFalse([c for c in cmds if c["type"] in ("MoveTo", "SelectTarget", "Cast", "SetTarget")])   # panel ate clicks
+
+
+class ItemIdTest(unittest.TestCase):
+    def test_old_saves_keyed_by_item_name_are_migrated(self):
+        d = tempfile.mkdtemp()
+        old = saves.blank_character("oldie", "Fighter")
+        old["inventory"] = [{"slot": 0, "item": "health_potion", "count": 3}, {"slot": 2, "item": "bread", "count": 4},
+                            {"slot": 3, "item": "not_an_item", "count": 1}]
+        old["equipment"] = {"main": "axe", "off": "buckler"}
+        with open(os.path.join(d, "oldie.json"), "w") as f:
+            json.dump(old, f)
+        (c,) = saves.list_characters(d)
+        self.assertEqual(c["inventory"], [{"slot": 0, "item": I.HEALTH_POTION, "count": 3},
+                                          {"slot": 2, "item": I.BREAD, "count": 4}])
+        self.assertEqual(c["equipment"], {"main": I.AXE, "off": I.BUCKLER})
+
+    def test_ids_are_numbers_and_names_can_change(self):
+        from game.content import item_defs, items
+        self.assertTrue(all(isinstance(k, int) for k in items.ITEMS))
+        defs = item_defs.load()
+        defs[I.BREAD]["name"] = "Loaf"
+        items.reload(defs)
+        try:
+            self.assertEqual(items.ITEMS[I.BREAD]["name"], "Loaf")
+            inv = Inventory.from_state([{"slot": 0, "item": I.BREAD, "count": 2}])
+            self.assertEqual(inv.count(I.BREAD), 2)
+        finally:
+            items.reload(item_defs.load())
+
+    def test_deleted_items_vanish_from_backpacks_instead_of_breaking_the_save(self):
+        inv = Inventory.from_state([{"slot": 0, "item": 9999, "count": 2}, {"slot": 1, "item": I.BREAD, "count": 1}])
+        self.assertEqual(inv.to_state(), [{"slot": 1, "item": I.BREAD, "count": 1}])
+        with self.assertRaises(ValueError):
+            Inventory.from_state([{"slot": 0, "item": [1], "count": 1}])
+
+    def test_data_file_round_trips(self):
+        from game.content import item_defs
+        defs = item_defs.load()
+        path = os.path.join(tempfile.mkdtemp(), "items.json")
+        item_defs.save(defs, path)
+        again = item_defs.load(path)
+        self.assertEqual(dict(again), dict(defs))
+        self.assertEqual(again.next_id, defs.next_id)
+        for iid, d in defs.items():
+            self.assertEqual(item_defs.validate(iid, d), [], iid)

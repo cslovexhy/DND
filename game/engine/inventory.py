@@ -4,6 +4,7 @@ slot with no limit; a new item goes to the first empty slot.
 Saved state (character JSON "inventory", snapshot "inventory") is a sparse list: [{"slot": 0, "item": "bread",
 "count": 2}, ...]. from_state() is also used on data from a co-op client, so it validates everything.
 """
+from game.content.item_defs import item_id
 from game.content.items import ITEMS, STARTING_INVENTORY
 
 ROWS, COLS = 4, 10
@@ -94,10 +95,12 @@ class Inventory:
         for entry in state:
             if not isinstance(entry, dict):
                 raise ValueError("bad inventory slot")
-            slot, item, count = entry.get("slot"), entry.get("item"), entry.get("count")
+            slot, item, count = entry.get("slot"), item_id(entry.get("item")), entry.get("count")   # (old saves: names)
             if (not isinstance(slot, int) or isinstance(slot, bool) or not 0 <= slot < SIZE
-                    or item not in ITEMS or not isinstance(count, int) or isinstance(count, bool)
+                    or item is None or not isinstance(count, int) or isinstance(count, bool)
                     or not 1 <= count <= MAX_COUNT or inv.slots[slot] is not None):
                 raise ValueError("bad inventory slot")
+            if item not in ITEMS:
+                continue                                  # an item that was deleted from items.json: it is just gone
             inv.slots[slot] = {"item": item, "count": count}
         return inv

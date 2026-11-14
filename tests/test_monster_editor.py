@@ -18,6 +18,7 @@ from game.engine.bootstrap import create_world
 from game.engine.snapshot import make_snapshot
 from game.engine.world_map import SpawnPoint
 from tests import mob_ids as ID
+from tests import item_ids as I
 
 MAP = "data/maps/northshire.json"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,7 +28,7 @@ saves.SAVE_DIR = tempfile.mkdtemp()
 def murloc(**over):
     d = monster_defs.new_definition("Murloc Raider")
     d.update({"sprite": {"sheet": "creatures", "col": 6, "row": 2}, "category": "beast", "ac": 13, "speed": 6,
-              "skills": ["Frost Nova"], "drops": [["water", 0.5], ["elven_nectar", 1.0, 10, 20]]})
+              "skills": ["Frost Nova"], "drops": [[I.WATER, 0.5], [I.ELVEN_NECTAR, 1.0, 10, 20]]})
     d.update(over)
     return d
 
@@ -48,8 +49,8 @@ class DefinitionTest(unittest.TestCase):
                "category": murloc(category="robot"), "attack": murloc(attack="magic"),
                "ac": murloc(ac=99), "speed": murloc(speed=0), "hp_mult": murloc(hp_mult=True),
                "skills": murloc(skills=["Teleport"]), "drops": murloc(drops=[["gold_bar", 0.1]]),
-               "chance": murloc(drops=[["water", 2]]), "drop levels": murloc(drops=[["water", 0.1, 5, 2]]),
-               "duplicate drop": murloc(drops=[["water", 0.1], ["water", 0.2]]),
+               "chance": murloc(drops=[[I.WATER, 2]]), "drop levels": murloc(drops=[[I.WATER, 0.1, 5, 2]]),
+               "duplicate drop": murloc(drops=[[I.WATER, 0.1], [I.WATER, 0.2]]),
                "no level": {k: v for k, v in murloc().items() if k != "level"}, "attack range": murloc(attack_range=5), "swing": murloc(swing=0),
                "hive": murloc(hive_mind={"range": 1, "types": []}), "hive types": murloc(hive_mind={"range": 500, "types": ["x"]}),
                "boss skill": murloc(boss_skills={"fireball": {}}), "boss setting": murloc(boss_skills={"enrage": {"x": "a"}}),
@@ -151,7 +152,7 @@ class MonsterInGameTest(unittest.TestCase):
             RAIDER: murloc(),
             ARCHER: murloc(name="Murloc Archer", attack="ranged", skills=[], drops=[], sense_range=250),
             903: murloc(name="Murloc Chief", boss=True, sprite={"sheet": "creatures", "col": 6, "row": 2,
-                                                                "big": True}, drops=[["bread", 0.2]]),
+                                                                "big": True}, drops=[[I.BREAD, 0.2]]),
             BROKEN: {"name": ""}})
 
     def tearDown(self):
@@ -162,7 +163,7 @@ class MonsterInGameTest(unittest.TestCase):
         s = M.SPAWN_STATS[RAIDER]
         self.assertEqual((s["name"], s["ac"], s["speed"], s["kit"]), ("Murloc Raider", 13, 6, ["Frost Nova"]))
         self.assertEqual(M.MONSTER_CATEGORY[RAIDER], "beast")
-        self.assertEqual(M.MONSTER_DROPS[RAIDER], [("water", 0.5), ("elven_nectar", 1.0, 10, 20)])
+        self.assertEqual(M.MONSTER_DROPS[RAIDER], [(I.WATER, 0.5), (I.ELVEN_NECTAR, 1.0, 10, 20)])
         M.unregister([RAIDER])
         self.assertNotIn(RAIDER, M.SPAWN_STATS)
         self.added.remove(RAIDER)
@@ -187,8 +188,8 @@ class MonsterInGameTest(unittest.TestCase):
         class Always:
             def random(self):
                 return 0.0
-        self.assertEqual(roll_drops(m.drops, m.level, Always()), ["water"])   # nectar only from levels 10-20
-        self.assertEqual(roll_drops(m.drops, 15, Always()), ["water", "elven_nectar"])
+        self.assertEqual(roll_drops(m.drops, m.level, Always()), [I.WATER])   # nectar only from levels 10-20
+        self.assertEqual(roll_drops(m.drops, 15, Always()), [I.WATER, I.ELVEN_NECTAR])
 
     def test_ranges_come_from_the_definition(self):
         from game.engine import ai
@@ -233,6 +234,7 @@ print("OK", len(SPAWN_STATS))
 class EditorPanelTest(unittest.TestCase):
     CODE = """
 import os, json; os.environ["SDL_VIDEODRIVER"] = "dummy"
+from tests import item_ids as I
 import pygame; pygame.init(); screen = pygame.display.set_mode((1400, 900))
 from game.content import monster_defs
 from game.editor.monster_panel import MonsterPanel, spawn_palette
@@ -254,7 +256,7 @@ click("select", WOLF); click("delete"); log["delete_msg"] = p.message; log["wolf
 click("duplicate"); alpha = p.selected; log["alpha_id"] = alpha; log["first_new"] = first_new
 log["alpha_own_drops"] = defs[alpha]["drops"] == defs[WOLF]["drops"] and defs[alpha]["drops"] is not defs[WOLF]["drops"]
 click("matrix"); p.draw(screen, font, big)
-click("cell", (alpha, "wine")); click("cell", (alpha, "drumstick"), button=3); click("back")
+click("cell", (alpha, I.WINE)); click("cell", (alpha, I.DRUMSTICK), button=3); click("back")
 click("field", "ac"); click("field", "ac"); log["ac_msg"] = p.message
 click("field", "swing"); log["swing_set"] = defs[alpha].get("swing"); click("field", "swing"); log["swing_cleared"] = "swing" not in defs[alpha]
 click("boss_skill", "enrage"); click("boss_param", ("enrage", "damage_mult"))
@@ -262,7 +264,7 @@ click("hive")
 click("field", "level")
 click("field", "name")
 click("field", "boss"); log["big_after_boss"] = defs[alpha]["sprite"].get("big")
-click("add_drop"); click("pick_item", "buckler"); click("drop_chance", len(defs[alpha]["drops"]) - 1)
+click("add_drop"); click("pick_item", I.BUCKLER); click("drop_chance", len(defs[alpha]["drops"]) - 1)
 click("new"); temp = p.selected; click("pick_sprite", {"sheet": "dungeon", "col": 4, "row": 9})
 click("delete"); log["temp_deleted"] = temp not in defs; log["temp_id"] = temp
 click("select", alpha)
@@ -299,9 +301,9 @@ print(json.dumps(log))
         saved = {m["id"]: m for m in json.load(open(out))["monsters"]}
         d = saved[alpha]
         drops = {e[0]: e for e in d["drops"]}
-        self.assertEqual(drops["wine"], ["wine", 0.05])                           # added from the drops table
-        self.assertNotIn("drumstick", drops)                                       # removed (right-click)
-        self.assertEqual(drops["buckler"], ["buckler", 0.025])
+        self.assertEqual(drops[I.WINE], [I.WINE, 0.05])                           # added from the drops table
+        self.assertNotIn(I.DRUMSTICK, drops)                                       # removed (right-click)
+        self.assertEqual(drops[I.BUCKLER], [I.BUCKLER, 0.025])
         self.assertEqual(d["ac"], 17)
         self.assertTrue(log["swing_set"] == 1.5 and log["swing_cleared"])
         self.assertEqual(d["boss_skills"]["enrage"]["damage_mult"], 2)
@@ -312,7 +314,7 @@ print(json.dumps(log))
         self.assertEqual(d["name"], "Grey Wolf Chief")                              # renamed, same id
         self.assertNotIn(log["temp_id"], saved)
         self.assertEqual(log["next_id"], log["temp_id"] + 1)                          # ids are never reused
-        self.assertEqual(saved[5]["drops"], [["drumstick", 0.03], ["minor_mana_potion", 0.01]])  # untouched
+        self.assertEqual(saved[5]["drops"], [[I.DRUMSTICK, 0.03], [I.MINOR_MANA_POTION, 0.01]])  # untouched
         self.assertIn("Grey Wolf Chief (Boss)", log["palette"])
         self.assertTrue(log["order_kept"])
 

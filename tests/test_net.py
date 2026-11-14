@@ -10,6 +10,7 @@ from game.client.view import ClientView
 from game.net.client import RemoteHost, ConnectionRejected
 from game.net.protocol import encode, LineBuffer, PROTOCOL_VERSION
 from game.net.server import HostServer
+from tests import item_ids as I
 
 MAP = "data/maps/northshire.json"
 
@@ -107,8 +108,8 @@ class NetTest(unittest.TestCase):
         b = RemoteHost("127.0.0.1", self.srv.port,
                        character={"name": "kid", "class_name": "Rogue", "level": 3, "xp": 0, "gold": 0,
                                   "kills": 0, "quests": {},
-                                  "inventory": [{"slot": 0, "item": "dagger", "count": 1}],
-                                  "equipment": {"main": "dagger", "off": None}})
+                                  "inventory": [{"slot": 0, "item": I.DAGGER, "count": 1}],
+                                  "equipment": {"main": I.DAGGER, "off": None}})
         try:
             va, vb = ClientView(), ClientView()
             va.apply(a.snapshot())
@@ -122,16 +123,16 @@ class NetTest(unittest.TestCase):
 
             def a_sees_one_dagger():
                 pump()
-                return bool(va.allies) and va.allies[0].equipment == ["dagger", None]
+                return bool(va.allies) and va.allies[0].equipment == [I.DAGGER, None]
             self.assertTrue(wait_until(a_sees_one_dagger), "host player should see the joiner's dagger")
             b.send(C.UseItem(0))                                 # second dagger into the off hand (dual wield)
 
             def a_sees_two_daggers():
                 pump()
-                return va.allies[0].equipment == ["dagger", "dagger"]
+                return va.allies[0].equipment == [I.DAGGER, I.DAGGER]
             self.assertTrue(wait_until(a_sees_two_daggers), "the equip change should reach the other player")
-            self.assertEqual(vb.you.equipment, {"main": "dagger", "off": "dagger"})
-            self.assertEqual(vb.you.progress["equipment"], {"main": "dagger", "off": "dagger"})   # saved by b
+            self.assertEqual(vb.you.equipment, {"main": I.DAGGER, "off": I.DAGGER})
+            self.assertEqual(vb.you.progress["equipment"], {"main": I.DAGGER, "off": I.DAGGER})   # saved by b
         finally:
             b.close()
             a.close()

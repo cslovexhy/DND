@@ -1,6 +1,6 @@
 """Equipment (pure data and rules; no pygame): weapons and shields, and what a hero's gear does to its stats.
 
-Gear items live in content/items.ITEMS too (kind "weapon" / "shield"), so they go in the backpack, drop on the
+Gear items are defined in data/items.json like every item and live in content/items.ITEMS too (kind "weapon" / "shield"), so they go in the backpack, drop on the
 ground and trade like any other item. A hero has two slots, "main" and "off" (hero.equipment).
 
 Hands (user rules):
@@ -18,57 +18,64 @@ Stats a hero gets from its gear (gear_stats):
 Bare hands change nothing, so a hero with no gear has exactly its class numbers.
 """
 
+from game.content import item_defs
+
 SLOTS = ("main", "off")
 SHIELD_BASE_BLOCK = 0.05
 DUAL_WIELD_CLASSES = {"Rogue", "Fighter"}
 
-GEAR = {
-    # --- 1h (a = 1; quicker weapon -> smaller b) ---
-    "dagger":       {"name": "Dagger", "icon": ("dungeon", 7, 8), "kind": "weapon", "hands": "1h",
-                     "swing": 0.5, "a": 1.0, "b": 1, "weight": 1},
-    "wooden_sword": {"name": "Wooden Sword", "icon": ("dungeon", 11, 8), "kind": "weapon", "hands": "1h",
-                     "swing": 0.8, "a": 1.0, "b": 1, "weight": 1},
-    "short_sword":  {"name": "Short Sword", "icon": ("dungeon", 8, 8), "kind": "weapon", "hands": "1h",
-                     "swing": 1.0, "a": 1.0, "b": 2, "weight": 2},
-    "wand":         {"name": "Wand", "icon": ("dungeon", 9, 10), "kind": "weapon", "hands": "1h",
-                     "swing": 1.2, "a": 1.0, "b": 2, "weight": 1},
-    "cleaver":      {"name": "Cleaver", "icon": ("dungeon", 9, 8), "kind": "weapon", "hands": "1h",
-                     "swing": 1.4, "a": 1.0, "b": 3, "weight": 3},
-    "axe":          {"name": "Axe", "icon": ("dungeon", 11, 9), "kind": "weapon", "hands": "1h",
-                     "swing": 1.6, "a": 1.0, "b": 4, "weight": 5},
-    "broadsword":   {"name": "Broadsword", "icon": ("dungeon", 10, 8), "kind": "weapon", "hands": "1h",
-                     "swing": 1.8, "a": 1.0, "b": 5, "weight": 4},
-    # --- 2h (a > 1, b > 0; quicker weapon -> smaller a and b) ---
-    "spear":        {"name": "Spear", "icon": ("dungeon", 11, 10), "kind": "weapon", "hands": "2h",
-                     "swing": 1.8, "a": 1.3, "b": 4, "weight": 4},
-    "staff":        {"name": "Staff", "icon": ("dungeon", 10, 10), "kind": "weapon", "hands": "2h",
-                     "swing": 2.0, "a": 1.4, "b": 5, "weight": 4},
-    "double_axe":   {"name": "Double Axe", "icon": ("dungeon", 10, 9), "kind": "weapon", "hands": "2h",
-                     "swing": 2.0, "a": 1.4, "b": 5, "weight": 8},
-    "warhammer":    {"name": "Warhammer", "icon": ("dungeon", 9, 9), "kind": "weapon", "hands": "2h",
-                     "swing": 2.2, "a": 1.5, "b": 6, "weight": 10},
-    # --- off hand ---
-    "round_shield": {"name": "Round Shield", "icon": ("dungeon", 5, 8), "kind": "shield", "hands": "offhand",
-                     "block": 0.03, "weight": 3},
-    "buckler":      {"name": "Buckler", "icon": ("dungeon", 6, 8), "kind": "shield", "hands": "offhand",
-                     "block": 0.05, "weight": 5},
-}
+GEAR = {}      # {item id: item}: every weapon and shield (filled from data/items.json by load_gear)
+ICONIC = {}    # class name -> the item id of its iconic weapon (the lowest id of its weapon type)
 
-# Each class's iconic weapon: its swing matches the class swing (no speed cost).
-ICONIC = {"Rogue": "dagger", "Fighter": "axe", "Paladin": "warhammer", "Cleric": "wand", "Wizard": "staff"}
+# Each class's iconic weapon type: its swing matches the class swing (no speed cost).
+ICONIC_TYPE = {"Rogue": "dagger", "Fighter": "axe", "Paladin": "warhammer", "Cleric": "wand", "Wizard": "staff"}
+
+
+def load_gear(defs):
+    """(Re)fill GEAR and ICONIC in place from item definitions (content/item_defs.py). Invalid ones are skipped."""
+    from game.content import item_defs
+    GEAR.clear()
+    for iid, d in defs.items():
+        if d.get("kind") in ("weapon", "shield") and not item_defs.validate(iid, d):
+            GEAR[iid] = item_defs.to_item(d)
+    ICONIC.clear()
+    for cls, wtype in ICONIC_TYPE.items():
+        ids = [iid for iid, g in GEAR.items() if g.get("weapon_type") == wtype and g["kind"] == "weapon"]
+        if ids:
+            ICONIC[cls] = min(ids)
+
+
+def type_of(item):
+    """The weapon type (subtype) of an equipment item id, or None."""
+    g = GEAR.get(item)
+    return g.get("weapon_type") if g else None
+
+
+def weapon_types():
+    """Every weapon type a skill rule or an item mentions, in a stable order."""
+    seen = []
+    for t in [*DEFAULT_TYPES, *(g.get("weapon_type") for g in GEAR.values())]:
+        if t and t not in seen:
+            seen.append(t)
+    return seen
+
+
+DEFAULT_TYPES = ("dagger", "1h_sword", "wand", "axe", "spear", "staff", "double_axe", "warhammer", "round_shield",
+                 "buckler")
 
 # --- which skills a weapon allows, and how they animate (user rule: default = every weapon; spells just "raise") ---
-# Weapon families (main-hand weapon decides; bare hands are always allowed, so a character without gear can use
-# every skill exactly as before).
-LIGHT_BLADES = {"dagger", "short_sword", "wooden_sword"}
-SWORDS = {"short_sword", "wooden_sword", "broadsword"}
-EDGED = {"dagger", "short_sword", "wooden_sword", "broadsword", "cleaver", "axe", "double_axe"}
+# Weapon families are sets of weapon TYPES (an item's weapon_type, not the item: a new dagger is still a dagger).
+# The main-hand weapon decides; bare hands are always allowed, so a character without gear can use every skill
+# exactly as before.
+LIGHT_BLADES = {"dagger", "1h_sword"}
+SWORDS = {"1h_sword"}
+EDGED = {"dagger", "1h_sword", "axe", "double_axe"}
 MELEE = EDGED | {"warhammer", "spear", "staff"}            # everything but the wand
 STAB_WEAPONS = LIGHT_BLADES | {"spear"}                     # things you can thrust a point with, quickly
 SKILL_WEAPONS = {  # skill -> weapons allowed (missing = every weapon)
-    "Stab": STAB_WEAPONS,                                   # no axes, hammers, staves, cleavers, broadswords
+    "Stab": STAB_WEAPONS,                                   # no axes, hammers or staves
     "Ambush": LIGHT_BLADES,                                 # a hidden blade in the back
-    "Poison Dagger": LIGHT_BLADES - {"wooden_sword"},       # needs a metal blade to coat
+    "Poison Dagger": LIGHT_BLADES,
     "Strike": MELEE,                                        # any melee weapon (not a wand)
     "Smite": MELEE,
     "Cleave": EDGED - {"dagger"} | {"warhammer", "staff"},  # a wide sweep needs reach: no dagger, spear or wand
@@ -83,13 +90,16 @@ NO_ANIM = {"Stealth", "Charge"}                             # stealth fades out,
 
 
 def skill_allows(skill, item):
-    """Can `skill` be used with `item` in the main hand (None = bare hands: always)?"""
-    return item is None or item in SKILL_WEAPONS.get(skill, (item,))
+    """Can `skill` be used with `item` (an item id) in the main hand (None = bare hands: always)?"""
+    if item is None:
+        return True
+    allowed = SKILL_WEAPONS.get(skill)
+    return allowed is None or type_of(item) in allowed
 
 
 def weapon_move(item):
     """A weapon's own basic move: "thrust" for stabbing weapons and bare fists, else "chop"."""
-    return "thrust" if item is None or item in ("dagger", "spear") else "chop"
+    return "thrust" if item is None or type_of(item) in ("dagger", "spear") else "chop"
 
 
 def skill_anim(skill, item):
@@ -115,7 +125,7 @@ def allowed_names(skill):
     allowed = SKILL_WEAPONS.get(skill)
     if allowed is None:
         return None
-    return [GEAR[k]["name"] for k in GEAR if k in allowed]
+    return [t.replace("_", " ").title() for t in weapon_types() if t in allowed]
 
 NO_GEAR = {"a": 1.0, "b": 0.0, "swing": 0.0, "weight": 0, "block": 0.0, "move_mult": 1.0}
 
@@ -211,8 +221,12 @@ def validate_equipment(state, class_name):
         item = state.get(slot)
         if item is None:
             continue
-        if not isinstance(item, str) or item not in GEAR:
+        from game.content.item_defs import item_id
+        item = item_id(item)                    # (old saves stored the item's name)
+        if item is None:
             raise ValueError("bad equipment item")
+        if item not in GEAR:
+            continue                            # an item that was deleted from items.json: it is just gone
         eq, removed = equip(class_name, eq, item, slot)
         if removed:
             raise ValueError("equipment does not fit together")
@@ -230,7 +244,10 @@ def describe(item_id):
     text = f"{hands}. {dmg}. {g['swing']:g}s swing. Weight {g['weight']}."
     if g["hands"] == "1h":
         text += " Rogues and Fighters can dual wield it (off hand: half the bonus)."
-    banned = [s for s in SKILL_WEAPONS if item_id not in SKILL_WEAPONS[s]]
+    banned = [s for s in SKILL_WEAPONS if g.get("weapon_type") not in SKILL_WEAPONS[s]]
     if banned:
         text += f" Can't be used for: {', '.join(banned)}."
     return text
+
+
+load_gear(item_defs.load())
