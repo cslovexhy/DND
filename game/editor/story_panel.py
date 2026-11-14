@@ -57,7 +57,7 @@ class StoryPanel(Widgets):
         self.items = items if items is not None else {}
         self.map_size, self.quest_save = map_size, quest_save
         self.tab = "quests"
-        self.mode = "main"                 # "main" / "monster" (objective picker) / "sprite" (NPC picture picker)
+        self.mode = "main"                 # "main" / "monster" / "item" (objective pickers) / "npc" / "sprite"
         self.selected = next((q["id"] for q in data["quests"]), None)    # quest id
         self.sel_npc = 0 if npcs else None                                # index into npcs
         self.message, self.message_ok = "", True
@@ -94,6 +94,14 @@ class StoryPanel(Widgets):
         if n is None:
             return f"? {npc_id}"
         return n["name"] + (f" ({n['map']})" if n["map"] else "")
+    def item_name(self, iid):
+        d = self.items.get(iid)
+        return d["name"] if d else f"item #{iid}"
+
+    def target_name(self, o):
+        """Display name of an objective's target (a monster or an item)."""
+        return self.item_name(o["item"]) if "item" in o else self.monster_name(o["monster"])
+
     def monster_name(self, mid):
         d = self.monsters.get(mid)
         return d["name"] if d else f"#{mid}"
@@ -225,16 +233,26 @@ class StoryPanel(Widgets):
     def _do_obj_add(self, _, button):
         self.mode = "monster"
 
+    def _do_obj_add_item(self, _, button):
+        self.mode = "item"
+
+    def _do_obj_pick_item(self, iid, button):
+        objs = self.q.setdefault("objectives", [])
+        if not any(o.get("item") == iid for o in objs):
+            objs.append({"item": iid, "count": 5})
+            self._say(f"Added {self.item_name(iid)} x5. Click its count to change it.")
+        self.mode = "main"
+
     def _do_obj_pick(self, mid, button):
         objs = self.q.setdefault("objectives", [])
-        if not any(o["monster"] == mid for o in objs):
+        if not any(o.get("monster") == mid for o in objs):
             objs.append({"monster": mid, "count": 10})
             self._say(f"Added {self.monster_name(mid)} x10. Click its count to change it.")
         self.mode = "main"
 
     def _do_obj_count(self, i, button):
         o = self.q["objectives"][i]
-        raw = self.ask(f"How many {self.monster_name(o['monster'])} (1-999):", str(o["count"]))
+        raw = self.ask(f"How many {self.target_name(o)} (1-999):", str(o["count"]))
         if raw is None:
             return
         try:
@@ -354,7 +372,9 @@ class StoryPanel(Widgets):
         surf.fill(BG)
         self._draw_list(surf, font, big, H)
         x0 = LIST_W + 30
-        if self.mode == "monster" and self.q:
+        if self.mode == "item" and self.q:
+            self._draw_item_picker(surf, font, big, x0, W)
+        elif self.mode == "monster" and self.q:
             self._draw_monster_picker(surf, font, big, x0, W)
         elif self.mode == "npc" and self.q:
             self._draw_npc_picker(surf, font, big, x0, W)
@@ -455,20 +475,30 @@ class StoryPanel(Widgets):
         self._hit(box, "q_field", "description")
         y += 108
         # objectives
-        surf.blit(font.render("Kill (the monster type + how many):", True, GOLD), (x, y))
+        surf.blit(font.render("Objectives: kill monsters and / or bring items (all of them are needed):", True, GOLD),
+                  (x, y))
         y += 22
         for i, o in enumerate(q.get("objectives", [])):
-            d = self.monsters.get(o["monster"])
-            surf.blit(self.art.monster(d.get("sprite") if d else None, 24), (x, y))
-            surf.blit(font.render(f"{self.monster_name(o['monster'])} #{o['monster']}", True, TEXT), (x + 32, y + 6))
-            self._box(surf, font, (x + 280, y, 70, 26), f"x {o['count']}", "obj_count", i, False,
-                      "How many must be killed.")
-            self._button(surf, font, (x + 358, y, 26, 26), "x", "obj_del", i, color=(100, 55, 55))
+            if "item" in o:
+                it = self.items.get(o["item"])
+                if it and it.get("icon"):
+                    surf.blit(self.art.icon(*it["icon"], 24), (x, y))
+                label = f"Collect {self.item_name(o['item'])} #{o['item']}"
+                tip = "How many must be in the backpack. They are taken when the quest is handed in."
+            else:
+                d = self.monsters.get(o["monster"])
+                surf.blit(self.art.monster(d.get("sprite") if d else None, 24), (x, y))
+                label = f"Kill {self.monster_name(o['monster'])} #{o['monster']}"
+                tip = "How many must be killed."
+            surf.blit(font.render(label, True, TEXT), (x + 32, y + 6))
+            self._box(surf, font, (x + 330, y, 70, 26), f"x {o['count']}", "obj_count", i, False, tip)
+            self._button(surf, font, (x + 408, y, 26, 26), "x", "obj_del", i, color=(100, 55, 55))
             y += 30
         if not q.get("objectives"):
             surf.blit(font.render("(none: the quest is done as soon as it is accepted)", True, DIM), (x, y + 4))
             y += 30
-        self._button(surf, font, (x, y, 170, 26), "+ Add monster", "obj_add", color=(60, 90, 60))
+        self._button(surf, font, (x, y, 170, 26), "+ Kill a monster", "obj_add", color=(60, 90, 60))
+        self._button(surf, font, (x + 180, y, 170, 26), "+ Bring an item", "obj_add_item", color=(60, 90, 60))
         y += 40
         # prerequisites
         surf.blit(font.render("Needs these quests done first (click to toggle):", True, GOLD), (x, y))
@@ -499,6 +529,18 @@ class StoryPanel(Widgets):
             surf.blit(font.render(f"{n['name']}" + (f"  ({n['map']})" if n["map"] else ""), True, TEXT),
                       (r.x + 32, r.y + 7))
             self._hit(r, "npc_pick", nid)
+
+    def _draw_item_picker(self, surf, font, big, x, W):
+        surf.blit(big.render(f"Add an item to {self.q['title']} (click one)", True, GOLD), (x, 10))
+        per_row = max(1, (W - x - 20) // 250)
+        order = sorted(self.items.items(), key=lambda kv: (kv[1].get("kind", ""), kv[1]["name"].lower()))
+        for i, (iid, d) in enumerate(order):
+            r = pygame.Rect(x + (i % per_row) * 250, 44 + (i // per_row) * 32, 240, 28)
+            pygame.draw.rect(surf, (52, 52, 62), r, border_radius=4)
+            if d.get("icon"):
+                surf.blit(self.art.icon(*d["icon"], 24), (r.x + 2, r.y + 2))
+            surf.blit(font.render(f"{d['name']} #{iid}", True, TEXT), (r.x + 32, r.y + 7))
+            self._hit(r, "obj_pick_item", iid)
 
     def _draw_monster_picker(self, surf, font, big, x, W):
         surf.blit(big.render(f"Add a monster to {self.q['title']} (click one)", True, GOLD), (x, 10))

@@ -163,5 +163,32 @@ class MapSchemaTest(unittest.TestCase):
             self.assertTrue(validate_map(d)[0], bad)
 
 
+class ItemQuestTest(unittest.TestCase):
+    def test_bring_items_to_the_npc(self):
+        from game.engine.events import NpcDialogue
+        random.seed(1)
+        world, p = create_world(MAP, saves.blank_character("t", "Fighter", level=3))
+        q = p.quests.quests["kobold_camp_cleanup"]
+        q.objectives = [{"item": I.BREAD, "count": 2}, {"monster": 1, "count": 1}]       # collect AND kill
+        p.quests.load_state({"completed": ["a_threat_within"]})
+        marshal = next(n for n in world.npcs if n.npc_id == "marshal_mcbride")
+        world.interact_with_npc(marshal, p)                                              # accept
+        self.assertIn("kobold_camp_cleanup", p.quests.active)
+        p.inventory.add(I.BREAD, 2)
+        world.events.clear()
+        world.interact_with_npc(marshal, p)                                              # the kill is still missing
+        self.assertEqual([e for e in world.events if isinstance(e, NpcDialogue) and e.mode == "turnin"], [])
+        p.quests.record_kill(1)
+        self.assertTrue(marshal.has_turn_in(p))
+        xp = p.hero.xp
+        world.events.clear()
+        world.interact_with_npc(marshal, p)
+        self.assertEqual([e.mode for e in world.events if isinstance(e, NpcDialogue)], ["turnin"])
+        self.assertEqual(p.inventory.count(I.BREAD), 0)                                  # handed over
+        self.assertEqual(p.hero.xp, xp + q.rewards_xp)
+        snap_obj = make_snapshot(world)["you"]["quests"]["active"]
+        self.assertEqual(snap_obj, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -879,7 +879,7 @@ def open_story():
         ask=lambda title, default, long=False: text_input_prompt(title, default, list_files=False,
                                                                  max_len=1200 if long else 40),
         art=monster_art, map_size=(map_data.width, map_data.height),
-        quest_save=lambda d: quests_mod.save_quest_data(d), other_npcs=others)
+        quest_save=lambda d: quests_mod.save_quest_data(d), other_npcs=others, items=items_mod.ITEMS)
     if saved:
         print("Saved the quests (save the map too, to keep its NPCs)")
         placing_npc = place

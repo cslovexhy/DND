@@ -8,6 +8,7 @@ import unittest
 
 from game import quests
 from game.content import monster_defs
+from tests import item_ids as I
 from tests import mob_ids as ID
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -201,6 +202,40 @@ print(json.dumps(log))
         self.assertIn("used by", log["delete_msg"])
         self.assertNotIn("third", log["saved"])
         self.assertEqual(log["after_delete"], ["first", log["new_id"], "second"])    # it needs nothing now
+
+
+class ItemObjectiveTest(unittest.TestCase):
+    CODE = """
+import os, json; os.environ["SDL_VIDEODRIVER"] = "dummy"
+import pygame; pygame.init(); screen = pygame.display.set_mode((1400, 900))
+from game.content import monster_defs, items
+from game.editor.monster_panel import Art
+from game.editor.story_panel import StoryPanel
+data = {"quests": [{"id": "meat", "title": "Meat", "description": "", "objectives": [{"monster": 5, "count": 2}],
+                    "rewards_xp": 1, "rewards_gold": 0, "giver": "a", "turn_in": "a", "reward_npc": "a",
+                    "level_req": 1, "prerequisites": []}]}
+npcs = [{"name": "A", "npc_id": "a", "gender": "male", "x": 1, "y": 1, "sprite_col": 1, "sprite_row": 8}]
+answers = iter(["7"])
+saved = {}
+p = StoryPanel(npcs, data, monster_defs.load(), lambda t, d, long=False: next(answers), Art(), (80, 80),
+               quest_save=lambda d: saved.update(d), items=items.ITEMS)
+font = pygame.font.SysFont("monospace", 13); big = pygame.font.SysFont("monospace", 18, bold=True)
+def click(action, arg=None):
+    p.draw(screen, font, big)
+    r = next(r for r, a, x in p.hits if a == action and (arg is None or x == arg))
+    p.click(r.center, 1)
+click("obj_add_item"); p.draw(screen, font, big); click("obj_pick_item", %(item)d)
+click("obj_count", 1)
+click("done"); assert p.done, p.message
+print(json.dumps(saved["quests"][0]["objectives"]))
+"""
+
+    def test_a_quest_can_have_kill_and_item_objectives(self):
+        r = subprocess.run([sys.executable, "-c", self.CODE % {"item": I.BREAD}], cwd=ROOT, capture_output=True,
+                           text=True, timeout=90)
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        self.assertEqual(json.loads(r.stdout.strip().splitlines()[-1]),
+                         [{"monster": 5, "count": 2}, {"item": I.BREAD, "count": 7}])
 
 
 if __name__ == "__main__":
