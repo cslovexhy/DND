@@ -1,157 +1,1009 @@
-[
-  {
-    "name": "Orc Smasher",
-    "type": "Orc",
-    "ac": 15,
-    "hp": 2,
-    "attack_name": "mace",
-    "attack_bonus": 9,
-    "damage": 1,
-    "experience": 2,
-    "special": null,
-    "tactics": [
-      "If the orc smasher is within 1 tile of a Hero -> moves adjacent to the closest Hero and attacks with a heavy mace",
-      "Otherwise -> the orc smasher moves 1 tile toward the closest Hero"
+{
+ "version": 2,
+ "monsters": {
+  "kobold_dragonshield": {
+   "name": "Kobold Dragonshield",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 9,
+    "row": 7
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 16,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 1,
+   "dmg": 1,
+   "atk": 7,
+   "xp": 5,
+   "sense_range": 150,
+   "attack_range": 45,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
+    ],
+    [
+     "wine",
+     0.01
+    ],
+    [
+     "minor_mana_potion",
+     0.01
     ]
+   ]
   },
-  {
-    "name": "Orc Archer",
-    "type": "Orc",
-    "ac": 13,
-    "hp": 1,
-    "attack_name": "punch / arrow",
-    "attack_bonus": 6,
-    "damage": 2,
-    "experience": 1,
-    "special": "arrow: Miss deals 1 Damage",
-    "tactics": [
-      "If the orc archer is adjacent to a Hero -> it attacks the Hero with a punch (+6, 1 damage)",
-      "If the orc archer is within 2 tiles of a Hero -> it attacks the closest Hero with an arrow (+6, 2 damage, miss: 1 damage)",
-      "Otherwise -> the orc archer moves 1 tile toward the closest Hero"
+  "snake": {
+   "name": "Snake",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 0,
+    "row": 4
+   },
+   "category": "beast",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 13,
+   "speed": 6,
+   "hp_mult": 1.0,
+   "hp": 1,
+   "dmg": 0,
+   "atk": 7,
+   "xp": 5,
+   "sense_range": 120,
+   "attack_range": 40,
+   "skills": [
+    "Poison Dagger"
+   ],
+   "drops": [
+    [
+     "drumstick",
+     0.03
+    ],
+    [
+     "minor_mana_potion",
+     0.01
     ]
+   ]
   },
-  {
-    "name": "Cave Bear",
-    "type": "Animal",
-    "ac": 14,
-    "hp": 2,
-    "attack_name": "claws / strike",
-    "attack_bonus": 8,
-    "damage": 2,
-    "experience": 2,
-    "special": "strike: 2 damage and Dazed",
-    "tactics": [
-      "If the cave bear is on the same tile as a Hero -> it attacks each hero on that tile with a frenzy of claws (+6, 2 damage)",
-      "If the cave bear is within 1 tile of a Hero -> it moves adjacent to the closest Hero and attacks with a leaping strike (+8, 2 damage and Dazed)",
-      "Otherwise -> the cave bear moves 1 tile toward the closest Hero"
+  "orc_smasher": {
+   "name": "Orc Smasher",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 1,
+    "row": 1
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 15,
+   "speed": 4,
+   "hp_mult": 1.0,
+   "hp": 2,
+   "dmg": 1,
+   "atk": 9,
+   "xp": 10,
+   "sense_range": 180,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
     ]
+   ]
   },
-  {
-    "name": "Duergar Guard",
-    "type": "Devil, Dwarf, Sentry",
-    "ac": 16,
-    "hp": 2,
-    "attack_name": "warhammer",
-    "attack_bonus": 8,
-    "damage": 1,
-    "experience": 2,
-    "special": null,
-    "tactics": [
-      "If the duergar is adjacent to a Hero -> it attacks the Hero with a warhammer",
-      "If the duergar is on a tile with no Heroes and an unexplored edge -> draw a dungeon tile from the bottom of the stack and place it next to the duergar's tile. Draw a Monster Card and place its figure on that tile",
-      "Otherwise -> the duergar moves 1 tile toward the closest Hero"
+  "orc_archer": {
+   "name": "Orc Archer",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 0,
+    "row": 1
+   },
+   "category": "humanoid",
+   "attack": "ranged",
+   "boss": false,
+   "unique": false,
+   "ac": 13,
+   "speed": 4,
+   "hp_mult": 1.0,
+   "hp": 1,
+   "dmg": 1,
+   "atk": 6,
+   "xp": 5,
+   "sense_range": 220,
+   "attack_range": 220,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
     ]
+   ]
   },
-  {
-    "name": "Gibbering Mouther",
-    "type": "Aberrant",
-    "ac": 14,
-    "hp": 2,
-    "attack_name": "gibbering attack",
-    "attack_bonus": 8,
-    "damage": 1,
-    "experience": 3,
-    "special": "1 damage and Dazed; attacks all Heroes within 1 tile",
-    "tactics": [
-      "If the gibbering mouther is within 1 tile of a Hero -> it attacks all Heroes within 1 tile (+8, 1 damage and Dazed)",
-      "Otherwise -> the gibbering mouther moves 1 tile toward the closest Hero"
+  "grey_wolf": {
+   "name": "Grey Wolf",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 3,
+    "row": 2
+   },
+   "category": "beast",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 14,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 2,
+   "dmg": 2,
+   "atk": 8,
+   "xp": 10,
+   "sense_range": 170,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "drumstick",
+     0.03
+    ],
+    [
+     "minor_mana_potion",
+     0.01
     ]
+   ]
   },
-  {
-    "name": "Grell",
-    "type": "Aberrant",
-    "ac": 15,
-    "hp": 2,
-    "attack_name": "bite / tentacles",
-    "attack_bonus": 7,
-    "damage": 1,
-    "experience": 2,
-    "special": "bite: 1 damage and Poisoned (miss: 1 damage); tentacles: 1 damage and Dazed",
-    "tactics": [
-      "If the grell is adjacent to a Hero -> it attacks that Hero with a venomous bite (+7, 1 damage and Poisoned, miss: 1 damage)",
-      "If the grell is within 1 tile of a Hero -> it moves adjacent to the closest Hero and attacks with its tentacles (+7, 1 damage and Dazed)",
-      "Otherwise -> the grell moves 1 tile toward the closest Hero"
+  "duergar_guard": {
+   "name": "Duergar Guard",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 4,
+    "row": 12
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 16,
+   "speed": 4,
+   "hp_mult": 1.0,
+   "hp": 2,
+   "dmg": 1,
+   "atk": 8,
+   "xp": 10,
+   "sense_range": 160,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
     ]
+   ]
   },
-  {
-    "name": "Human Cultist",
-    "type": "Human",
-    "ac": 14,
-    "hp": 1,
-    "attack_name": "dagger",
-    "attack_bonus": 6,
-    "damage": 1,
-    "experience": 1,
-    "special": "1 damage and Poisoned",
-    "tactics": [
-      "If the cultist is within 1 tile of a Hero -> it moves adjacent to the closest Hero and attacks with a poisoned dagger (+6, 1 damage and Poisoned)",
-      "Otherwise -> the cultist moves 1 tile toward the closest Hero"
+  "gibbering_mouther": {
+   "name": "Gibbering Mouther",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 4,
+    "row": 8
+   },
+   "category": "demon",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 14,
+   "speed": 3,
+   "hp_mult": 1.0,
+   "hp": 2,
+   "dmg": 1,
+   "atk": 8,
+   "xp": 15,
+   "sense_range": 140,
+   "attack_range": 60,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.01
     ]
+   ]
   },
-  {
-    "name": "Kobold Dragonshield",
-    "type": "Reptile, Sentry",
-    "ac": 16,
-    "hp": 1,
-    "attack_name": "sword",
-    "attack_bonus": 7,
-    "damage": 1,
-    "experience": 1,
-    "special": null,
-    "tactics": [
-      "If the kobold is adjacent to a Hero -> it attacks with a sword",
-      "If the kobold is on a tile with no Heroes and an unexplored edge -> draw a Dungeon Tile from the bottom of the stack and place it next to the Kobold's tile. Place a new Monster on that tile",
-      "Otherwise -> the kobold moves 1 tile toward the closest Hero"
+  "grell": {
+   "name": "Grell",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 0,
+    "row": 12
+   },
+   "category": "demon",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 15,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 2,
+   "dmg": 1,
+   "atk": 7,
+   "xp": 10,
+   "sense_range": 180,
+   "attack_range": 50,
+   "skills": [
+    "Poison Dagger"
+   ],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.01
     ]
+   ]
   },
-  {
-    "name": "Legion Devil",
-    "type": "Devil",
-    "ac": 16,
-    "hp": 1,
-    "attack_name": "sword",
-    "attack_bonus": 11,
-    "damage": 1,
-    "experience": 3,
-    "special": "When placing the Legion Devil, place two additional Legion Devils next to the first. You do not gain experience for this card until all Legion Devils are destroyed.",
-    "tactics": [
-      "If the legion devil is within 1 tile of a Hero -> it moves adjacent to the closest Hero and attacks with a sword",
-      "Otherwise -> the legion devil moves 1 tile toward the closest Hero"
+  "human_cultist": {
+   "name": "Human Cultist",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 7,
+    "row": 6
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 14,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 1,
+   "dmg": 1,
+   "atk": 6,
+   "xp": 5,
+   "sense_range": 200,
+   "attack_range": 50,
+   "skills": [
+    "Poison Dagger"
+   ],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
+    ],
+    [
+     "coffee",
+     0.01
+    ],
+    [
+     "wine",
+     0.02
+    ],
+    [
+     "minor_mana_potion",
+     0.01
+    ],
+    [
+     "mana_potion",
+     0.005
     ]
+   ]
   },
-  {
-    "name": "Snake",
-    "type": "Reptile",
-    "ac": 13,
-    "hp": 1,
-    "attack_name": "bite",
-    "attack_bonus": 7,
-    "damage": 0,
-    "experience": 1,
-    "special": "Poisoned (no HP damage, applies Poisoned condition)",
-    "tactics": [
-      "If the snake is within 1 tile of a Hero -> it moves adjacent to the closest Hero and attacks with a venomous bite (+7, Poisoned)",
-      "Otherwise -> the snake moves 1 tile toward the closest Hero"
+  "legion_devil": {
+   "name": "Legion Devil",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 8,
+    "row": 3
+   },
+   "category": "demon",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 16,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 1,
+   "dmg": 1,
+   "atk": 11,
+   "xp": 15,
+   "sense_range": 170,
+   "attack_range": 45,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.01
     ]
+   ]
+  },
+  "demogorgon": {
+   "name": "Demogorgon",
+   "sprite": {
+    "file": "assets/stranger_things/sprites/demogorgon.png",
+    "scale": 2
+   },
+   "category": "demon",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 16,
+   "speed": 9,
+   "hp_mult": 1.0,
+   "hp": 8,
+   "dmg": 3,
+   "atk": 10,
+   "xp": 20,
+   "sense_range": 340,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.01
+    ]
+   ],
+   "relentless": true,
+   "hive_mind": {
+    "range": 1000,
+    "types": [
+     "demogorgon",
+     "vecna"
+    ]
+   }
+  },
+  "demodog": {
+   "name": "Demodog",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 2,
+    "row": 10
+   },
+   "category": "demon",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 15,
+   "speed": 7,
+   "hp_mult": 1.0,
+   "hp": 2,
+   "dmg": 2,
+   "atk": 8,
+   "xp": 10,
+   "sense_range": 170,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.01
+    ]
+   ]
+  },
+  "demobat": {
+   "name": "Demobat",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 8,
+    "row": 13
+   },
+   "category": "demon",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 14,
+   "speed": 8,
+   "hp_mult": 1.0,
+   "hp": 1,
+   "dmg": 1,
+   "atk": 7,
+   "xp": 5,
+   "sense_range": 170,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.01
+    ]
+   ]
+  },
+  "vecna": {
+   "name": "Vecna",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 6,
+    "row": 9,
+    "big": true
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": true,
+   "unique": false,
+   "ac": 18,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 10,
+   "dmg": 3,
+   "atk": 11,
+   "xp": 50,
+   "sense_range": 170,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
+    ]
+   ]
+  },
+  "meerak": {
+   "name": "Meerak",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 8,
+    "row": 7,
+    "big": true
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": true,
+   "unique": false,
+   "ac": 17,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 6,
+   "dmg": 1,
+   "atk": 8,
+   "xp": 25,
+   "sense_range": 170,
+   "attack_range": 55,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
+    ]
+   ]
+  },
+  "ashardalon": {
+   "name": "Ashardalon",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 3,
+    "row": 3,
+    "big": true
+   },
+   "category": "beast",
+   "attack": "melee",
+   "boss": true,
+   "unique": false,
+   "ac": 16,
+   "speed": 4,
+   "hp_mult": 1.0,
+   "hp": 12,
+   "dmg": 2,
+   "atk": 10,
+   "xp": 50,
+   "sense_range": 170,
+   "attack_range": 70,
+   "skills": [],
+   "drops": [
+    [
+     "drumstick",
+     0.03
+    ]
+   ],
+   "boss_skills": {
+    "deep_breath": {
+     "radius": 200,
+     "duration": 3.0,
+     "cycles": 3,
+     "dps": 100,
+     "windup": 1.5,
+     "at_hp_pct": [
+      0.5,
+      0.2
+     ]
+    },
+    "enrage": {
+     "at_hp_pct": [
+      0.5
+     ],
+     "damage_mult": 1.5
+    }
+   }
+  },
+  "bellax": {
+   "name": "Bellax",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 5,
+    "row": 0,
+    "big": true
+   },
+   "category": "demon",
+   "attack": "melee",
+   "boss": true,
+   "unique": false,
+   "ac": 17,
+   "speed": 4,
+   "hp_mult": 1.0,
+   "hp": 9,
+   "dmg": 2,
+   "atk": 8,
+   "xp": 40,
+   "sense_range": 170,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.01
+    ]
+   ]
+  },
+  "karash": {
+   "name": "Karash",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 5,
+    "row": 12,
+    "big": true
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": true,
+   "unique": false,
+   "ac": 15,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 5,
+   "dmg": 1,
+   "atk": 7,
+   "xp": 25,
+   "sense_range": 170,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
+    ]
+   ]
+  },
+  "margrath": {
+   "name": "Margrath",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 7,
+    "row": 2,
+    "big": true
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": true,
+   "unique": false,
+   "ac": 16,
+   "speed": 4,
+   "hp_mult": 1.0,
+   "hp": 5,
+   "dmg": 1,
+   "atk": 8,
+   "xp": 25,
+   "sense_range": 170,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
+    ]
+   ]
+  },
+  "rage_drake": {
+   "name": "Rage Drake",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 8,
+    "row": 7,
+    "big": true
+   },
+   "category": "beast",
+   "attack": "melee",
+   "boss": true,
+   "unique": false,
+   "ac": 15,
+   "speed": 6,
+   "hp_mult": 1.0,
+   "hp": 5,
+   "dmg": 2,
+   "atk": 9,
+   "xp": 25,
+   "sense_range": 170,
+   "attack_range": 55,
+   "skills": [],
+   "drops": [
+    [
+     "drumstick",
+     0.03
+    ]
+   ]
+  },
+  "otyugh": {
+   "name": "Otyugh",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 5,
+    "row": 7,
+    "big": true
+   },
+   "category": "demon",
+   "attack": "melee",
+   "boss": true,
+   "unique": false,
+   "ac": 14,
+   "speed": 3,
+   "hp_mult": 1.0,
+   "hp": 5,
+   "dmg": 2,
+   "atk": 8,
+   "xp": 25,
+   "sense_range": 170,
+   "attack_range": 60,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.01
+    ]
+   ]
+  },
+  "garrick_padfoot": {
+   "name": "Garrick Padfoot",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 7,
+    "row": 6,
+    "big": true
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": false,
+   "unique": true,
+   "ac": 15,
+   "speed": 5,
+   "hp_mult": 2,
+   "hp": 4,
+   "dmg": 2,
+   "atk": 8,
+   "xp": 30,
+   "sense_range": 170,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
+    ],
+    [
+     "coffee",
+     0.03
+    ],
+    [
+     "wine",
+     0.03
+    ],
+    [
+     "minor_mana_potion",
+     0.03
+    ],
+    [
+     "mana_potion",
+     0.03
+    ]
+   ],
+   "respawn_mult": 3
+  },
+  "defia_thief": {
+   "name": "Defia Thief",
+   "sprite": {
+    "col": 4,
+    "row": 8,
+    "sheet": "dungeon"
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 14,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 2,
+   "dmg": 1,
+   "atk": 8,
+   "xp": 10,
+   "sense_range": 170,
+   "attack_range": 50,
+   "skills": [
+    "Poison Dagger"
+   ],
+   "drops": [
+    [
+     "dagger",
+     0.02
+    ],
+    [
+     "water",
+     0.01
+    ],
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "minor_mana_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.01
+    ]
+   ]
   }
-]
+ }
+}

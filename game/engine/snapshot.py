@@ -35,9 +35,9 @@ def _entity(e, kind, ctl=None):
         d["leveled"] = bool(getattr(e, "leveled", False))   # has a real level (map monster_levels): show "Lv N"
         if e.max_mana:                                       # it casts skills (a kit): the target frame shows its MP
             d["mana"], d["max_mana"] = e.mana, e.max_mana
-        # custom types (map editor): which picture to draw, so co-op players without the file still see it
+        # which picture to draw: the host's monsters.json decides, so a joiner with a different file still sees it
         stats = SPAWN_STATS.get(getattr(e, "spawn_type", None)) or {}
-        if stats.get("custom"):
+        if stats.get("sprite"):
             d["art"] = dict(stats["sprite"])
     elif kind in ("hero", "ally", "companion"):
         d["class_name"] = e.class_name

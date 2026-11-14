@@ -15,8 +15,11 @@ from game.progression import MAX_LEVEL, xp_to_next_level
 MAP = "data/maps/northshire.json"
 saves.SAVE_DIR = tempfile.mkdtemp()
 
-NORTHSHIRE_LEVELS = {"Human Cultist": (3, 4), "Kobold Dragonshield": (2, 4), "Grey Wolf": (1, 2), "Snake": (2, 3),
-                     "Garrick Padfoot": (5, 5)}
+def map_levels():
+    """The level ranges the map file gives each monster type (the content is edited in the map editor, so the
+    tests read it instead of pinning numbers)."""
+    with open(MAP) as f:
+        return json.load(f).get("monster_levels", {})
 
 
 def northshire(level=1, seed=1):
@@ -58,52 +61,65 @@ class KillXpTest(unittest.TestCase):
 
 class MonsterLevelTest(unittest.TestCase):
     def test_northshire_levels_hp_and_xp(self):
-        seen = {}
+        from game.content.monsters import monster_hp_mult
+        ranges = map_levels()
+        seen, count = {}, {}
         for seed in range(1, 6):
             world, _ = northshire(seed=seed)
             for m in world.game_state.monsters:
-                lo, hi = NORTHSHIRE_LEVELS[m.name]
+                rng = ranges.get(m.spawn_type)
+                if rng is None:
+                    self.assertFalse(m.leveled, m.name)            # no range on this map: hand-tuned stats
+                    continue
+                lo, hi = rng
                 self.assertTrue(m.leveled)
                 self.assertTrue(lo <= m.level <= hi, (m.name, m.level))
                 self.assertEqual(m.experience, m.level * 10)
-                mult = 2 if m.name == "Garrick Padfoot" else 1                # per-type HP multiplier
+                mult = monster_hp_mult(SPAWN_STATS[m.spawn_type])             # per-type HP multiplier
                 self.assertEqual(m.max_hp, (50 + 25 * (m.level - 1)) * mult)  # level (x type multiplier) sets HP
                 self.assertEqual(m.ac, SPAWN_STATS[m.spawn_type]["ac"])        # AC stays hand-tuned
-                seen.setdefault(m.name, set()).add(m.level)
-        for name, (lo, hi) in NORTHSHIRE_LEVELS.items():
-            self.assertEqual(seen[name], set(range(lo, hi + 1)), name)            # every level in the range shows up
+                seen.setdefault(m.spawn_type, set()).add(m.level)
+                count[m.spawn_type] = count.get(m.spawn_type, 0) + (seed == 1)
+        for tid, (lo, hi) in ranges.items():
+            if count.get(tid, 0) >= 6 and hi - lo <= 3:            # plenty of spawns: every level shows up
+                self.assertEqual(seen[tid], set(range(lo, hi + 1)), tid)
 
     def test_higher_level_always_has_more_hp(self):
+        from game.content.monsters import monster_hp_mult
         world, _ = northshire()
         by_level = {}
         for m in world.game_state.monsters:
-            if m.name == "Garrick Padfoot":
-                continue                       # hp_mult 2 on purpose
-            by_level.setdefault(m.level, set()).add(m.max_hp)
+            if m.leveled and monster_hp_mult(SPAWN_STATS[m.spawn_type]) == 1:     # (a type multiplier is on purpose)
+                by_level.setdefault(m.level, set()).add(m.max_hp)
         levels = sorted(by_level)
         for a, b in zip(levels, levels[1:]):
             self.assertLess(max(by_level[a]), min(by_level[b]))
 
-    def test_hp_multiplier_defaults_to_1_and_padfoot_is_2(self):
+    def test_hp_multiplier_defaults_to_1_and_applies_to_the_level_hp(self):
         from game.content.monsters import monster_hp_mult
-        self.assertEqual({k for k, s in SPAWN_STATS.items() if monster_hp_mult(s) != 1}, {"garrick_padfoot"})
-        self.assertEqual(monster_hp_mult(SPAWN_STATS["garrick_padfoot"]), 2)
+        self.assertEqual(monster_hp_mult({}), 1)
+        self.assertEqual(monster_hp_mult({"hp_mult": 2}), 2)
         world, _ = northshire()
-        garrick = next(m for m in world.game_state.monsters if m.name == "Garrick Padfoot")
-        self.assertEqual(garrick.max_hp, 300)          # level 5: 150 x 2
+        weighted = [m for m in world.game_state.monsters if m.leveled and monster_hp_mult(SPAWN_STATS[m.spawn_type]) != 1]
+        for m in weighted:
+            self.assertEqual(m.max_hp, (50 + 25 * (m.level - 1)) * monster_hp_mult(SPAWN_STATS[m.spawn_type]))
 
     def test_levelled_damage_is_level_plus_5_rolled_per_hit(self):
         world, _ = northshire()
-        for m in world.game_state.monsters:
+        leveled = [m for m in world.game_state.monsters if m.leveled]
+        self.assertTrue(leveled)
+        for m in leveled:
             self.assertEqual(m.base_damage, m.level + 5)
-        m = next(m for m in world.game_state.monsters if m.level == 4)
+        m = leveled[0]
         rolls = {m.hit_damage() for _ in range(500)}
-        self.assertTrue(rolls <= {8, 9, 10}, rolls)          # round(9 x 0.9..1.1) = 8.1..9.9 -> 8..10
+        base = m.level + 5
+        self.assertTrue(rolls <= set(range(round(base * 0.9), round(base * 1.1) + 1)), rolls)   # x0.9..1.1 rounded
         self.assertGreater(len(rolls), 1)                      # it really varies per hit
 
     def test_default_swing_is_2s_and_bosses_are_20_percent_faster(self):
         world, _ = northshire()
-        self.assertEqual({m.weapon_speed for m in world.game_state.monsters}, {2.0})
+        for m in world.game_state.monsters:                    # 2.0 s unless the definition sets its own attack speed
+            self.assertEqual(m.weapon_speed, SPAWN_STATS[m.spawn_type].get("swing", 2.0), m.name)
         random.seed(1)
         room, _ = create_world("data/maps/bossTestRoom.json", saves.blank_character("t", "Fighter"))
         boss = next(m for m in room.game_state.monsters if m.is_boss)

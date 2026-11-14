@@ -222,10 +222,14 @@ def _attach_sprite(v):
     if v.kind in ("hero", "ally", "companion"):
         v.sprite = HERO_SPRITES[HERO_CLASS_BY_NAME[v.class_name]["sprite_key"]]
     elif v.kind == "monster":
-        art = getattr(v, "art", None)       # a custom type the host told us how to draw (we may not have its file)
-        v.sprite = (BOSS_SPRITES.get(v.name) or MONSTER_SPRITES.get(v.name)
-                    or (_art_cache.setdefault(json.dumps(art, sort_keys=True), art_sprite(art)) if art else None)
-                    or (BOSS_SPRITE if v.is_boss else None))
+        art = getattr(v, "art", None)       # the picture the host's monsters.json gives this type
+        if art:
+            key = json.dumps(art, sort_keys=True)
+            if key not in _art_cache:
+                _art_cache[key] = art_sprite(art)
+            v.sprite = _art_cache[key]
+        else:
+            v.sprite = BOSS_SPRITES.get(v.name) or MONSTER_SPRITES.get(v.name) or (BOSS_SPRITE if v.is_boss else None)
     elif v.kind == "npc" and v.sprite_tile:
         v.sprite = get_dungeon_tile(*v.sprite_tile)
 

@@ -457,67 +457,18 @@ def _find_closest_alive(monster, heroes):
 
 
 # === AI ASSIGNMENT ===
-AI_BEHAVIORS = {
-    "Orc Smasher": ai_melee,
-    "Kobold Dragonshield": ai_melee,
-    "Duergar Guard": ai_melee,
-    "Cave Bear": ai_melee,
-    "Legion Devil": ai_melee,
-    "Snake": ai_melee,
-    "Grell": ai_melee,
-    "Gibbering Mouther": ai_melee,
-    "Orc Archer": ai_ranged,
-    "Human Cultist": ai_melee,
-    "Meerak": ai_boss,
-    "Ashardalon": ai_boss,
-    "Gauth": ai_boss,
-    "Rage Drake": ai_boss,
-    "Otyugh": ai_boss,
-    "Karash": ai_boss,
-    "Margrath": ai_boss,
-}
-
-# Sense ranges by monster type
-SENSE_RANGES = {
-    "Kobold Dragonshield": 150,
-    "Snake": 120,
-    "Orc Smasher": 180,
-    "Orc Archer": 220,
-    "Human Cultist": 200,
-    "Duergar Guard": 160,
-    "Legion Devil": 170,
-    "Cave Bear": 200,
-    "Grell": 180,
-    "Gibbering Mouther": 140,
-    "Demogorgon": 340,  # extra-large sense range — hunts from far away
-}
-
-# Attack ranges (pixels) - NONE are 0
-ATTACK_RANGES = {
-    "Orc Smasher": 50,
-    "Kobold Dragonshield": 45,
-    "Duergar Guard": 50,
-    "Cave Bear": 55,
-    "Legion Devil": 45,
-    "Snake": 40,
-    "Grell": 50,
-    "Gibbering Mouther": 60,
-    "Orc Archer": 220,
-    "Human Cultist": 50,
-    # Bosses
-    "Meerak": 55,
-    "Ashardalon": 70,
-    "Gauth": 200,
-    "Rage Drake": 55,
-    "Otyugh": 60,
-}
+# How a monster fights follows from its definition (data/monsters.json): bosses use the hate rules (ai_boss), ranged
+# ones keep their distance and shoot (ai_ranged), everything else walks in (ai_melee). Its sense range and attack
+# range are the definition's too (World.spawn_single_world_monster sets them on the monster).
+DEFAULT_SENSE_RANGE = 170
+DEFAULT_MELEE_RANGE, DEFAULT_RANGED_RANGE = 50, 220
 
 
 def setup_monster_aggro(monster: Monster, nav_dungeon=None):
     """Initialize aggro for a newly spawned monster."""
-    sense = SENSE_RANGES.get(monster.name, 170)
+    sense = getattr(monster, "sense_range", DEFAULT_SENSE_RANGE)
     ranged = getattr(monster, "ranged_attack_range", 0) > 0
-    atk_range = ATTACK_RANGES.get(monster.name, 220 if ranged else 50)   # (custom ranged types: archer range)
+    atk_range = getattr(monster, "def_attack_range", None) or (DEFAULT_RANGED_RANGE if ranged else DEFAULT_MELEE_RANGE)
     monster.attack_range = atk_range
     # relentless / hive_mind may be pre-set on the monster from spawn data.
     relentless = getattr(monster, 'relentless', False)
@@ -561,7 +512,6 @@ def run_monster_ai(monster: Monster, heroes: list[Hero], dt: float,
     # Aggroed: special skills whose HP trigger was reached are queued here and cast by the World
     check_skill_triggers(monster)
 
-    # Aggroed: run behavior (every boss uses the hate rules; types without an entry: melee, or ranged if they shoot)
-    default = ai_ranged if getattr(monster, "ranged_attack_range", 0) > 0 else ai_melee
-    ai_fn = ai_boss if monster.is_boss else AI_BEHAVIORS.get(monster.name, default)
+    # Aggroed: run behavior (every boss uses the hate rules; ranged monsters shoot, the rest walk in)
+    ai_fn = ai_boss if monster.is_boss else (ai_ranged if getattr(monster, "ranged_attack_range", 0) > 0 else ai_melee)
     return ai_fn(monster, heroes, dt, collision_fn)

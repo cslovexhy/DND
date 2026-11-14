@@ -27,9 +27,8 @@ from copy import deepcopy
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from game.engine.map_schema import SCHEMA_VERSION, validate_map   # noqa: E402  (pure, no pygame)
 from game.engine.map_patch import patch_diagonal_gaps   # noqa: E402  (pure, no pygame)
-from game.content.monsters import SPAWN_STATS, BUILTIN_TYPES      # noqa: E402
-from game.content import monster_defs                               # noqa: E402
-KNOWN_SPAWN_TYPES = set(SPAWN_STATS)
+from game.content import monster_defs                               # noqa: E402  (data/monsters.json)
+KNOWN_SPAWN_TYPES = set()
 
 pygame.init()
 
@@ -312,19 +311,15 @@ SPAWN_TYPES = []   # built from the game's monster types (+ custom ones): refres
 
 
 def refresh_spawn_types():
-    """The spawn palette: every monster type the game knows (game/content/monsters.py) plus the custom ones made in
-    the Monsters screen (M). Rebuilt in place, so code holding SPAWN_TYPES / ALL_SPAWN_TYPES sees the change."""
-    SPAWN_TYPES[:] = monster_panel.spawn_palette(custom_defs)
+    """The spawn palette: every monster type in data/monsters.json (the Monsters screen, M, edits them). Rebuilt in
+    place, so code holding SPAWN_TYPES / ALL_SPAWN_TYPES sees the change."""
+    SPAWN_TYPES[:] = monster_panel.spawn_palette(defs)
     ALL_SPAWN_TYPES[:] = LOCATION_TYPES + SPAWN_TYPES
     KNOWN_SPAWN_TYPES.clear()
-    KNOWN_SPAWN_TYPES.update(BUILTIN_TYPES | set(custom_defs))
+    KNOWN_SPAWN_TYPES.update(defs)
 
 
-try:
-    custom_defs = monster_defs.load()      # data/custom_monsters.json
-except (OSError, ValueError) as e:
-    print(f"Could not read custom monster types: {e}")
-    custom_defs = {}
+defs = monster_defs.load()      # every monster type (data/monsters.json)
 monster_art = monster_panel.Art()
 
 # Combined list for rendering (lookup by id)
@@ -413,7 +408,7 @@ def draw_palette():
         name_text = font_sm.render(sp["name"], True, COL_TEXT)
         screen.blit(name_text, (50, TOOLBAR_H + 38))
         if spawn_mode:
-            hint = font_sm.render("M: monster types (* = custom)", True, (150, 150, 150))
+            hint = font_sm.render("M: edit monster types", True, (150, 150, 150))
             screen.blit(hint, (8, TOOLBAR_H + 56))
 
         # List all types
@@ -778,17 +773,23 @@ def message_box(title, lines):
 
 
 def open_monster_types():
-    """The Monsters screen (M): create / edit custom monster types and every type's level range on this map."""
+    """The Monsters screen (M): create / edit / duplicate / delete any monster type, and every type's level range on
+    this map."""
     levels = map_data.extra.setdefault("monster_levels", {})
-    saved = monster_panel.run(screen, clock, custom_defs, levels,
-                              ask=lambda title, default: text_input_prompt(title, default, list_files=False))
+    other_maps = {name: m for name, m in monster_defs.map_files().items() if name != last_filename}
+
+    def on_this_map():
+        return {s["type"] for s in map_data.spawns}
+
+    def used_by(tid):                        # this map as it is now (unsaved edits too) + the other maps' files
+        names = monster_defs.maps_using(tid, other_maps)
+        return (["this map"] if tid in on_this_map() else []) + names
+
+    saved = monster_panel.run(screen, clock, defs, levels,
+                              ask=lambda title, default: text_input_prompt(title, default, list_files=False),
+                              map_types=on_this_map, usage=used_by)
     if saved:
-        live = set(BUILTIN_TYPES) | set(custom_defs)
-        map_data.spawns = [s for s in map_data.spawns          # deleted custom types leave the map too
-                           if s["type"] in live or s["type"] in {t["id"] for t in LOCATION_TYPES}]
-        for tid in [t for t in levels if t not in live]:
-            del levels[tid]
-        print(f"Saved {len(custom_defs)} custom monster type(s) to {monster_defs.CUSTOM_PATH} "
+        print(f"Saved {len(defs)} monster type(s) to {monster_defs.PATH} "
               "(save the map too, to keep its level ranges)")
     if not levels:
         map_data.extra.pop("monster_levels", None)

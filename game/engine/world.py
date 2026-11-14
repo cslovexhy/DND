@@ -266,6 +266,8 @@ class World:
         if mt.get("hive_mind"):
             m.hive_mind = mt["hive_mind"]  # (range, [spawn_types]) — type-filtered aggro share
         m.spawn_type = sp.type  # spawn-type key (e.g. "demogorgon") for hive_mind matching
+        m.sense_range = mt.get("sense_range", 170)   # how far it notices heroes (the definition's)
+        m.def_attack_range = mt.get("attack_range")  # px it fights from (None: 50 melee / 220 ranged)
         # Track spawn origin for respawn system
         m.spawn_point = sp
         setup_monster_aggro(m, nav_dungeon=self.dungeon)

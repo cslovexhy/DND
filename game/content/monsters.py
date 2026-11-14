@@ -1,12 +1,9 @@
-"""Monster stat table for map spawn points (pure data; no pygame).
+"""Monster tables for map spawn points (pure data; no pygame).
 
-Keys are the spawn-type strings used in data/maps/*.json. Optional flags: boss, unique, ranged,
-relentless, hive_mind, respawn_mult, skills (HP-triggered boss skills, see game/engine/skills.py),
-kit (castable skills from content/skill_library.py, e.g. ["Poison Dagger"]; see engine/monster_casting.py),
-hp_mult (max HP multiplier for the type, default 1; see monster_hp_mult),
-swing (seconds between attacks, default MONSTER_SWING_TIME; bosses swing 20% faster).
-Every type also has a category (MONSTER_CATEGORY: humanoid / beast / demon) that decides its loot.
-A map spawn point may override any of these for that spawn ("stats": {...}), kit included.
+The monsters themselves are defined in data/monsters.json (format: content/monster_defs.py) and edited in the map
+editor's Monsters screen (M). This module loads them into SPAWN_STATS (keys are the spawn-type strings used in
+data/maps/*.json), MONSTER_CATEGORY and MONSTER_DROPS, and holds the rules that turn a monster's level into HP, damage
+and XP. A map spawn point may override any SPAWN_STATS field for that spawn ("stats": {...}), kit included.
 """
 from game.progression import ref_mana
 
@@ -14,139 +11,51 @@ MONSTER_SWING_TIME = 2.0   # default seconds between a monster's attacks
 RESPAWN_TIME = 60.0     # seconds before a killed regular mob respawns
 BOSS_RESPAWN_MULT = 10  # bosses take 10x as long (600s) unless SPAWN_STATS sets "respawn_mult"
 
-SPAWN_STATS = {
-    "kobold_dragonshield": {"name": "Kobold Dragonshield", "hp": 1, "ac": 16, "speed": 5, "atk": 7, "dmg": 1, "xp": 5},
-    "snake": {"name": "Snake", "hp": 1, "ac": 13, "speed": 6, "atk": 7, "dmg": 0, "xp": 5, "kit": ["Poison Dagger"]},
-    "orc_smasher": {"name": "Orc Smasher", "hp": 2, "ac": 15, "speed": 4, "atk": 9, "dmg": 1, "xp": 10},
-    "orc_archer": {"name": "Orc Archer", "hp": 1, "ac": 13, "speed": 4, "atk": 6, "dmg": 1, "xp": 5, "ranged": True},
-    "grey_wolf": {"name": "Grey Wolf", "hp": 2, "ac": 14, "speed": 5, "atk": 8, "dmg": 2, "xp": 10},
-    "duergar_guard": {"name": "Duergar Guard", "hp": 2, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 10},
-    "gibbering_mouther": {"name": "Gibbering Mouther", "hp": 2, "ac": 14, "speed": 3, "atk": 8, "dmg": 1, "xp": 15},
-    "grell": {"name": "Grell", "hp": 2, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 10, "kit": ["Poison Dagger"]},
-    "human_cultist": {"name": "Human Cultist", "hp": 1, "ac": 14, "speed": 5, "atk": 6, "dmg": 1, "xp": 5, "kit": ["Poison Dagger"]},
-    "legion_devil": {"name": "Legion Devil", "hp": 1, "ac": 16, "speed": 5, "atk": 11, "dmg": 1, "xp": 15},
-    # Stranger Things set (Upside Down). Demogorgon: fast (1.5x player speed 6 = 9) and hits hard.
-    "demogorgon": {"name": "Demogorgon", "hp": 8, "ac": 16, "speed": 9, "atk": 10, "dmg": 3, "xp": 20, "relentless": True, "hive_mind": (1000, ["demogorgon", "vecna"])},
-    "demodog": {"name": "Demodog", "hp": 2, "ac": 15, "speed": 7, "atk": 8, "dmg": 2, "xp": 10},
-    "demobat": {"name": "Demobat", "hp": 1, "ac": 14, "speed": 8, "atk": 7, "dmg": 1, "xp": 5},
-    "vecna": {"name": "Vecna", "hp": 10, "ac": 18, "speed": 5, "atk": 11, "dmg": 3, "xp": 50, "boss": True},
-    "meerak": {"name": "Meerak", "hp": 6, "ac": 17, "speed": 5, "atk": 8, "dmg": 1, "xp": 25, "boss": True},
-    "ashardalon": {"name": "Ashardalon", "hp": 12, "ac": 16, "speed": 4, "atk": 10, "dmg": 2, "xp": 50, "boss": True,
-                   # Deep Breath at 50% and again at 20% HP: "took a deep breath..." for 1.5 s, then a red zone of
-                   # radius 200 px for 3 s that pulses 3 times, each pulse hitting everyone inside for 100 (300 total)
-                   "skills": {"deep_breath": {"radius": 200, "duration": 3.0, "cycles": 3, "dps": 100, "windup": 1.5,
-                                              "at_hp_pct": (0.5, 0.2)},
-                              # at 50% HP the boss' melee/ranged attacks deal 50% more damage
-                              "enrage": {"at_hp_pct": (0.5,), "damage_mult": 1.5}}},
-    "bellax": {"name": "Bellax", "hp": 9, "ac": 17, "speed": 4, "atk": 8, "dmg": 2, "xp": 40, "boss": True},
-    "karash": {"name": "Karash", "hp": 5, "ac": 15, "speed": 5, "atk": 7, "dmg": 1, "xp": 25, "boss": True},
-    "margrath": {"name": "Margrath", "hp": 5, "ac": 16, "speed": 4, "atk": 8, "dmg": 1, "xp": 25, "boss": True},
-    "rage_drake": {"name": "Rage Drake", "hp": 5, "ac": 15, "speed": 6, "atk": 9, "dmg": 2, "xp": 25, "boss": True},
-    "otyugh": {"name": "Otyugh", "hp": 5, "ac": 14, "speed": 3, "atk": 8, "dmg": 2, "xp": 25, "boss": True},
-    "garrick_padfoot": {"name": "Garrick Padfoot", "hp": 4, "ac": 15, "speed": 5, "atk": 8, "dmg": 2, "xp": 30, "unique": True, "respawn_mult": 3,
-                        "hp_mult": 2},
-}
-
-
-# --- Monster categories (loot rules, see content/items.py): humanoids carry money, beasts drop more food ----------
 HUMANOID, BEAST, DEMON = "humanoid", "beast", "demon"
-MONSTER_CATEGORY = {
-    # humanoids: people and the people-like races
-    "kobold_dragonshield": HUMANOID, "orc_smasher": HUMANOID, "orc_archer": HUMANOID, "duergar_guard": HUMANOID,
-    "human_cultist": HUMANOID, "garrick_padfoot": HUMANOID, "meerak": HUMANOID,     # Meerak: kobold chieftain
-    "margrath": HUMANOID,                                                             # duergar captain
-    "karash": HUMANOID, "vecna": HUMANOID,                                            # Vecna: a lich (undead mage)
-    # beasts: animals, and dragons (no other category fits them better)
-    "snake": BEAST, "grey_wolf": BEAST, "rage_drake": BEAST, "ashardalon": BEAST,
-    # demons: fiends, plus the aberrations and Upside Down creatures
-    "legion_devil": DEMON, "demogorgon": DEMON, "demodog": DEMON, "demobat": DEMON,
-    "gibbering_mouther": DEMON, "grell": DEMON, "otyugh": DEMON, "bellax": DEMON,  # Bellax: a gauth (beholder-kin)
-}
-for _key, _stats in SPAWN_STATS.items():
-    _stats["category"] = MONSTER_CATEGORY[_key]       # KeyError = a new monster type without a category
+
+SPAWN_STATS = {}         # type id -> what the game reads (content/monster_defs.to_spawn_stats), loaded below
+MONSTER_CATEGORY = {}    # type id -> humanoid / beast / demon (loot rules: only humanoids carry money)
+MONSTER_DROPS = {}       # type id -> that type's own drop list: (item, chance) or (item, chance, min_lv, max_lv)
+DEFINITIONS = {}         # type id -> the definition as stored in data/monsters.json
 
 
-# --- Drop tables (items in content/items.py) ----------------------------------------------------------------------
-# Every monster type has its own list. Each entry rolls separately on every kill:
-#   (item, chance)                  any level
-#   (item, chance, min_lv, max_lv)  only from monsters of that level range
-# A map spawn point may override a type's list ("stats": {"drops": [...]}). Shared lists below are just a starting
-# point: give a type its own list to tune it.
-HUMANOID_DROPS = [            # people carry provisions (bread, water) and the odd potion or cooked meal
-    ("health_potion", 0.01),
-    ("bread",         0.03),
-    ("water",         0.03),
-    ("roast_chicken", 0.01),
-    ("sushi_plate",   0.01),
-    ("elven_nectar",  0.005, 10, 20),   # rare, high-level only: never in Northshire (L1-5)
-]
-BEAST_DROPS = [               # animals drop meat
-    ("drumstick",     0.03),
-]
-DEMON_DROPS = [               # not designed yet (user): what level-1 demons dropped under the old shared table
-    ("health_potion", 0.01),
-    ("bread",         0.01),
-]
-# Northshire mobs (user-tuned): every one drops Minor Mana Potions; Garrick Padfoot (the unique) drops more.
-KOBOLD_DROPS = HUMANOID_DROPS + [("wine", 0.01), ("minor_mana_potion", 0.01)]
-CULTIST_DROPS = HUMANOID_DROPS + [("coffee", 0.01), ("wine", 0.02), ("minor_mana_potion", 0.01),
-                                  ("mana_potion", 0.005)]
-PADFOOT_DROPS = HUMANOID_DROPS + [("coffee", 0.03), ("wine", 0.03), ("minor_mana_potion", 0.03),
-                                  ("mana_potion", 0.03)]
-NORTHSHIRE_BEAST_DROPS = BEAST_DROPS + [("minor_mana_potion", 0.01)]   # wolf, snake
-MONSTER_DROPS = {
-    # humanoids
-    "kobold_dragonshield": KOBOLD_DROPS, "orc_smasher": HUMANOID_DROPS, "orc_archer": HUMANOID_DROPS,
-    "duergar_guard": HUMANOID_DROPS, "human_cultist": CULTIST_DROPS, "garrick_padfoot": PADFOOT_DROPS,
-    "meerak": HUMANOID_DROPS, "margrath": HUMANOID_DROPS, "karash": HUMANOID_DROPS, "vecna": HUMANOID_DROPS,
-    # beasts
-    "snake": NORTHSHIRE_BEAST_DROPS, "grey_wolf": NORTHSHIRE_BEAST_DROPS, "rage_drake": BEAST_DROPS,
-    "ashardalon": BEAST_DROPS,
-    # demons
-    "legion_devil": DEMON_DROPS, "demogorgon": DEMON_DROPS, "demodog": DEMON_DROPS, "demobat": DEMON_DROPS,
-    "gibbering_mouther": DEMON_DROPS, "grell": DEMON_DROPS, "otyugh": DEMON_DROPS, "bellax": DEMON_DROPS,
-}
-for _key, _stats in SPAWN_STATS.items():
-    _stats["drops"] = MONSTER_DROPS[_key]             # KeyError = a new monster type without a drop table
-
-BUILTIN_TYPES = frozenset(SPAWN_STATS)
-
-
-def register_custom(defs):
-    """Add custom monster types (content/monster_defs.py; made in the map editor) to SPAWN_STATS, MONSTER_CATEGORY
-    and MONSTER_DROPS. Invalid ones are skipped with a message. Returns the ids added."""
+def register(defs):
+    """Add monster definitions (content/monster_defs.py) to the tables above. Invalid ones are skipped with a
+    message. Returns the ids added."""
     from game.content import monster_defs
     from game.content.items import ITEMS
     from game.content.skill_library import SKILLS
     added = []
     for tid, d in defs.items():
-        errs = monster_defs.validate(tid, d, SKILLS, ITEMS, BUILTIN_TYPES)
+        errs = monster_defs.validate(tid, d, SKILLS, ITEMS)
         if errs:
-            print(f"[MONSTERS] skipping custom monster {tid!r}: {'; '.join(errs)}")
+            print(f"[MONSTERS] skipping monster {tid!r}: {'; '.join(errs)}")
             continue
         stats = monster_defs.to_spawn_stats(d)
         SPAWN_STATS[tid] = stats
         MONSTER_CATEGORY[tid] = stats["category"]
         MONSTER_DROPS[tid] = stats["drops"]
+        DEFINITIONS[tid] = d
         added.append(tid)
     return added
 
 
-def unregister_custom(type_ids):
-    """Remove custom types again (tests, the editor reloading the file)."""
+def unregister(type_ids):
+    """Remove types again (tests, the editor reloading the file)."""
     for tid in type_ids:
-        if tid not in BUILTIN_TYPES:
-            for table in (SPAWN_STATS, MONSTER_CATEGORY, MONSTER_DROPS):
-                table.pop(tid, None)
+        for table in (SPAWN_STATS, MONSTER_CATEGORY, MONSTER_DROPS, DEFINITIONS):
+            table.pop(tid, None)
 
 
-def _load_custom_types():
+def _load_definitions():
     from game.content import monster_defs
     try:
-        return register_custom(monster_defs.load())
+        return register(monster_defs.load())
     except (OSError, ValueError) as e:
-        print(f"[MONSTERS] could not read {monster_defs.CUSTOM_PATH}: {e}")
-        return []
+        raise RuntimeError(f"Cannot read the monster definitions ({monster_defs.PATH}): {e}") from e
+
+
+_load_definitions()      # data/monsters.json: every monster type, edited in the map editor (M)
 
 
 def humanoid_money(level, rng):
@@ -219,5 +128,3 @@ def respawn_delay(m):
     stats = SPAWN_STATS.get(getattr(m, "spawn_type", None), {})
     return RESPAWN_TIME * stats.get("respawn_mult", BOSS_RESPAWN_MULT if m.is_boss else 1)
 
-
-CUSTOM_TYPES = _load_custom_types()     # data/custom_monsters.json (made in the map editor), if there is one
