@@ -69,6 +69,8 @@ clock = pygame.time.Clock()
 
 # Load spritesheet
 sheet_img = pygame.image.load(SPRITESHEET_PATH).convert_alpha()
+from game.editor import story_panel                                 # noqa: E402
+from game import quests as quests_mod                              # noqa: E402
 from game.editor import monster_panel                               # noqa: E402  (needs the display for images)
 
 font = pygame.font.SysFont("monospace", 13)
@@ -358,6 +360,7 @@ def draw_toolbar():
         ("Spawns (3)", "spawns"),
         ("Locations (4)", "locations"),
         ("Monsters (M)", "monsters"),
+        ("Quests & NPCs (Q)", "story"),
     ]
     for label, action in btn_labels:
         tw = font.size(label)[0] + 16
@@ -378,6 +381,9 @@ def draw_toolbar():
         mode_text = f"SPAWN MODE — {SPAWN_TYPES[selected_spawn]['name']}"
     elif location_mode:
         mode_text = f"LOCATION MODE — {LOCATION_TYPES[selected_spawn]['name']}"
+    elif placing_npc:
+        npc = next((n for n in map_data.extra.get("npcs", []) if n["npc_id"] == placing_npc), None)
+        mode_text = f"PLACING {npc['name'] if npc else placing_npc} - click a tile (Esc cancels)"
     else:
         mode_text = f"Layer: {map_data.layers[current_layer].name} [{current_layer+1}/{len(map_data.layers)}]"
     lt = font.render(mode_text, True, COL_TEXT)
@@ -590,6 +596,19 @@ def draw_canvas():
             label = font_sm.render(sp_name[:10], True, (255, 255, 255))
             screen.blit(label, (sx + 2, sy + tile_render_size - 12))
 
+    # NPCs (their picture; the one being placed is outlined)
+    for npc in map_data.extra.get("npcs", []):
+        sx = int(canvas_cx + (npc["x"] * tile_render_size) - cam_x * zoom)
+        sy = int(canvas_cy + (npc["y"] * tile_render_size) - cam_y * zoom)
+        if not canvas_rect.colliderect(pygame.Rect(sx, sy, tile_render_size, tile_render_size)):
+            continue
+        art = {"sheet": "dungeon", "col": npc.get("sprite_col", 0), "row": npc.get("sprite_row", 0)}
+        screen.blit(monster_art.monster(art, max(8, tile_render_size)), (sx, sy))
+        pygame.draw.rect(screen, (100, 255, 100) if npc["npc_id"] != placing_npc else (255, 220, 0),
+                         (sx, sy, tile_render_size, tile_render_size), 1)
+        if tile_render_size >= 20:
+            screen.blit(font_sm.render(npc["name"][:14], True, (200, 255, 200)), (sx, sy - 12))
+
     # Highlight hovered tile
     mx, my = pygame.mouse.get_pos()
     if canvas_rect.collidepoint(mx, my):
@@ -652,7 +671,7 @@ def erase_tile(tx, ty):
     return {"layer": current_layer, "x": tx, "y": ty, "old": old, "new": None}
 
 
-def text_input_prompt(title="Filename:", default="", allow_click_select=False, list_files=True):
+def text_input_prompt(title="Filename:", default="", allow_click_select=False, list_files=True, max_len=40):
     """Show a text input dialog in the center of screen. Returns string or None if cancelled.
     If allow_click_select=True, existing files are clickable to auto-select. list_files=False: a plain prompt (no
     map files listed)."""
@@ -680,7 +699,7 @@ def text_input_prompt(title="Filename:", default="", allow_click_select=False, l
                     input_text = input_text[:-1]
                 else:
                     ch = event.unicode
-                    if ch and ch.isprintable() and len(input_text) < 40:
+                    if ch and ch.isprintable() and len(input_text) < max_len:
                         input_text += ch
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and allow_click_select:
                 # Check if a file entry was clicked
@@ -714,7 +733,7 @@ def text_input_prompt(title="Filename:", default="", allow_click_select=False, l
         field_rect = pygame.Rect(box_x + 20, box_y + 45, box_w - 40, 32)
         pygame.draw.rect(screen, (30, 30, 35), field_rect, border_radius=4)
         pygame.draw.rect(screen, (120, 120, 130), field_rect, 1, border_radius=4)
-        display_text = input_text + ("|" if cursor_blink < 30 else "")
+        display_text = (input_text[-38:] if len(input_text) > 38 else input_text) + ("|" if cursor_blink < 30 else "")
         txt = prompt_font.render(display_text, True, (255, 255, 255))
         screen.blit(txt, (field_rect.x + 8, field_rect.y + 6))
 
@@ -770,6 +789,28 @@ def message_box(title, lines):
                     (box_x + 20, box_y + box_h - 28))
         pygame.display.flip()
         clock.tick(30)
+
+
+placing_npc = None   # npc_id waiting for a click on the map (set by the Quests & NPCs screen)
+
+
+def open_story():
+    """The Quests & NPCs screen (Q): this map's NPCs and its quest chains (data/quests/<map>.json)."""
+    global placing_npc
+    if not last_filename:
+        message_box("Quests & NPCs", ["Save the map first (Ctrl+S):", "its quests are stored under the map's name."])
+        return
+    data = quests_mod.load_quest_data(last_filename)
+    npcs = map_data.extra.setdefault("npcs", [])
+    saved, place = story_panel.run(
+        screen, clock, npcs, data, defs,
+        ask=lambda title, default, long=False: text_input_prompt(title, default, list_files=False,
+                                                                 max_len=1200 if long else 40),
+        art=monster_art, map_size=(map_data.width, map_data.height),
+        quest_save=lambda d: quests_mod.save_quest_data(last_filename, d))
+    if saved:
+        print(f"Saved the quests of {last_filename} (save the map too, to keep its NPCs)")
+        placing_npc = place
 
 
 def open_monster_types():
@@ -906,9 +947,14 @@ while running:
                     spawn_mode = False
                     selected_spawn = 0
             elif event.key == pygame.K_ESCAPE:
-                running = False
+                if placing_npc:
+                    placing_npc = None
+                else:
+                    running = False
             elif event.key == pygame.K_m:
                 open_monster_types()
+            elif event.key == pygame.K_q:
+                open_story()
             elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
                 zoom = min(max_zoom, zoom + 0.5)
             elif event.key == pygame.K_MINUS:
@@ -950,6 +996,8 @@ while running:
                             selected_spawn = 0
                     elif action == "monsters":
                         open_monster_types()
+                    elif action == "story":
+                        open_story()
                     break
 
             # Palette click
@@ -962,7 +1010,12 @@ while running:
                 if event.button == 1:  # Left click
                     tx, ty = screen_to_tile(mx, my)
                     if tx is not None:
-                        if sample_mode:
+                        if placing_npc:
+                            for npc in map_data.extra.get("npcs", []):
+                                if npc["npc_id"] == placing_npc:
+                                    npc["x"], npc["y"] = tx, ty
+                            placing_npc = None
+                        elif sample_mode:
                             # Eyedropper: pick tile from canvas
                             # Check current layer first, then fall through layers
                             sampled = None

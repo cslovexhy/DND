@@ -214,3 +214,85 @@ def load_quest_log(map_id, quest_dir=None):
                     prerequisites=q.get("prerequisites", []))
               for q in data.get("quests", [])]
     return QuestLog(quests, data.get("questlines", []))
+
+
+# --- editing (the map editor's Quests screen) ----------------------------------------------------------------------
+MAX_QUEST_TEXT = 1200
+
+
+def quest_path(map_id, quest_dir=None):
+    return os.path.join(quest_dir or QUEST_DIR, f"{map_id}.json")
+
+
+def load_quest_data(map_id, quest_dir=None):
+    """The raw quest file of a map as a dict {"map", "quests", "questlines"} (empty if the map has none)."""
+    path = quest_path(map_id, quest_dir)
+    if not os.path.exists(path):
+        return {"map": map_id, "quests": [], "questlines": []}
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data.setdefault("map", map_id)
+    data.setdefault("quests", [])
+    data.setdefault("questlines", [])
+    return data
+
+
+def save_quest_data(map_id, data, quest_dir=None):
+    path = quest_path(map_id, quest_dir)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+def quest_slug(title, taken):
+    """A permanent quest id from its title ('Kobold Camp Cleanup' -> 'kobold_camp_cleanup'), unique among `taken`."""
+    base = "".join(c if c.isalnum() else "_" for c in title.lower()).strip("_")
+    base = "_".join(p for p in base.split("_") if p) or "quest"
+    qid, n = base, 2
+    while qid in taken:
+        qid, n = f"{base}_{n}", n + 1
+    return qid
+
+
+def validate_quest_data(data, npc_ids, monster_ids):
+    """Problems with a map's quest file (empty list = fine). npc_ids: the NPCs on the map; monster_ids: every monster."""
+    errs = []
+    quests = data.get("quests", [])
+    ids = [q.get("id") for q in quests]
+    for q in quests:
+        qid = q.get("id")
+        label = f"{q.get('title') or qid}"
+        if not (isinstance(qid, str) and qid) or ids.count(qid) > 1:
+            errs.append(f"{label}: needs a unique id")
+        if not (isinstance(q.get("title"), str) and q["title"].strip()):
+            errs.append(f"{label}: needs a title")
+        if not isinstance(q.get("description", ""), str) or len(q.get("description", "")) > MAX_QUEST_TEXT:
+            errs.append(f"{label}: description is too long")
+        if q.get("npc_id") not in npc_ids:
+            errs.append(f"{label}: the quest giver {q.get('npc_id')!r} is not an NPC on this map")
+        for key, lo, hi in (("level_req", 1, 30), ("rewards_xp", 0, 10 ** 6), ("rewards_gold", 0, 10 ** 6)):
+            v = q.get(key, lo)
+            if not (isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi):
+                errs.append(f"{label}: {key} must be a whole number {lo}-{hi}")
+        seen = set()
+        for o in q.get("objectives", []):
+            if not (isinstance(o, dict) and o.get("monster") in monster_ids
+                    and isinstance(o.get("count"), int) and not isinstance(o.get("count"), bool)
+                    and 1 <= o["count"] <= 999):
+                errs.append(f"{label}: every objective needs an existing monster and a count of 1-999")
+            elif o["monster"] in seen:
+                errs.append(f"{label}: the same monster is listed twice")
+            else:
+                seen.add(o["monster"])
+        for p in q.get("prerequisites", []):
+            if p not in ids or p == qid:
+                errs.append(f"{label}: unknown prerequisite {p!r}")
+    placed = [qid for line in data.get("questlines", []) for qid in line]
+    for qid in placed:
+        if qid not in ids:
+            errs.append(f"questline lists unknown quest {qid!r}")
+    for qid in set(placed):
+        if placed.count(qid) > 1:
+            errs.append(f"{qid} is in more than one questline")
+    return errs

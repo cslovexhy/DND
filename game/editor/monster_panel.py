@@ -23,10 +23,9 @@ import pygame
 from game.content import monster_defs
 from game.content.items import ITEMS
 from game.content.monster_art import SHEETS, SHEET_SIZE
+from game.editor.widgets import Widgets, BG, PANEL, LINE, TEXT, DIM, GOLD, RED, GREEN
 
 CATEGORY_COLORS = {"humanoid": (200, 150, 90), "beast": (110, 170, 80), "demon": (190, 70, 90)}
-BG, PANEL, LINE, TEXT, DIM, GOLD, RED, GREEN = ((25, 25, 30), (45, 45, 52), (90, 90, 100), (225, 225, 225),
-                                               (140, 140, 150), (255, 210, 90), (255, 110, 110), (120, 220, 130))
 
 # (label, key, kind, help). kinds: levels / text / cycle / toggle / flag-on-sprite / number
 FIELDS = [
@@ -102,7 +101,7 @@ def spawn_palette(defs):
     return out
 
 
-class MonsterPanel:
+class MonsterPanel(Widgets):
     LIST_W = 300
     ROW = 26
 
@@ -439,29 +438,6 @@ class MonsterPanel:
         self.list_scroll = max(0, self.list_scroll + delta)
 
     # --- drawing ---
-    def _hit(self, rect, action, arg=None):
-        self.hits.append((pygame.Rect(rect), action, arg))
-
-    def _button(self, surf, font, rect, label, action, arg=None, color=(70, 70, 82), text=TEXT):
-        rect = pygame.Rect(rect)
-        hover = rect.collidepoint(pygame.mouse.get_pos())
-        pygame.draw.rect(surf, tuple(min(255, c + 20) for c in color) if hover else color, rect, border_radius=4)
-        pygame.draw.rect(surf, LINE, rect, 1, border_radius=4)
-        t = font.render(label, True, text)
-        surf.blit(t, (rect.centerx - t.get_width() // 2, rect.centery - t.get_height() // 2))
-        self._hit(rect, action, arg)
-
-    def _box(self, surf, font, rect, text, action, arg, active=False, help_text=""):
-        rect = pygame.Rect(rect)
-        hover = rect.collidepoint(pygame.mouse.get_pos())
-        if hover and help_text:
-            self.help = help_text
-        pygame.draw.rect(surf, (60, 95, 60) if active else ((66, 66, 78) if hover else (52, 52, 62)), rect,
-                         border_radius=4)
-        pygame.draw.rect(surf, LINE, rect, 1, border_radius=4)
-        surf.blit(font.render(str(text), True, TEXT), (rect.x + 6, rect.y + 5))
-        self._hit(rect, action, arg)
-
     def draw(self, surf, font, big):
         self.hits, self.help = [], ""
         W, H = surf.get_size()
