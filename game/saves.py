@@ -11,12 +11,11 @@ Schema:
   "inventory": [{"slot": 0, "item": "health_potion", "count": 3}],   # backpack stacks (engine/inventory.py)
   "equipment": {"main": "staff", "off": null},  # what the hero wields (content/equipment.py)
   "trained": {"Q": 3, "R": 2, "E": 2},  # skill levels learned from the class trainer (null = follow the level)
-  "quests": {                       # quest progression is per character AND per map
-    "northshire": {
-      "completed": ["quest_id", ...],
-      "active": ["quest_id", ...],
-      "progress": {"quest_id": {"Monster Name": kills_so_far}}
-    }
+  "quests": {                       # quest progression belongs to the character (quests are not tied to maps)
+    "completed": ["quest_id", ...],
+    "active": ["quest_id", ...],
+    "delivered": ["quest_id", ...],   # handed in, the reward NPC still has to be visited
+    "progress": {"quest_id": {"monster_id": kills_so_far}}
   }
 }
 Pure logic (no pygame) so it can be unit tested.
@@ -78,7 +77,12 @@ def _migrate(data, name):
         if active is None:
             cur = data.pop("current_quest_id", None)
             active = [cur] if cur else []
-        data["quests"] = {"northshire": {"completed": completed, "active": active, "progress": {}}}
+        data["quests"] = {"completed": completed, "active": active, "progress": {}}
+        changed = True
+    elif data["quests"] and not any(k in data["quests"] for k in ("completed", "active", "progress")):
+        # Quest progress used to be kept per map ({"northshire": {...}}); it is one record for the character now.
+        from game.quests import normalize_state
+        data["quests"] = normalize_state(data["quests"])
         changed = True
     if "inventory" not in data:
         # Before the backpack every session started with 3 potions: start existing characters with that.

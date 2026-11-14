@@ -241,3 +241,31 @@ class InterpolationTest(unittest.TestCase):
         v.apply(self._snap(30.0, 2))
         v.advance(1 / 60)
         self.assertEqual(v.hero.x, 30.0)
+
+
+class ThreeNpcInteractionTest(unittest.TestCase):
+    def test_hand_in_at_one_npc_and_reward_at_another(self):
+        from game.engine.events import NpcDialogue
+        from game import saves
+        from game.engine.bootstrap import create_world
+        world, p = create_world("data/maps/northshire.json", saves.blank_character("t", "Fighter", level=3))
+        q = p.quests.quests["kobold_camp_cleanup"]
+        q.turn_in, q.reward_npc = "deputy_willem", "milly_osworth"
+        p.quests.load_state({"completed": ["a_threat_within"], "active": ["kobold_camp_cleanup"]})
+        for _ in range(q.objectives[0]["count"]):
+            p.quests.record_kill(q.objectives[0]["monster"])
+        npc = {n.npc_id: n for n in world.npcs}
+        xp0 = p.hero.xp
+        world.interact_with_npc(npc["marshal_mcbride"], p)                  # the giver: nothing to hand in here
+        self.assertNotIn("kobold_camp_cleanup", p.quests.completed)
+        world.events.clear()
+        world.interact_with_npc(npc["deputy_willem"], p)                    # hand in: no reward yet
+        ev = [e for e in world.events if isinstance(e, NpcDialogue)]
+        self.assertEqual([e.mode for e in ev], ["handin"])
+        self.assertEqual(p.hero.xp, xp0)
+        self.assertTrue(p.quests.quests["kobold_camp_cleanup"].delivered)
+        world.events.clear()
+        world.interact_with_npc(npc["milly_osworth"], p)                    # the reward NPC pays
+        self.assertEqual([e.mode for e in world.events if isinstance(e, NpcDialogue)], ["turnin"])
+        self.assertEqual(p.hero.xp, xp0 + q.rewards_xp)
+        self.assertIn("kobold_camp_cleanup", p.quests.completed)

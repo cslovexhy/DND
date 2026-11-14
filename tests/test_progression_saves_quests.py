@@ -43,8 +43,8 @@ class SavesTest(unittest.TestCase):
         (c,) = saves.list_characters(self.d)
         self.assertEqual(c["name"], "heskan")
         self.assertEqual((c["level"], c["xp"], c["gold"], c["kills"]), (16, 367, 5, 7))
-        self.assertEqual(c["quests"]["northshire"]["completed"], ["a_threat_within"])
-        self.assertEqual(c["quests"]["northshire"]["active"], ["kobold_camp_cleanup"])
+        self.assertEqual(c["quests"]["completed"], ["a_threat_within"])
+        self.assertEqual(c["quests"]["active"], ["kobold_camp_cleanup"])
         self.assertNotIn("completed_quests", c)
         # the file on disk was rewritten in the new format
         with open(os.path.join(self.d, "heskan.json")) as f:
@@ -72,11 +72,29 @@ class QuestTest(unittest.TestCase):
             fresh.record_kill(1)
         self.assertEqual(fresh.turn_ins_for_npc("marshal_mcbride"), ["kobold_camp_cleanup"])
 
-    def test_progress_is_per_log_and_other_maps_have_no_quests(self):
+    def test_progress_is_per_log_and_quests_belong_to_no_map(self):
         a, b = load_quest_log("northshire"), load_quest_log("northshire")
         a.accept("a_threat_within")
         self.assertEqual(b.completed, [])
-        self.assertEqual(load_quest_log("goldshire").quests, {})
+        self.assertEqual(list(load_quest_log("goldshire").quests), list(a.quests))     # same quests on every map
+
+    def test_quests_are_listed_in_dependency_order(self):
+        log = load_quest_log()
+        seen = set()
+        for qid, q in log.quests.items():
+            self.assertTrue(set(q.prerequisites) <= seen, qid)
+            seen.add(qid)
+
+    def test_legacy_per_map_saves_are_merged(self):
+        from game.quests import normalize_state
+        old = {"northshire": {"completed": ["a_threat_within"], "active": ["kobold_camp_cleanup"],
+                              "progress": {"kobold_camp_cleanup": {"1": 3}}}, "goldshire": {"completed": ["x"]}}
+        new = normalize_state(old)
+        self.assertEqual((new["completed"], new["active"]), (["a_threat_within", "x"], ["kobold_camp_cleanup"]))
+        self.assertEqual(normalize_state(new), new)                                        # already current
+        log = load_quest_log()
+        log.load_state(old)
+        self.assertEqual((log.completed, log.active), (["a_threat_within"], ["kobold_camp_cleanup"]))
 
     def test_old_saves_keyed_by_monster_name_still_load(self):
         log = load_quest_log("northshire")
@@ -99,6 +117,50 @@ class QuestTest(unittest.TestCase):
         log.load_state({"completed": ["a_threat_within", "kobold_camp_cleanup"]})
         self.assertEqual(log.available_for_npc("marshal_mcbride", 2), [])
         self.assertEqual(log.available_for_npc("marshal_mcbride", 3), ["investigate_echo_ridge"])
+
+
+def three_npc_log():
+    from game.engine.inventory import Inventory
+    from game.quests import Quest, QuestLog
+    quests = [Quest("fetch", "Fetch", "", [{"item": "bread", "count": 2}, {"monster": 1, "count": 1}], 100, 5,
+                    giver="a", turn_in="b", reward_npc="c"),
+              Quest("after", "After", "", [], 10, 0, giver="a", prerequisites=["fetch"]),
+              Quest("hello", "Hello", "", [], 7, 0, giver="a", turn_in="b")]
+    inv = Inventory.from_state([])
+    return QuestLog(quests, inv), inv
+
+
+class ThreeNpcQuestTest(unittest.TestCase):
+    def test_given_by_a_handed_in_to_b_paid_by_c(self):
+        log, inv = three_npc_log()
+        self.assertEqual(log.available_for_npc("a", 1), ["fetch", "hello"])                # "after" waits for "fetch"
+        self.assertFalse(log.accept("fetch"))
+        log.record_kill(1)
+        self.assertEqual(log.turn_ins_for_npc("b"), [])                                     # items still missing
+        inv.add("bread")
+        inv.add("bread")
+        self.assertTrue(log.quests["fetch"].get_progress_text().startswith("Bread: 2/2"))
+        self.assertEqual((log.turn_ins_for_npc("a"), log.turn_ins_for_npc("b")), ([], ["fetch"]))
+        q, paid = log.hand_in("fetch")
+        self.assertFalse(paid)                                                              # B only takes the items
+        self.assertEqual(inv.count("bread"), 0)
+        self.assertEqual((log.turn_ins_for_npc("b"), log.rewards_for_npc("a"), log.rewards_for_npc("c")),
+                         ([], [], ["fetch"]))
+        self.assertEqual(log.available_for_npc("a", 1), ["hello"])                          # not done until C pays
+        self.assertEqual(log.to_state()["delivered"], ["fetch"])
+        fresh, _ = three_npc_log()
+        fresh.load_state(json.loads(json.dumps(log.to_state())))
+        self.assertEqual(fresh.rewards_for_npc("c"), ["fetch"])
+        log.turn_in("fetch")
+        self.assertEqual(log.available_for_npc("a", 1), ["hello", "after"])
+
+    def test_a_to_b_delivery_has_no_objectives_but_is_not_instant(self):
+        log, _ = three_npc_log()
+        self.assertFalse(log.accept("hello"))
+        self.assertEqual(log.turn_ins_for_npc("b"), ["hello"])
+        q, paid = log.hand_in("hello")
+        self.assertTrue(paid)                                                               # B takes it and pays
+        self.assertIn("hello", log.completed)
 
 
 class ProgressionTest(unittest.TestCase):

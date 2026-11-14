@@ -1,5 +1,5 @@
 {
-  "map": "northshire",
+  "version": 2,
   "quests": [
     {
       "id": "a_threat_within",
@@ -8,9 +8,9 @@
       "objectives": [],
       "rewards_xp": 20,
       "rewards_gold": 0,
-      "npc_id": "deputy_willem",
       "level_req": 1,
-      "prerequisites": []
+      "prerequisites": [],
+      "giver": "deputy_willem"
     },
     {
       "id": "kobold_camp_cleanup",
@@ -24,11 +24,11 @@
       ],
       "rewards_xp": 250,
       "rewards_gold": 25,
-      "npc_id": "marshal_mcbride",
       "level_req": 1,
       "prerequisites": [
         "a_threat_within"
-      ]
+      ],
+      "giver": "marshal_mcbride"
     },
     {
       "id": "investigate_echo_ridge",
@@ -36,17 +36,17 @@
       "description": "My scouts tell me that the kobold infestation is larger than we had thought. A group of kobold workers has camped near the Echo Ridge Mine to the north. Go to the mine and remove them. We know there are at least ten.",
       "objectives": [
         {
-          "count": 10,
-          "monster": 1
+          "monster": 27,
+          "count": 10
         }
       ],
       "rewards_xp": 350,
       "rewards_gold": 38,
-      "npc_id": "marshal_mcbride",
       "level_req": 3,
       "prerequisites": [
         "kobold_camp_cleanup"
-      ]
+      ],
+      "giver": "marshal_mcbride"
     },
     {
       "id": "skirmish_at_echo_ridge",
@@ -54,17 +54,17 @@
       "description": "Your previous investigations are proof that the Echo Ridge Mine needs purging. Return to the mine and help clear it of kobolds. Waste no time. The longer the kobolds are left unmolested in the mine, the deeper a foothold they gain in Northshire.",
       "objectives": [
         {
-          "count": 12,
-          "monster": 1
+          "monster": 28,
+          "count": 12
         }
       ],
       "rewards_xp": 450,
       "rewards_gold": 50,
-      "npc_id": "marshal_mcbride",
       "level_req": 4,
       "prerequisites": [
         "investigate_echo_ridge"
-      ]
+      ],
+      "giver": "marshal_mcbride"
     },
     {
       "id": "wolves_across_the_border",
@@ -78,11 +78,11 @@
       ],
       "rewards_xp": 250,
       "rewards_gold": 25,
-      "npc_id": "eagan_peltskinner",
       "level_req": 2,
       "prerequisites": [
         "a_threat_within"
-      ]
+      ],
+      "giver": "eagan_peltskinner"
     },
     {
       "id": "brotherhood_of_thieves",
@@ -96,11 +96,11 @@
       ],
       "rewards_xp": 375,
       "rewards_gold": 38,
-      "npc_id": "deputy_willem",
       "level_req": 2,
       "prerequisites": [
         "a_threat_within"
-      ]
+      ],
+      "giver": "deputy_willem"
     },
     {
       "id": "bounty_on_garrick_padfoot",
@@ -114,11 +114,11 @@
       ],
       "rewards_xp": 450,
       "rewards_gold": 50,
-      "npc_id": "deputy_willem",
       "level_req": 4,
       "prerequisites": [
         "brotherhood_of_thieves"
-      ]
+      ],
+      "giver": "deputy_willem"
     },
     {
       "id": "millys_harvest",
@@ -132,30 +132,12 @@
       ],
       "rewards_xp": 350,
       "rewards_gold": 38,
-      "npc_id": "milly_osworth",
       "level_req": 4,
       "prerequisites": [
         "wolves_across_the_border",
         "brotherhood_of_thieves"
-      ]
+      ],
+      "giver": "milly_osworth"
     }
-  ],
-  "questlines": [
-    [
-      "kobold_camp_cleanup",
-      "investigate_echo_ridge",
-      "skirmish_at_echo_ridge"
-    ],
-    [
-      "a_threat_within",
-      "brotherhood_of_thieves",
-      "bounty_on_garrick_padfoot"
-    ],
-    [
-      "wolves_across_the_border"
-    ],
-    [
-      "millys_harvest"
-    ]
   ]
 }

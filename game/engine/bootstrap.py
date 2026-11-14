@@ -17,7 +17,7 @@ from game.quests import load_quest_log
 
 
 def map_id_for(map_path):
-    """Key for per-map quest progress."""
+    """The map name: its file name without the extension."""
     return os.path.splitext(os.path.basename(map_path))[0]
 
 
@@ -39,9 +39,9 @@ def _make_hero(char_data, map_id, x, y, hooks=None):
     except ValueError:
         hero.equipment = empty_equipment()    # a hand-edited / broken save: start bare-handed
     hero.refresh_gear()
-    # Quest definitions come from data/quests/<map>.json; progress is per character AND per map.
-    quests = load_quest_log(map_id)
-    quests.load_state(char_data.get("quests", {}).get(map_id))
+    # Quest definitions come from data/quests.json; progress belongs to the character (not to a map).
+    quests = load_quest_log()
+    quests.load_state(char_data.get("quests"))
     return hero, quests
 
 

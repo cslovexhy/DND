@@ -1,18 +1,18 @@
 """
 Quest system.
 
-Quest *definitions* are data: data/quests/<map_id>.json, where <map_id> is the map file name
-without extension (data/maps/northshire.json -> "northshire"). Maps without a quest file simply
-have no quests.
+Quest *definitions* are data: one file, data/quests.json, for the whole game. A quest is not tied to a map:
+it names three NPCs (any maps): who GIVES it, who it is TURNED IN to (the kills / items are handed over there) and who
+pays the REWARD. Usually all three are the same NPC. Which quests exist for a character depends only on its progress:
+a quest is offered once its prerequisite quests are done and the hero's level is high enough.
 
-Quest *progress* belongs to a character, per map. A QuestLog holds one character's quests for one
-map and can be loaded from / dumped to the "quests"[map_id] entry of that character's save
-(see game/saves.py). Pure logic (no pygame) so it can be unit tested.
+Quest *progress* belongs to a character (the "quests" entry of its save, see game/saves.py). A QuestLog holds one
+character's quests. Pure logic (no pygame) so it can be unit tested.
 """
 import json
 import os
 
-QUEST_DIR = os.path.join("data", "quests")
+QUEST_PATH = os.path.join("data", "quests.json")
 
 # Saves written before monsters had numeric ids keyed kill progress by monster name.
 LEGACY_NAME_IDS = {
@@ -47,105 +47,141 @@ class Quest:
     """A quest definition plus its runtime state for one character."""
 
     def __init__(self, quest_id, title, description, objectives, rewards_xp, rewards_gold,
-                 npc_id=None, level_req=1, prerequisites=None):
+                 giver=None, level_req=1, prerequisites=None, turn_in=None, reward_npc=None):
         self.quest_id = quest_id
         self.title = title
         self.description = description
-        self.objectives = objectives  # list of {"monster": monster_id, "count": N}
+        # list of {"monster": monster_id, "count": N} (kill) and / or {"item": item_id, "count": N} (have in the backpack)
+        self.objectives = objectives
         self.rewards_xp = rewards_xp
         self.rewards_gold = rewards_gold
-        self.npc_id = npc_id  # which NPC offers/accepts this quest
+        self.giver = giver                         # the NPC that offers it (npc_id)
+        self.turn_in = turn_in or giver            # the NPC the kills / items are handed over to
+        self.reward_npc = reward_npc or self.turn_in   # the NPC that pays the reward
         self.level_req = level_req  # minimum hero level to accept
-        self.prerequisites = prerequisites or []  # quest_ids that must be turned in first
+        self.prerequisites = prerequisites or []  # quest_ids that must be done first
         # Runtime state
         self.progress = {}  # {monster_id: kills_so_far}
+        self.inventory = None   # the character's backpack (set by the QuestLog): item objectives count from it
         self.accepted = False
         self.completed = False  # objectives met
+        self.delivered = False  # handed over at the turn-in NPC, the reward is still to be collected
         self.turned_in = False  # rewards claimed
 
+    @property
+    def npc_id(self):
+        return self.giver
+
+    def objective_count(self, o):
+        """How far one objective is: kills so far, or the items in the backpack."""
+        if "item" in o:
+            return self.inventory.count(o["item"]) if self.inventory is not None else 0
+        return self.progress.get(o["monster"], 0)
+
     def is_complete(self):
-        return all(self.progress.get(o["monster"], 0) >= o["count"] for o in self.objectives)
+        return all(self.objective_count(o) >= o["count"] for o in self.objectives)
 
     def record_kill(self, monster_id):
         """Record a kill. Returns True if this kill progressed the quest."""
         for obj in self.objectives:
-            if obj["monster"] == monster_id:
-                current = self.progress.get(obj["monster"], 0)
+            if obj.get("monster") == monster_id:
+                current = self.progress.get(monster_id, 0)
                 if current < obj["count"]:
-                    self.progress[obj["monster"]] = current + 1
+                    self.progress[monster_id] = current + 1
                     return True
         return False
 
     def get_progress_text(self):
-        return "  ".join(f"{monster_label(o['monster'])}: {self.progress.get(o['monster'], 0)}/{o['count']}"
-                         for o in self.objectives)
+        parts = []
+        for o in self.objectives:
+            have = min(self.objective_count(o), o["count"])
+            parts.append(f"{objective_label(o)}: {have}/{o['count']}")
+        return "  ".join(parts)
+
+
+def objective_label(o):
+    """Display name of an objective's target (a monster or an item)."""
+    if "item" in o:
+        try:
+            from game.content.items import ITEMS
+            return ITEMS[o["item"]]["name"]
+        except Exception:
+            return f"item #{o['item']}"
+    return monster_label(o["monster"])
+
+
+def topo_order(quests):
+    """Quests (dicts or Quest objects) in dependency order: prerequisites first, ties in file order.
+    Returns (ordered, cyclic): quests that wait on each other forever come back in `cyclic`, not in `ordered`."""
+    def qid(q):
+        return q["id"] if isinstance(q, dict) else q.quest_id
+
+    def pre(q):
+        return (q.get("prerequisites", []) if isinstance(q, dict) else q.prerequisites)
+    ids = {qid(q) for q in quests}
+    done, ordered = set(), []
+    remaining = list(quests)
+    while remaining:
+        ready = [q for q in remaining if all(p in done or p not in ids for p in pre(q))]
+        if not ready:
+            return ordered, remaining
+        for q in ready:
+            done.add(qid(q))
+        ordered.extend(ready)
+        remaining = [q for q in remaining if qid(q) not in done]
+    return ordered, []
 
 
 class QuestLog:
-    """One character's quests on one map."""
+    """One character's quests."""
 
-    def __init__(self, quests=None, questlines=None):
-        self.quests = {q.quest_id: q for q in (quests or [])}
-        # Each questline is an ordered list of quest_ids; only the next quest in a line is offered.
-        self.questlines = questlines or []
-        self.active = []     # quest_ids accepted and in progress
+    def __init__(self, quests=None, inventory=None):
+        ordered, _ = topo_order(list(quests or []))
+        self.quests = {q.quest_id: q for q in ordered}      # in dependency order
+        self.active = []     # quest_ids accepted and in progress (incl. delivered, waiting for the reward)
         self.completed = []  # quest_ids turned in
+        self.set_inventory(inventory)
+
+    def set_inventory(self, inventory):
+        self.inventory = inventory
+        for q in self.quests.values():
+            q.inventory = inventory
 
     # --- queries ---
     def prerequisites_met(self, quest):
         return all(p in self.completed for p in quest.prerequisites)
 
+    def _offerable(self, q, level):
+        return (not q.accepted and not q.turned_in and q.quest_id not in self.active
+                and self.prerequisites_met(q) and level >= q.level_req)
+
     def available_for_npc(self, npc_id, level):
         """quest_ids this NPC can offer right now."""
-        available = []
-        for chain in self.questlines:
-            for qid in chain:
-                q = self.quests[qid]
-                if q.npc_id != npc_id:
-                    continue
-                if q.turned_in:
-                    continue  # done, check next in chain
-                if q.accepted:
-                    break  # in progress - no more from this chain
-                if self.prerequisites_met(q) and level >= q.level_req and qid not in self.active:
-                    available.append(qid)
-                break  # only one quest per chain per NPC at a time
-        return available
+        return [qid for qid, q in self.quests.items() if q.giver == npc_id and self._offerable(q, level)]
 
     def available(self, level):
         """quest_ids that can be offered across all NPCs."""
-        available = []
-        for chain in self.questlines:
-            for qid in chain:
-                q = self.quests[qid]
-                if q.turned_in:
-                    continue
-                if q.accepted:
-                    break
-                if self.prerequisites_met(q) and level >= q.level_req and qid not in self.active:
-                    available.append(qid)
-                break
-        return available
+        return [qid for qid, q in self.quests.items() if self._offerable(q, level)]
 
     def turn_ins_for_npc(self, npc_id):
-        """quest_ids that can be turned in at this NPC."""
-        out = []
-        for qid in self.active:
-            q = self.quests.get(qid)
-            if q and q.npc_id == npc_id and q.accepted and q.is_complete() and not q.turned_in:
-                out.append(qid)
-        return out
+        """quest_ids whose objectives are met and that are handed in at this NPC."""
+        return [qid for qid in self.active if self.quests[qid].turn_in == npc_id and not self.quests[qid].delivered
+                and self.quests[qid].is_complete()] if self.active else []
+
+    def rewards_for_npc(self, npc_id):
+        """quest_ids already handed in whose reward this NPC pays."""
+        return [qid for qid in self.active if self.quests[qid].delivered and self.quests[qid].reward_npc == npc_id]
 
     def active_objects(self):
         return [self.quests[qid] for qid in self.active if qid in self.quests]
 
     # --- mutations (callers apply XP/gold rewards themselves) ---
     def accept(self, qid):
-        """Accept a quest. No-objective quests complete and turn in immediately.
-        Returns True if the quest was auto-completed (i.e. rewards are due now)."""
+        """Accept a quest. A quest with no objectives that is given, handed in and paid by one NPC completes right
+        away. Returns True if the quest was auto-completed (i.e. rewards are due now)."""
         q = self.quests[qid]
         q.accepted = True
-        if not q.objectives:
+        if not q.objectives and q.turn_in == q.giver and q.reward_npc == q.giver:
             q.completed = True
             q.turned_in = True
             self.completed.append(qid)
@@ -153,18 +189,34 @@ class QuestLog:
         self.active.append(qid)
         return False
 
+    def hand_in(self, qid):
+        """Hand the objectives over at the turn-in NPC: items leave the backpack. If the same NPC also pays the
+        reward the quest is finished (returns the quest and True); otherwise it waits for its reward NPC (False)."""
+        q = self.quests[qid]
+        for o in q.objectives:
+            if "item" in o and self.inventory is not None:
+                self.inventory.remove(o["item"], o["count"])
+        q.completed = True
+        if q.reward_npc == q.turn_in:
+            return self.turn_in(qid), True
+        q.delivered = True
+        return q, False
+
     def turn_in(self, qid):
+        """Finish the quest (the reward is due now)."""
         q = self.quests[qid]
         q.turned_in = True
+        q.delivered = False
         self.completed.append(qid)
-        self.active.remove(qid)
+        if qid in self.active:
+            self.active.remove(qid)
         return q
 
     def record_kill(self, monster_id):
         """Credit a kill to every active quest. Returns [(quest, just_completed)] for quests that progressed."""
         results = []
         for q in self.active_objects():
-            if q.accepted and not q.turned_in and q.record_kill(monster_id):
+            if q.accepted and not q.turned_in and not q.delivered and q.record_kill(monster_id):
                 just_done = q.is_complete() and not q.completed
                 if just_done:
                     q.completed = True
@@ -176,13 +228,14 @@ class QuestLog:
         return {
             "completed": list(self.completed),
             "active": list(self.active),
+            "delivered": [qid for qid in self.active if self.quests[qid].delivered],
             "progress": {qid: {str(k): v for k, v in self.quests[qid].progress.items()}
                          for qid in self.active if qid in self.quests},
         }
 
     def load_state(self, state):
         """Restore saved state. Unknown quest ids (removed from data) are ignored."""
-        state = state or {}
+        state = normalize_state(state)
         for qid in state.get("completed", []):
             q = self.quests.get(qid)
             if q and qid not in self.completed:
@@ -197,51 +250,66 @@ class QuestLog:
                     mid = _progress_key(key)
                     if mid is not None:
                         q.progress[mid] = n
-                q.completed = q.is_complete()
+                q.delivered = qid in state.get("delivered", [])
+                q.completed = q.delivered or q.is_complete()
                 self.active.append(qid)
 
 
-def load_quest_log(map_id, quest_dir=None):
-    """Build an empty QuestLog from data/quests/<map_id>.json (empty log if the map has no quests)."""
-    path = os.path.join(quest_dir or QUEST_DIR, f"{map_id}.json")
+def normalize_state(state):
+    """A character's saved quest state in the current shape. Older saves kept one state per map
+    ({"northshire": {"completed": [...], ...}}): those are merged (quest ids are unique across the game)."""
+    state = state or {}
+    if any(k in state for k in ("completed", "active", "progress", "delivered")):
+        return state
+    merged = {"completed": [], "active": [], "delivered": [], "progress": {}}
+    for per_map in state.values():
+        if not isinstance(per_map, dict):
+            continue
+        for key in ("completed", "active", "delivered"):
+            merged[key] += [q for q in per_map.get(key, []) if q not in merged[key]]
+        merged["progress"].update(per_map.get("progress", {}))
+    return merged
+
+
+def _quest_from_dict(q):
+    return Quest(q["id"], q["title"], q.get("description", ""), q.get("objectives", []),
+                 q.get("rewards_xp", 0), q.get("rewards_gold", 0), giver=q.get("giver"),
+                 level_req=q.get("level_req", 1), prerequisites=q.get("prerequisites", []),
+                 turn_in=q.get("turn_in"), reward_npc=q.get("reward_npc"))
+
+
+def load_quest_log(map_id=None, path=None):
+    """An empty QuestLog from data/quests.json (every quest of the game; `map_id` is accepted and ignored: quests do not
+    belong to maps)."""
+    path = path or QUEST_PATH
     if not os.path.exists(path):
         return QuestLog()
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    quests = [Quest(q["id"], q["title"], q["description"], q.get("objectives", []),
-                    q.get("rewards_xp", 0), q.get("rewards_gold", 0),
-                    npc_id=q.get("npc_id"), level_req=q.get("level_req", 1),
-                    prerequisites=q.get("prerequisites", []))
-              for q in data.get("quests", [])]
-    return QuestLog(quests, data.get("questlines", []))
+    return QuestLog([_quest_from_dict(q) for q in data.get("quests", [])])
 
 
 # --- editing (the map editor's Quests screen) ----------------------------------------------------------------------
 MAX_QUEST_TEXT = 1200
 
 
-def quest_path(map_id, quest_dir=None):
-    return os.path.join(quest_dir or QUEST_DIR, f"{map_id}.json")
-
-
-def load_quest_data(map_id, quest_dir=None):
-    """The raw quest file of a map as a dict {"map", "quests", "questlines"} (empty if the map has none)."""
-    path = quest_path(map_id, quest_dir)
+def load_quest_data(path=None):
+    """The raw quest file as a dict {"quests": [...]} (empty if there is none)."""
+    path = path or QUEST_PATH
     if not os.path.exists(path):
-        return {"map": map_id, "quests": [], "questlines": []}
+        return {"version": 2, "quests": []}
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    data.setdefault("map", map_id)
     data.setdefault("quests", [])
-    data.setdefault("questlines", [])
     return data
 
 
-def save_quest_data(map_id, data, quest_dir=None):
-    path = quest_path(map_id, quest_dir)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+def save_quest_data(data, path=None):
+    path = path or QUEST_PATH
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+        json.dump({"version": 2, **{k: v for k, v in data.items() if k != "version"}}, f, indent=2,
+                  ensure_ascii=False)
         f.write("\n")
 
 
@@ -255,8 +323,40 @@ def quest_slug(title, taken):
     return qid
 
 
-def validate_quest_data(data, npc_ids, monster_ids):
-    """Problems with a map's quest file (empty list = fine). npc_ids: the NPCs on the map; monster_ids: every monster."""
+_NPC_CACHE = {}
+
+
+def npc_directory(maps_dir=None, refresh=False):
+    """{npc_id: {"name", "map", "sprite_col", "sprite_row"}} of every NPC of every map in data/maps."""
+    maps_dir = maps_dir or os.path.join("data", "maps")
+    if refresh or maps_dir not in _NPC_CACHE:
+        out = {}
+        for fn in sorted(os.listdir(maps_dir)) if os.path.isdir(maps_dir) else []:
+            if not fn.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(maps_dir, fn), encoding="utf-8") as f:
+                    npcs = json.load(f).get("npcs", [])
+            except (OSError, ValueError):
+                continue
+            for n in npcs:
+                if isinstance(n, dict) and "npc_id" in n:
+                    out.setdefault(n["npc_id"], {"name": n.get("name", n["npc_id"]), "map": fn[:-5],
+                                                 "sprite_col": n.get("sprite_col", 0),
+                                                 "sprite_row": n.get("sprite_row", 0)})
+        _NPC_CACHE[maps_dir] = out
+    return _NPC_CACHE[maps_dir]
+
+
+def npc_label(npc_id):
+    """An NPC's display name for the player ('Marshal McBride'), or its id if no map has it."""
+    n = npc_directory().get(npc_id)
+    return n["name"] if n else str(npc_id)
+
+
+def validate_quest_data(data, npc_ids, monster_ids, item_ids=()):
+    """Problems with the quest file (empty list = fine). npc_ids: every NPC of every map; monster_ids / item_ids:
+    what objectives may point at."""
     errs = []
     quests = data.get("quests", [])
     ids = [q.get("id") for q in quests]
@@ -269,30 +369,32 @@ def validate_quest_data(data, npc_ids, monster_ids):
             errs.append(f"{label}: needs a title")
         if not isinstance(q.get("description", ""), str) or len(q.get("description", "")) > MAX_QUEST_TEXT:
             errs.append(f"{label}: description is too long")
-        if q.get("npc_id") not in npc_ids:
-            errs.append(f"{label}: the quest giver {q.get('npc_id')!r} is not an NPC on this map")
+        for key, what in (("giver", "gives the quest"), ("turn_in", "takes the kills / items"),
+                          ("reward_npc", "pays the reward")):
+            v = q.get(key) if key == "giver" else (q.get(key) or q.get("giver"))
+            if v not in npc_ids:
+                errs.append(f"{label}: the NPC that {what} ({v!r}) is not on any map")
         for key, lo, hi in (("level_req", 1, 30), ("rewards_xp", 0, 10 ** 6), ("rewards_gold", 0, 10 ** 6)):
             v = q.get(key, lo)
             if not (isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi):
                 errs.append(f"{label}: {key} must be a whole number {lo}-{hi}")
         seen = set()
         for o in q.get("objectives", []):
-            if not (isinstance(o, dict) and o.get("monster") in monster_ids
-                    and isinstance(o.get("count"), int) and not isinstance(o.get("count"), bool)
-                    and 1 <= o["count"] <= 999):
-                errs.append(f"{label}: every objective needs an existing monster and a count of 1-999")
-            elif o["monster"] in seen:
-                errs.append(f"{label}: the same monster is listed twice")
+            ok = (isinstance(o, dict) and isinstance(o.get("count"), int) and not isinstance(o.get("count"), bool)
+                  and 1 <= o["count"] <= 999 and (("monster" in o) != ("item" in o)))
+            key = ("monster", o["monster"]) if ok and "monster" in o else (("item", o.get("item")) if ok else None)
+            if ok and not (o["monster"] in monster_ids if "monster" in o else o["item"] in item_ids):
+                ok = False
+            if not ok:
+                errs.append(f"{label}: every objective needs an existing monster or item and a count of 1-999")
+            elif key in seen:
+                errs.append(f"{label}: the same target is listed twice")
             else:
-                seen.add(o["monster"])
+                seen.add(key)
         for p in q.get("prerequisites", []):
             if p not in ids or p == qid:
                 errs.append(f"{label}: unknown prerequisite {p!r}")
-    placed = [qid for line in data.get("questlines", []) for qid in line]
-    for qid in placed:
-        if qid not in ids:
-            errs.append(f"questline lists unknown quest {qid!r}")
-    for qid in set(placed):
-        if placed.count(qid) > 1:
-            errs.append(f"{qid} is in more than one questline")
+    _, cyclic = topo_order(quests)
+    if cyclic:
+        errs.append("quests wait on each other in a circle: " + ", ".join(q.get("title") or q["id"] for q in cyclic))
     return errs

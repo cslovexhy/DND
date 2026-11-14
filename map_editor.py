@@ -795,21 +795,19 @@ placing_npc = None   # npc_id waiting for a click on the map (set by the Quests 
 
 
 def open_story():
-    """The Quests & NPCs screen (Q): this map's NPCs and its quest chains (data/quests/<map>.json)."""
+    """The Quests & NPCs screen (Q): this map's NPCs and the game's quests (data/quests.json)."""
     global placing_npc
-    if not last_filename:
-        message_box("Quests & NPCs", ["Save the map first (Ctrl+S):", "its quests are stored under the map's name."])
-        return
-    data = quests_mod.load_quest_data(last_filename)
+    data = quests_mod.load_quest_data()
     npcs = map_data.extra.setdefault("npcs", [])
+    others = {i: d for i, d in quests_mod.npc_directory(refresh=True).items() if d["map"] != last_filename}
     saved, place = story_panel.run(
         screen, clock, npcs, data, defs,
         ask=lambda title, default, long=False: text_input_prompt(title, default, list_files=False,
                                                                  max_len=1200 if long else 40),
         art=monster_art, map_size=(map_data.width, map_data.height),
-        quest_save=lambda d: quests_mod.save_quest_data(last_filename, d))
+        quest_save=lambda d: quests_mod.save_quest_data(d), other_npcs=others)
     if saved:
-        print(f"Saved the quests of {last_filename} (save the map too, to keep its NPCs)")
+        print("Saved the quests (save the map too, to keep its NPCs)")
         placing_npc = place
 
 

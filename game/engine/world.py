@@ -20,6 +20,7 @@ BLOCK_COLOR = (200, 210, 230)      # "BLOCK" over a hero whose shield took a hit
 from game.engine.npc import NPC
 from game.engine import abilities, actions, casting, combat, skills
 from game.engine.snapshot import quest_info
+from game.quests import npc_label as quests_label
 from game.engine.pathfinding import has_line_of_sight
 from game.engine.world_map import TILE_SIZE
 from game.content.monsters import (SPAWN_STATS, respawn_delay, hp_for_level, base_xp_for_level, kill_xp,
@@ -327,12 +328,15 @@ class World:
         interacted = False
         voice = "Samantha" if npc.gender == "female" else "Daniel"
 
-        # First: turn in any completed quests at this NPC
-        for qid in quests.turn_ins_for_npc(npc.npc_id):
-            q = quests.turn_in(qid)
+        def pay(q):
             hero.xp += q.rewards_xp
             hero.gold += q.rewards_gold
             self.float_text(hero.x, hero.y - 40, f"+{q.rewards_xp}xp +{money.format_short(q.rewards_gold)}", GOLD)
+
+        # First: quests whose reward this NPC pays (handed in elsewhere)
+        for qid in quests.rewards_for_npc(npc.npc_id):
+            q = quests.turn_in(qid)
+            pay(q)
             self.events.append(NpcDialogue(
                 quest_info(q), "turnin", npc.name,
                 f"Well done! {q.title} complete. Here's your reward: {q.rewards_xp} experience and "
@@ -340,12 +344,24 @@ class World:
                 voice, pid))
             interacted = True
 
+        # Then: hand in the kills / items of completed quests at this NPC (and get paid if it pays too)
+        for qid in quests.turn_ins_for_npc(npc.npc_id):
+            q, paid = quests.hand_in(qid)
+            if paid:
+                pay(q)
+                text = (f"Well done! {q.title} complete. Here's your reward: {q.rewards_xp} experience and "
+                        f"{money.format_long(q.rewards_gold)}.")
+            else:
+                text = f"Thank you. Now go and see {quests_label(q.reward_npc)} for your reward."
+            self.events.append(NpcDialogue(quest_info(q), "turnin" if paid else "handin", npc.name, text, voice, pid))
+            interacted = True
+
         # Second: offer and accept an available quest from this NPC
         if not interacted:  # Don't pile accept on top of turn-in
             for qid in quests.available_for_npc(npc.npc_id, hero.level):
                 q = quests.quests[qid]
                 if quests.accept(qid):
-                    # No-objective quest (intro) — completed and turned in on the spot
+                    # No-objective quest given, handed in and paid by this NPC: completed on the spot
                     hero.xp += q.rewards_xp
                     hero.gold += q.rewards_gold
                     mode = "turnin"

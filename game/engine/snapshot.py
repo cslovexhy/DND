@@ -82,15 +82,18 @@ def _food(hero):
 def quest_info(q):
     """Static description of a quest (for dialogue panels)."""
     return {"quest_id": q.quest_id, "title": q.title, "description": q.description,
-            "objectives": [dict(o, target=quests.monster_label(o["monster"])) for o in q.objectives],
-            "rewards_xp": q.rewards_xp, "rewards_gold": q.rewards_gold}
+            "objectives": [dict(o, target=quests.objective_label(o)) for o in q.objectives],
+            "rewards_xp": q.rewards_xp, "rewards_gold": q.rewards_gold,
+            "turn_in": quests.npc_label(q.turn_in), "reward_npc": quests.npc_label(q.reward_npc)}
 
 
 def _quests(player):
     ql = player.quests
     active = [{"title": q.title, "accepted": q.accepted, "turned_in": q.turned_in,
                "has_objectives": bool(q.objectives), "progress_text": q.get_progress_text(),
-               "complete": q.is_complete()}
+               "complete": q.is_complete(), "delivered": q.delivered,
+               # who the player should go to next: the turn-in NPC, or the reward NPC once it was handed in
+               "return_to": quests.npc_label(q.reward_npc if q.delivered else q.turn_in)}
               for q in ql.active_objects()]
     return {"active": active, "any_available": bool(ql.available(player.hero.level)), "has_quests": bool(ql.quests)}
 

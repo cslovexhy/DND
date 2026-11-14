@@ -11,7 +11,7 @@ class NPC(Entity):
         # NPC has minimal combat stats (hp=5 gives 250 HP, ac=10 no armor, speed=0 stationary)
         super().__init__(name, x, y, hp=5, ac=10, speed=0)
         self.world = world
-        self.npc_id = npc_id  # matches quest.npc_id
+        self.npc_id = npc_id  # matches the quests' giver / turn_in / reward_npc
         self.gender = gender  # "male" or "female" — used for TTS voice
         self.level = level
         self.sprite = sprite
@@ -41,7 +41,8 @@ class NPC(Entity):
     def has_turn_in(self, player=None):
         """Does this NPC have a quest ready to turn in for this player (default player 0)?"""
         player = player or self.world.players[0]
-        return len(player.quests.turn_ins_for_npc(self.npc_id)) > 0
+        quests = player.quests
+        return bool(quests.turn_ins_for_npc(self.npc_id) or quests.rewards_for_npc(self.npc_id))
 
     def is_in_range(self, hx, hy):
         dx = self.x - hx

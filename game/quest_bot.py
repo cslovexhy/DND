@@ -31,7 +31,7 @@ class QuestBot:
 
     def _npc_goal(self):
         ql, hero = self.player.quests, self.player.hero
-        turn_ins = [n for n in self.world.npcs if ql.turn_ins_for_npc(n.npc_id)]
+        turn_ins = [n for n in self.world.npcs if ql.turn_ins_for_npc(n.npc_id) or ql.rewards_for_npc(n.npc_id)]
         if turn_ins:
             return "turn in", min(turn_ins, key=hero.distance_to)
         offers = [n for n in self.world.npcs
@@ -45,7 +45,7 @@ class QuestBot:
         need = set()
         for q in self.player.quests.active_objects():
             for obj in q.objectives:
-                if q.progress.get(obj["monster"], 0) < obj["count"]:
+                if "monster" in obj and q.objective_count(obj) < obj["count"]:
                     need.add(obj["monster"])
         return need
 

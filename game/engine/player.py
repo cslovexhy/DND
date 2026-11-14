@@ -58,6 +58,7 @@ class PlayerState:
         self.selected_target = None
         self.unlimited_potions = potions is None
         self.inventory = Inventory.from_state(inventory)
+        self.quests.set_inventory(self.inventory)   # item objectives count what is in the backpack
         self.potion_cooldown = 0.0       # seconds until the next Health Potion
         self.pickup_target = None        # ground item id we're walking to (PickUp)
         self.target = None               # WoW-style target (enemy or friendly hero) that hotbar skills use

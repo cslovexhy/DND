@@ -63,6 +63,21 @@ class Inventory:
                 return True
         return False
 
+    def remove(self, item, n=1):
+        """Remove n of `item`, from as many stacks as it takes. Returns False (and changes nothing) if there are fewer."""
+        if self.count(item) < n:
+            return False
+        for i, s in enumerate(self.slots):
+            if n <= 0:
+                break
+            if s and s["item"] == item:
+                got = min(n, s["count"])
+                s["count"] -= got
+                n -= got
+                if s["count"] == 0:
+                    self.slots[i] = None
+        return True
+
     # --- (de)serialization ---
     def to_state(self):
         return [{"slot": i, "item": s["item"], "count": s["count"]} for i, s in enumerate(self.slots) if s]

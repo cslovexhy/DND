@@ -1,14 +1,14 @@
-"""The map editor's Quests & NPCs screen (press Q): edit the NPCs of the open map and its quest chains.
+"""The map editor's Quests & NPCs screen (press Q): edit the NPCs of the open map and the game's quests.
 
   NPCs tab    name, gender, picture (a dungeon-sheet tile), role (none / class trainer / vendor), where it stands
               ("Place on map" closes this screen and the next click on the map puts it there).
               The NPC's id is made from its name when it is created and never changes (quests refer to it).
-  Quests tab  title, description, who gives it, level needed, XP and gold rewards, what must be killed
-              (any monster of data/monsters.json + a count), which quests must be done first, and which questline
-              it belongs to. A questline is an ordered chain: only its next quest is offered, so a quest that is in
-              no questline is never offered (shown in red in the list).
+  Quests tab  every quest of the game (quests are not tied to a map, only to a character's progress): title,
+              description, the three NPCs (gives it / takes the kills and items / pays the reward; they may be on any
+              map), level needed, XP and gold rewards, what must be killed or collected, and which quests must be done
+              first. The list is always in dependency order (a quest comes after the quests it needs).
 
-Done writes data/quests/<map>.json and copies the NPCs into the map (save the map with Ctrl+S to keep them);
+Done writes data/quests.json and copies the NPCs into the map (save the map with Ctrl+S to keep them);
 Esc discards everything done in this screen.
 
 Everything is driven by click(pos, button) and draw(surface, font, big); text goes through the ask(title, default,
@@ -45,11 +45,16 @@ def role_of(npc):
 
 
 class StoryPanel(Widgets):
-    def __init__(self, npcs, data, monsters, ask, art, map_size=(1000, 1000), quest_save=None):
-        """npcs: the map's NPC list (edited in place); data: the map's quest file dict (edited in place);
-        monsters: monster_defs.Definitions (read only); ask(title, default, long=False) -> str or None;
-        art: monster_panel.Art; quest_save(data): writes the quest file on Done."""
+    def __init__(self, npcs, data, monsters, ask, art, map_size=(1000, 1000), quest_save=None, other_npcs=None,
+                 items=None):
+        """npcs: the open map's NPC list (edited in place); data: the quest file dict {"quests": [...]} (edited in
+        place); monsters: monster_defs.Definitions (read only); ask(title, default, long=False) -> str or None;
+        art: monster_panel.Art; quest_save(data): writes the quest file on Done; other_npcs: {npc_id: {"name",
+        "map", "sprite_col", "sprite_row"}} of the NPCs of the other maps; items: {id: definition} (item objectives).
+        """
         self.npcs, self.data, self.monsters, self.ask, self.art = npcs, data, monsters, ask, art
+        self.other_npcs = other_npcs or {}
+        self.items = items if items is not None else {}
         self.map_size, self.quest_save = map_size, quest_save
         self.tab = "quests"
         self.mode = "main"                 # "main" / "monster" (objective picker) / "sprite" (NPC picture picker)
@@ -60,6 +65,8 @@ class StoryPanel(Widgets):
         self.done = False
         self.place = None                  # npc_id to place on the map once the screen closes
         self.list_scroll = 0
+        self.npc_field = "giver"           # which quest NPC the NPC picker is choosing
+        self._old_giver = self._old_turn_in = None
 
     # --- data helpers ---
     @property
@@ -74,46 +81,48 @@ class StoryPanel(Widgets):
     def npc(self):
         return self.npcs[self.sel_npc] if self.sel_npc is not None and self.sel_npc < len(self.npcs) else None
 
-    def npc_name(self, npc_id):
-        return next((n["name"] for n in self.npcs if n["npc_id"] == npc_id), f"? {npc_id}")
+    def all_npcs(self):
+        """Every NPC of the game: {npc_id: {"name", "map" (None = the open map), "sprite_col", "sprite_row"}}."""
+        out = {i: dict(d) for i, d in self.other_npcs.items()}
+        for n in self.npcs:
+            out[n["npc_id"]] = {"name": n["name"], "map": None, "sprite_col": n["sprite_col"],
+                                "sprite_row": n["sprite_row"]}
+        return out
 
+    def npc_name(self, npc_id):
+        n = self.all_npcs().get(npc_id)
+        if n is None:
+            return f"? {npc_id}"
+        return n["name"] + (f" ({n['map']})" if n["map"] else "")
     def monster_name(self, mid):
         d = self.monsters.get(mid)
         return d["name"] if d else f"#{mid}"
 
     def ordered_quests(self):
-        """Questline order first (chain 1, chain 2, ...), then the quests that are in no questline."""
+        """The quests in dependency order (a quest comes after the quests it needs); circular ones go last."""
+        ordered, cyclic = quest_data.topo_order(self.quests)
+        return ordered + cyclic
+
+    def depths(self):
+        """{quest id: how many quests deep its longest prerequisite chain is} (0 = needs nothing)."""
         by_id = {q["id"]: q for q in self.quests}
-        out, seen = [], set()
-        for line in self.data["questlines"]:
-            for qid in line:
-                if qid in by_id and qid not in seen:
-                    out.append(by_id[qid])
-                    seen.add(qid)
-        return out + [q for q in self.quests if q["id"] not in seen]
-
-    def line_of(self, qid):
-        for i, line in enumerate(self.data["questlines"]):
-            if qid in line:
-                return i
-        return None
-
-    def _tidy_lines(self):
-        self.data["questlines"] = [line for line in self.data["questlines"] if line]
-
+        depth = {}
+        for q in quest_data.topo_order(self.quests)[0]:
+            depth[q["id"]] = 1 + max([depth.get(p, -1) for p in q.get("prerequisites", []) if p in by_id] + [-1])
+        return depth
     def errors(self):
-        out = quest_data.validate_quest_data(self.data, {n["npc_id"] for n in self.npcs}, set(self.monsters))
+        npc_ids = set(self.all_npcs())
+        out = quest_data.validate_quest_data(self.data, npc_ids, set(self.monsters), set(self.items))
         w, h = self.map_size
         ids = [n["npc_id"] for n in self.npcs]
         for n in self.npcs:
             if not (isinstance(n.get("name"), str) and n["name"].strip()):
                 out.append(f"{n['npc_id']}: needs a name")
-            if ids.count(n["npc_id"]) > 1:
-                out.append(f"{n['name']}: id used twice")
+            if ids.count(n["npc_id"]) > 1 or n["npc_id"] in self.other_npcs:
+                out.append(f"{n['name']}: id used twice (NPC ids are unique across all maps)")
             if not (0 <= n["x"] < w and 0 <= n["y"] < h):
                 out.append(f"{n['name']}: stands outside the map")
         return out
-
     def _say(self, text, ok=True):
         self.message, self.message_ok = text, ok
 
@@ -146,13 +155,12 @@ class StoryPanel(Widgets):
             return
         title = title.strip()[:60]
         qid = quest_data.quest_slug(title, {q["id"] for q in self.quests})
-        giver = self.npcs[0]["npc_id"] if self.npcs else None
+        giver = self.npcs[0]["npc_id"] if self.npcs else next(iter(self.other_npcs), None)
         self.quests.append({"id": qid, "title": title, "description": "", "objectives": [], "rewards_xp": 0,
-                            "rewards_gold": 0, "npc_id": giver, "level_req": 1, "prerequisites": []})
-        self.data["questlines"].append([qid])             # its own questline, so that it can be offered
+                            "rewards_gold": 0, "giver": giver, "turn_in": giver, "reward_npc": giver,
+                            "level_req": 1, "prerequisites": []})
         self.selected = qid
-        self._say(f"Created {title} in a new questline. Pick who gives it and what to kill.")
-
+        self._say(f"Created {title}. Pick the NPCs, what to kill or collect, and what it needs done first.")
     def _do_q_delete(self, _, button):
         q = self.q
         if q is None:
@@ -162,13 +170,8 @@ class StoryPanel(Widgets):
         for other in self.quests:
             if qid in other.get("prerequisites", []):
                 other["prerequisites"].remove(qid)
-        for line in self.data["questlines"]:
-            if qid in line:
-                line.remove(qid)
-        self._tidy_lines()
         self.selected = next((x["id"] for x in self.ordered_quests()), None)
         self._say(f"Deleted {q['title']} (saved characters keep working: unknown quests are ignored)")
-
     def _do_q_field(self, key, button):
         q = self.q
         if key == "title":
@@ -179,11 +182,9 @@ class StoryPanel(Widgets):
             raw = self.ask("Description (what the NPC says):", q.get("description", ""), True)
             if raw is not None:
                 q["description"] = raw.strip()[:quest_data.MAX_QUEST_TEXT]
-        elif key == "npc_id":
-            ids = [n["npc_id"] for n in self.npcs]
-            if ids:
-                cur = ids.index(q["npc_id"]) if q.get("npc_id") in ids else -1
-                q["npc_id"] = ids[(cur + 1) % len(ids)]
+        elif key in ("giver", "turn_in", "reward_npc"):
+            self.npc_field, self.mode = key, "npc"
+            self._old_giver, self._old_turn_in = q.get("giver"), q.get("turn_in") or q.get("giver")
         else:
             lo, hi = {"level_req": (1, 30), "rewards_xp": (0, 10 ** 6), "rewards_gold": (0, 10 ** 6)}[key]
             raw = self.ask(f"{key.replace('_', ' ')} ({lo}-{hi}):", str(q.get(key, lo)))
@@ -203,35 +204,23 @@ class StoryPanel(Widgets):
         pre = self.q.setdefault("prerequisites", [])
         if qid in pre:
             pre.remove(qid)
-        else:
-            pre.append(qid)
-
-    def _do_q_line(self, _, button):
-        """Cycle: no questline -> line 1 -> line 2 ... -> a new line -> none."""
-        q = self.q
-        qid, cur = q["id"], self.line_of(q["id"])
-        lines = self.data["questlines"]
-        if cur is not None:
-            lines[cur].remove(qid)
-        alone = cur is not None and not lines[cur]            # it was the only quest of its line
-        options = [None] + list(range(len(lines))) + ([] if alone else ["new"])
-        pos = options.index(cur) if cur in options else 0
-        nxt = options[(pos + 1) % len(options)]
-        if nxt == "new":
-            lines.append([qid])
-        elif nxt is not None:
-            lines[nxt].append(qid)
-        self._tidy_lines()
-
-    def _do_q_move(self, delta, button):
-        qid = self.selected
-        i = self.line_of(qid)
-        if i is None:
             return
-        line = self.data["questlines"][i]
-        j = line.index(qid)
-        if 0 <= j + delta < len(line):
-            line[j], line[j + delta] = line[j + delta], line[j]
+        pre.append(qid)
+        if quest_data.topo_order(self.quests)[1]:           # would the quests wait on each other forever?
+            pre.remove(qid)
+            self._say("Not possible: that quest (directly or not) already needs this one.", False)
+
+
+    def _do_npc_pick(self, npc_id, button):
+        q = self.q
+        q[self.npc_field] = npc_id
+        if self.npc_field == "giver":                       # the usual case is one NPC for everything: follow along
+            for key in ("turn_in", "reward_npc"):
+                if q.get(key) in (None, self._old_giver):
+                    q[key] = npc_id
+        elif self.npc_field == "turn_in" and q.get("reward_npc") == self._old_turn_in:
+            q["reward_npc"] = npc_id
+        self.mode = "main"
 
     def _do_obj_add(self, _, button):
         self.mode = "monster"
@@ -271,7 +260,7 @@ class StoryPanel(Widgets):
         if not name or not name.strip():
             return
         name = name.strip()[:MAX_NAME]
-        taken = {n["npc_id"] for n in self.npcs}
+        taken = {n["npc_id"] for n in self.npcs} | set(self.other_npcs)
         npc_id = quest_data.quest_slug(name, taken)
         self.npcs.append({"name": name, "npc_id": npc_id, "gender": "male", "x": 1, "y": 1,
                           "sprite_col": 1, "sprite_row": 8})
@@ -282,14 +271,14 @@ class StoryPanel(Widgets):
         n = self.npc
         if n is None:
             return
-        giving = [q["title"] for q in self.quests if q.get("npc_id") == n["npc_id"]]
-        if giving:
-            self._say(f"{n['name']} gives: {', '.join(giving)}. Give those quests to someone else first.", False)
+        using = [q["title"] for q in self.quests
+                 if n["npc_id"] in (q.get("giver"), q.get("turn_in"), q.get("reward_npc"))]
+        if using:
+            self._say(f"{n['name']} is used by: {', '.join(using)}. Give those quests to someone else first.", False)
             return
         self.npcs.remove(n)
         self.sel_npc = 0 if self.npcs else None
         self._say(f"Deleted {n['name']}")
-
     def _do_n_field(self, key, button):
         n = self.npc
         if key == "name":
@@ -367,6 +356,8 @@ class StoryPanel(Widgets):
         x0 = LIST_W + 30
         if self.mode == "monster" and self.q:
             self._draw_monster_picker(surf, font, big, x0, W)
+        elif self.mode == "npc" and self.q:
+            self._draw_npc_picker(surf, font, big, x0, W)
         elif self.mode == "sprite" and self.npc:
             self._draw_sprite_picker(surf, font, big, x0)
         elif self.tab == "quests":
@@ -396,6 +387,7 @@ class StoryPanel(Widgets):
             self._button(surf, font, (12, 44, half, 26), "+ New quest", "q_new", color=(60, 90, 60))
             self._button(surf, font, (18 + half, 44, half, 26), "Delete", "q_delete", color=(100, 55, 55))
             items = [(q["id"], q) for q in self.ordered_quests()]
+            depth = self.depths()
         else:
             self._button(surf, font, (12, 44, half, 26), "+ New NPC", "n_new", color=(60, 90, 60))
             self._button(surf, font, (18 + half, 44, half, 26), "Delete", "n_delete", color=(100, 55, 55))
@@ -408,10 +400,10 @@ class StoryPanel(Widgets):
             if self.tab == "quests":
                 if key == self.selected:
                     pygame.draw.rect(surf, (70, 90, 70), r, border_radius=3)
-                line = self.line_of(key)
-                tag = f"{line + 1}." if line is not None else "-"
-                surf.blit(font.render(f"{tag} {item['title']}"[:36], True, TEXT if line is not None else RED),
-                          (14, y + 5))
+                d = depth.get(key)
+                indent = min(d, 6) * 10 if d is not None else 0          # deeper = needs more quests first
+                surf.blit(font.render(item["title"][:34 - indent // 7], True, TEXT if d is not None else RED),
+                          (14 + indent, y + 5))
                 self._hit(r, "q_select", key)
             else:
                 if key == self.sel_npc:
@@ -435,27 +427,22 @@ class StoryPanel(Widgets):
         y = 64
         self._row(surf, font, x, y, "Title", q["title"], "q_field", "title", "Shown in the quest log.")
         y += 32
-        self._row(surf, font, x, y, "Given by", self.npc_name(q.get("npc_id")), "q_field", "npc_id",
-                  "Click to cycle through the NPCs of this map. This NPC offers it and takes it back.")
+        self._row(surf, font, x, y, "Given by", self.npc_name(q.get("giver")), "q_field", "giver",
+                  "The NPC that offers the quest. Click to choose (any map).")
+        y += 32
+        self._row(surf, font, x, y, "Hand in to", self.npc_name(q.get("turn_in") or q.get("giver")), "q_field",
+                  "turn_in", "The NPC the kills / items are handed over to.")
+        y += 32
+        self._row(surf, font, x, y, "Reward from", self.npc_name(q.get("reward_npc") or q.get("turn_in")
+                                                                 or q.get("giver")), "q_field", "reward_npc",
+                  "The NPC that pays the XP and gold. Usually the same one.")
         y += 32
         self._row(surf, font, x, y, "Level needed", q.get("level_req", 1), "q_field", "level_req",
                   "The hero must be at least this level to be offered the quest.", 120)
         self._row(surf, font, x + 270, y, "XP reward", q.get("rewards_xp", 0), "q_field", "rewards_xp",
-                  "XP when handing it in.", 120)
-        y += 32
-        self._row(surf, font, x, y, "Gold reward", q.get("rewards_gold", 0), "q_field", "rewards_gold",
-                  "Bronze when handing it in.", 120)
-        line = self.line_of(q["id"])
-        if line is None:
-            text = "none (never offered!)"
-        else:
-            chain = self.data["questlines"][line]
-            text = f"#{line + 1}: step {chain.index(q['id']) + 1} of {len(chain)}"
-        self._row(surf, font, x + 270, y, "Questline", text, "q_line", None,
-                  "A chain of quests: only its next quest is offered. Click to cycle: none, each line, a new line.",
-                  190, line is not None)
-        self._button(surf, font, (x + 270 + 130 + 196, y, 26, 26), "<", "q_move", -1)
-        self._button(surf, font, (x + 270 + 130 + 226, y, 26, 26), ">", "q_move", 1)
+                  "XP when collecting the reward.", 120)
+        self._row(surf, font, x + 540, y, "Gold reward", q.get("rewards_gold", 0), "q_field", "rewards_gold",
+                  "Bronze when collecting the reward.", 120)
         y += 40
         surf.blit(font.render("Description (click to edit)", True, DIM), (x, y))
         y += 20
@@ -498,6 +485,21 @@ class StoryPanel(Widgets):
                       other["id"] in q.get("prerequisites", []), "Green = must be handed in before this one.")
             cx += w + 6
 
+    def _draw_npc_picker(self, surf, font, big, x, W):
+        what = {"giver": "gives", "turn_in": "takes the hand-in of", "reward_npc": "pays the reward of"}[self.npc_field]
+        surf.blit(big.render(f"Which NPC {what} {self.q['title']}?", True, GOLD), (x, 10))
+        npcs = sorted(self.all_npcs().items(), key=lambda kv: (kv[1]["map"] is not None, kv[1]["map"] or "",
+                                                                kv[1]["name"].lower()))
+        per_row = max(1, (W - x - 20) // 300)
+        for i, (nid, n) in enumerate(npcs):
+            r = pygame.Rect(x + (i % per_row) * 300, 44 + (i // per_row) * 32, 290, 28)
+            pygame.draw.rect(surf, (52, 52, 62), r, border_radius=4)
+            surf.blit(self.art.monster({"sheet": "dungeon", "col": n["sprite_col"], "row": n["sprite_row"]}, 24),
+                      (r.x + 2, r.y + 2))
+            surf.blit(font.render(f"{n['name']}" + (f"  ({n['map']})" if n["map"] else ""), True, TEXT),
+                      (r.x + 32, r.y + 7))
+            self._hit(r, "npc_pick", nid)
+
     def _draw_monster_picker(self, surf, font, big, x, W):
         surf.blit(big.render(f"Add a monster to {self.q['title']} (click one)", True, GOLD), (x, 10))
         per_row = max(1, (W - x - 20) // 250)
@@ -538,10 +540,14 @@ class StoryPanel(Widgets):
         self._button(surf, font, (x + 560, y, 190, 26), "Place on map...", "n_place",
                      color=(70, 95, 120))
         y += 48
-        gives = [q["title"] for q in self.quests if q.get("npc_id") == n["npc_id"]]
-        surf.blit(font.render("Gives quests:", True, GOLD), (x, y))
-        for i, t in enumerate(gives or ["(none)"]):
-            surf.blit(font.render(f"  {t}", True, TEXT if gives else DIM), (x, y + 22 + i * 18))
+        roles = []
+        for q in self.ordered_quests():
+            for key, what in (("giver", "gives"), ("turn_in", "takes the hand-in of"), ("reward_npc", "pays")):
+                if (q.get(key) or (q.get("giver") if key != "giver" else None)) == n["npc_id"]:
+                    roles.append(f"{what}: {q['title']}")
+        surf.blit(font.render("Quests:", True, GOLD), (x, y))
+        for i, t in enumerate(roles[:14] or ["(none)"]):
+            surf.blit(font.render(f"  {t}", True, TEXT if roles else DIM), (x, y + 22 + i * 18))
 
     def _draw_sprite_picker(self, surf, font, big, x):
         surf.blit(big.render(f"Pick a picture for {self.npc['name']} (click a tile)", True, GOLD), (x, 10))
@@ -558,12 +564,13 @@ class StoryPanel(Widgets):
                 self._hit(rect, "n_pick", art)
 
 
-def run(screen, clock, npcs, data, monsters, ask, art, map_size, quest_save):
+def run(screen, clock, npcs, data, monsters, ask, art, map_size, quest_save, other_npcs=None, items=None):
     """The screen as a modal loop (the map editor's Q key). Works on copies: Done writes the quest file and copies the
     NPCs / quests back (returns (True, npc_id or None); npc_id = an NPC to place on the map); Esc discards (False, None)."""
     font = pygame.font.SysFont("monospace", 13)
     big = pygame.font.SysFont("monospace", 18, bold=True)
-    panel = StoryPanel(copy.deepcopy(npcs), copy.deepcopy(data), monsters, ask, art, map_size, quest_save)
+    panel = StoryPanel(copy.deepcopy(npcs), copy.deepcopy(data), monsters, ask, art, map_size, quest_save,
+                       other_npcs, items)
     while not panel.done:
         for event in pygame.event.get():
             if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):

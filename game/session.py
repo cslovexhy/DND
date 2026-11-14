@@ -248,7 +248,7 @@ start_map_music(world_map.music)
 
 
 def save_game():
-    """Persist this character's progress (level/xp/gold/kills + this map's quest state) on this machine."""
+    """Persist this character's progress (level/xp/gold/kills + quest state) on this machine."""
     if not SAVING:
         return
     if world is None:
@@ -256,7 +256,7 @@ def save_game():
         prog = view.you.progress
         char_data.update({k: prog[k] for k in ("level", "xp", "gold", "kills", "inventory", "equipment", "trained")})
         char_data["hotbar"] = list(globals().get("hotbar_order") or char_data.get("hotbar") or [])
-        char_data.setdefault("quests", {})[MAP_ID] = prog["quests"]
+        char_data["quests"] = prog["quests"]
         saves.save_character(char_data)
         return
     h = world.hero
@@ -264,7 +264,7 @@ def save_game():
                       "inventory": world.players[0].inventory.to_state(), "equipment": dict(h.equipment),
                       "trained": dict(h.trained) if h.trained is not None else None})
     char_data["hotbar"] = list(globals().get("hotbar_order") or char_data.get("hotbar") or [])   # slot layout
-    char_data.setdefault("quests", {})[MAP_ID] = world.quests.to_state()
+    char_data["quests"] = world.quests.to_state()
     saves.save_character(char_data)
 
 
@@ -440,6 +440,9 @@ class QuestPopupPanel:
         if self.mode == "accept":
             header = "Quest Accepted"
             header_color = GOLD
+        elif self.mode == "handin":
+            header = "Quest Handed In"
+            header_color = GOLD
         else:
             header = "Quest Complete!"
             header_color = (100, 255, 100)
@@ -470,14 +473,17 @@ class QuestPopupPanel:
             panel_surf.blit(obj_header, (self.padding, y))
             y += 16
             for obj in self.quest.objectives:
-                obj_text = f"  • Kill {obj['count']} {obj.get('target', obj['monster'])}"
+                verb = "Collect" if "item" in obj else "Kill"
+                obj_text = f"  • {verb} {obj['count']} {obj.get('target', '?')}"
                 obj_surf = font.render(obj_text, True, (220, 220, 220))
                 panel_surf.blit(obj_surf, (self.padding, y))
                 y += 16
             y += 8
 
         # Rewards
-        rewards_header = font.render("Rewards:", True, (255, 215, 0))
+        rewards_header = font.render(
+            f"Collect your reward from {self.quest.reward_npc}:" if self.mode == "handin" else "Rewards:",
+            True, (255, 215, 0))
         panel_surf.blit(rewards_header, (self.padding, y))
         y += 16
         reward_parts = []
@@ -1786,14 +1792,15 @@ while running:
                 quest_title = f"[Quest] {aq.title}"
                 screen.blit(font.render(quest_title, True, GOLD), (WIDTH//2 - 120, quest_hud_y))
                 quest_hud_y += 16
-                if aq.has_objectives:
+                if aq.has_objectives and not aq.delivered:
                     prog_text = aq.progress_text
                     prog_color = (100, 255, 100) if aq.complete else (200, 200, 200)
                     screen.blit(font.render(prog_text, True, prog_color), (WIDTH//2 - 120, quest_hud_y))
                     quest_hud_y += 16
-                    if aq.complete:
-                        screen.blit(font.render("Return to NPC", True, (100, 255, 100)), (WIDTH//2 - 120, quest_hud_y))
-                        quest_hud_y += 16
+                if aq.complete or aq.delivered:
+                    screen.blit(font.render(f"Return to {aq.return_to}", True, (100, 255, 100)),
+                                (WIDTH//2 - 120, quest_hud_y))
+                    quest_hud_y += 16
                 quest_hud_y += 4  # spacing between quests
     elif vq.any_available:
         screen.blit(font.render("Visit an NPC for a new quest", True, (200, 200, 150)), (WIDTH//2 - 120, quest_hud_y))
