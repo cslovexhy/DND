@@ -69,6 +69,8 @@ clock = pygame.time.Clock()
 
 # Load spritesheet
 sheet_img = pygame.image.load(SPRITESHEET_PATH).convert_alpha()
+from game.editor import item_panel                                  # noqa: E402
+from game.content import item_defs, items as items_mod            # noqa: E402
 from game.editor import story_panel                                 # noqa: E402
 from game import quests as quests_mod                              # noqa: E402
 from game.editor import monster_panel                               # noqa: E402  (needs the display for images)
@@ -361,6 +363,7 @@ def draw_toolbar():
         ("Locations (4)", "locations"),
         ("Monsters (M)", "monsters"),
         ("Quests & NPCs (Q)", "story"),
+        ("Items (I)", "items"),
     ]
     for label, action in btn_labels:
         tw = font.size(label)[0] + 16
@@ -811,6 +814,23 @@ def open_story():
         placing_npc = place
 
 
+def open_items():
+    """The Items screen (I): create / edit / duplicate / delete any item (what it does, its picture, its price)."""
+    maps = {name: m for name, m in monster_defs.map_files().items() if name != last_filename}
+    maps[last_filename or "this map"] = {"item_spawns": map_data.extra.get("item_spawns", [])}
+    quest_list = quests_mod.load_quest_data()["quests"]
+
+    def used_by(iid):
+        return item_defs.items_used_by(iid, defs, quest_list, maps)
+
+    if item_panel.run(screen, clock, items_mod.DEFS,
+                      ask=lambda title, default, long=False: text_input_prompt(
+                          title, default, list_files=False, max_len=300 if long else 40),
+                      art=monster_art, usage=used_by):
+        items_mod.reload(items_mod.DEFS)
+        print(f"Saved {len(items_mod.DEFS)} item(s) to {item_defs.PATH}")
+
+
 def open_monster_types():
     """The Monsters screen (M): create / edit / duplicate / delete any monster type (levels and drops included)."""
     other_maps = {name: m for name, m in monster_defs.map_files().items() if name != last_filename}
@@ -953,6 +973,8 @@ while running:
                 open_monster_types()
             elif event.key == pygame.K_q:
                 open_story()
+            elif event.key == pygame.K_i:
+                open_items()
             elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
                 zoom = min(max_zoom, zoom + 0.5)
             elif event.key == pygame.K_MINUS:
@@ -996,6 +1018,8 @@ while running:
                         open_monster_types()
                     elif action == "story":
                         open_story()
+                    elif action == "items":
+                        open_items()
                     break
 
             # Palette click

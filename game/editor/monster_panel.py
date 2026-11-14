@@ -81,14 +81,20 @@ class Art:
             self.cache[key] = s
         return self.cache[key]
 
-    def item(self, item, size):
-        key = ("i", item, size)
+    def icon(self, sheet, col, row, size):
+        """An item icon tile: sheet "dungeon" or "rpg" (17 px pitch: 16 px tile + 1 px gap)."""
+        key = ("i", sheet, col, row, size)
         if key not in self.cache:
-            sheet, col, row = ITEMS[item]["icon"]
             raw = pygame.Surface((16, 16), pygame.SRCALPHA)
             raw.blit(self.item_sheets[sheet], (0, 0), (col * 17, row * 17, 16, 16))
             self.cache[key] = pygame.transform.scale(raw, (size, size))
         return self.cache[key]
+
+    def item(self, item, size):
+        if item not in ITEMS:
+            return self.monster(None, size)
+        sheet, col, row = ITEMS[item]["icon"]
+        return self.icon(sheet, col, row, size)
 
 
 def spawn_palette(defs):
