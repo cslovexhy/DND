@@ -25,7 +25,7 @@ class SpawnPoint:
     type: object  # a monster id (int) or a marker: "hero_start", "chest", ...
     x: int     # tile x
     y: int     # tile y
-    # Optional per-spawn overrides of SPAWN_STATS entries (board units: "hp", "ac", "dmg", ...), set in the map
+    # Optional per-spawn overrides of SPAWN_STATS entries ("ac", "level", "kit", ...), set in the map
     # JSON spawn entry as "stats": {...}. Lets one map tune a boss without changing every map that uses it.
     stats: dict = field(default_factory=dict)
 

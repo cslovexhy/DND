@@ -4,7 +4,7 @@ All monsters live in data/monsters.json (content/monster_defs.py) and are edited
   left    every monster type (button: only the ones on the map you are editing), "+ New", "Duplicate", "Delete"
   right   the selected type: name, picture (any tile of the creature / dungeon sheets), category, melee or ranged,
           boss / unique / relentless, armor, speed, HP multiplier, sense and attack range, attack speed, respawn,
-          LEVEL RANGE (sets its HP / damage / XP; empty = the raw numbers), raw HP / damage / XP, hive mind,
+          LEVEL RANGE (sets its HP / damage / XP), hive mind,
           boss skills, the skills it casts, and its drops
   drops   every monster has its own handpicked list (item, chance, optional monster-level range); nothing is
           shared. "Drops table" shows every monster x every item at once and edits a chance with one click.
@@ -30,7 +30,7 @@ BG, PANEL, LINE, TEXT, DIM, GOLD, RED, GREEN = ((25, 25, 30), (45, 45, 52), (90,
 
 # (label, key, kind, help). kinds: levels / text / cycle / toggle / flag-on-sprite / number
 FIELDS = [
-    ("Level", "level", "levels", "Level range, e.g. 3-5: sets its HP, damage and XP. Empty = use the raw numbers."),
+    ("Level", "level", "levels", "Level range, e.g. 3-5: sets its HP, damage and XP (rolled per spawn)."),
     ("Name", "name", "text", "Shown over the monster."),
     ("Category", "category", "cycle", "Humanoids carry money (bronze) when killed."),
     ("Attack", "attack", "cycle", "Ranged monsters keep their distance and shoot."),
@@ -46,9 +46,6 @@ FIELDS = [
     ("Attack range", "attack_range", "number", "px it fights from. Empty = 50 melee / 220 ranged."),
     ("Attack speed", "swing", "number", "Seconds between attacks. Empty = 2.0 (bosses 20% faster)."),
     ("Respawn x", "respawn_mult", "number", "x 60 s. Empty = 1 (bosses 10)."),
-    ("Raw HP", "hp", "number", "Board-game HP (x50). Only used when no level range is set."),
-    ("Raw damage", "dmg", "number", "Board-game damage. Only used when no level range is set."),
-    ("Raw XP", "xp", "number", "Kill XP. Only used when no level range is set."),
 ]
 OPTIONAL = {"swing", "respawn_mult", "attack_range"}        # empty = default (the key is removed)
 FLOATS = {"hp_mult", "swing", "respawn_mult"}
@@ -273,7 +270,7 @@ class MonsterPanel:
 
     def _edit_levels(self, tid):
         cur = self.defs[tid].get("level")
-        raw = self.ask("Level range, e.g. 3-5 (empty = none, use the raw numbers):", f"{cur[0]}-{cur[1]}" if cur else "")
+        raw = self.ask("Level range, e.g. 3-5:", f"{cur[0]}-{cur[1]}" if cur else "")
         if raw is None:
             return
         try:
@@ -282,7 +279,7 @@ class MonsterPanel:
             self._say(f"Levels must look like 3-5 (1-30): {raw}", False)
             return
         if rng is None:
-            self.defs[tid].pop("level", None)
+            self._say("Every monster needs a level", False)
         else:
             self.defs[tid]["level"] = rng
 

@@ -56,7 +56,7 @@ class KillXpTest(unittest.TestCase):
 
     def test_kill_awards_level_adjusted_xp(self):
         world, player = northshire(level=5)
-        m = next(m for m in world.game_state.monsters if m.name == "Grey Wolf" and m.level == 1)
+        m = next(m for m in world.game_state.monsters if m.spawn_type == 5 and m.level == 1)
         m.take_damage(m.max_hp * 10)
         world.process_kills()
         self.assertEqual(player.hero.xp, kill_xp(10, 5, 1))     # 10 x 2/6 = 3
@@ -70,10 +70,7 @@ class MonsterLevelTest(unittest.TestCase):
         for seed in range(1, 6):
             world, _ = northshire(seed=seed)
             for m in world.game_state.monsters:
-                rng = ranges.get(m.spawn_type)
-                if rng is None:
-                    self.assertFalse(m.leveled, m.name)            # no range on this map: hand-tuned stats
-                    continue
+                rng = ranges[m.spawn_type]
                 lo, hi = rng
                 self.assertTrue(m.leveled)
                 self.assertTrue(lo <= m.level <= hi, (m.name, m.level))
@@ -128,13 +125,13 @@ class MonsterLevelTest(unittest.TestCase):
         boss = next(m for m in room.game_state.monsters if m.is_boss)
         self.assertAlmostEqual(boss.weapon_speed, 1.6)
 
-    def test_maps_without_levels_are_unchanged(self):
+    def test_every_monster_on_every_map_is_leveled(self):
         random.seed(1)
-        world, _ = create_world("data/maps/haycock.json", saves.blank_character("t", "Fighter"))
-        for m in world.game_state.monsters:
-            self.assertFalse(m.leveled)
-            self.assertEqual(m.experience, SPAWN_STATS[m.spawn_type]["xp"])
-            self.assertEqual(m.max_hp, SPAWN_STATS[m.spawn_type]["hp"] * HP_SCALE)
+        for path in ("data/maps/haycock.json", "data/maps/goldshire.json", MAP):
+            world, _ = create_world(path, saves.blank_character("t", "Fighter"))
+            for m in world.game_state.monsters:
+                lo, hi = SPAWN_STATS[m.spawn_type]["level"]
+                self.assertTrue(m.leveled and lo <= m.level <= hi, (path, m.name))
 
     def test_bad_definition_levels_are_rejected(self):
         from game.content import monster_defs

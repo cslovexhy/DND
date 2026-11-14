@@ -340,6 +340,7 @@ class DropTest(unittest.TestCase):
         random.seed(2)
         world, p = create_world(MAP, saves.blank_character("t", "Fighter", level=10))
         m = next(m for m in world.game_state.monsters if m.level >= 4)
+        m.x, m.y = p.hero.x + 60, p.hero.y            # (a corpse the hero can reach: monster content is editable)
         import game.engine.world as W
         orig = W.roll_drops
         W.roll_drops = lambda *a: ["roast_chicken"]

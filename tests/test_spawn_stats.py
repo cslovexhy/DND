@@ -16,11 +16,15 @@ def boss_of(map_path):
 class SpawnStatsTest(unittest.TestCase):
     def test_boss_room_uses_tuned_ashardalon(self):
         boss = boss_of("data/maps/bossTestRoom.json")
-        self.assertAlmostEqual(boss.max_hp, 146 * 50, places=0)
+        self.assertEqual(boss.ac, 16)
 
-    def test_other_maps_keep_shared_stats(self):
-        boss = boss_of("data/maps/haycock.json")
-        self.assertEqual(boss.max_hp, SPAWN_STATS[16]["hp"] * 50)
+    def test_a_spawn_override_beats_the_shared_stats(self):
+        import random
+        from game.engine.world_map import SpawnPoint
+        world, _ = create_world("data/maps/bossTestRoom.json", saves.blank_character("t", "Fighter"))
+        plain = world.spawn_single_world_monster(SpawnPoint(16, 5, 5))
+        tuned = world.spawn_single_world_monster(SpawnPoint(16, 5, 5, {"ac": 3, "level": [10, 10]}))
+        self.assertEqual((plain.ac, tuned.ac, tuned.level), (SPAWN_STATS[16]["ac"], 3, 10))
 
 
 if __name__ == "__main__":

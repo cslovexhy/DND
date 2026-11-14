@@ -33,7 +33,7 @@ def _entity(e, kind, ctl=None):
         d["is_boss"] = bool(e.is_boss)
         d["unique"] = bool(getattr(e, "unique", False))
         d["say"] = getattr(e, "say", "")
-        d["leveled"] = bool(getattr(e, "leveled", False))   # has a real level (map monster_levels): show "Lv N"
+        d["leveled"] = bool(getattr(e, "leveled", False))   # has a real level (every monster has one): show "Lv N"
         if e.max_mana:                                       # it casts skills (a kit): the target frame shows its MP
             d["mana"], d["max_mana"] = e.mana, e.max_mana
         # which picture to draw: the host's monsters.json decides, so a joiner with a different file still sees it

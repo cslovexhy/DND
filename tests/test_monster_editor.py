@@ -50,7 +50,7 @@ class DefinitionTest(unittest.TestCase):
                "skills": murloc(skills=["Teleport"]), "drops": murloc(drops=[["gold_bar", 0.1]]),
                "chance": murloc(drops=[["water", 2]]), "drop levels": murloc(drops=[["water", 0.1, 5, 2]]),
                "duplicate drop": murloc(drops=[["water", 0.1], ["water", 0.2]]),
-               "raw hp": murloc(hp=0), "attack range": murloc(attack_range=5), "swing": murloc(swing=0),
+               "no level": {k: v for k, v in murloc().items() if k != "level"}, "attack range": murloc(attack_range=5), "swing": murloc(swing=0),
                "hive": murloc(hive_mind={"range": 1, "types": []}), "hive types": murloc(hive_mind={"range": 500, "types": ["x"]}),
                "boss skill": murloc(boss_skills={"fireball": {}}), "boss setting": murloc(boss_skills={"enrage": {"x": "a"}}),
                "whole number": murloc(ac=14.5), "file sprite": murloc(sprite={"file": "assets/nope.png"})}
@@ -61,7 +61,7 @@ class DefinitionTest(unittest.TestCase):
 
     def test_the_full_set_of_settings_is_valid(self):
         d = murloc(boss=True, unique=True, relentless=True, swing=1.2, respawn_mult=3, attack="ranged", sense_range=300,
-                   attack_range=250, hp=10, dmg=3, xp=40, hive_mind={"range": 800, "types": [RAIDER]},
+                   attack_range=250, hive_mind={"range": 800, "types": [RAIDER]},
                    boss_skills={k: json.loads(json.dumps(v)) for k, v in monster_defs.BOSS_SKILL_DEFAULTS.items()})
         self.assertEqual(check(d), [])
         s = monster_defs.to_spawn_stats(d)
@@ -72,7 +72,7 @@ class DefinitionTest(unittest.TestCase):
         self.assertEqual((s["boss"], s["unique"], s["relentless"], s["kit"]), (True, True, True, ["Frost Nova"]))
 
     def test_defaults_when_a_setting_is_missing(self):
-        s = monster_defs.to_spawn_stats({"name": "X", "sprite": {"sheet": "creatures", "col": 0, "row": 0}})
+        s = monster_defs.to_spawn_stats({"name": "X", "level": [1, 1], "sprite": {"sheet": "creatures", "col": 0, "row": 0}})
         self.assertEqual((s["category"], s["ac"], s["speed"], s["sense_range"], s["attack_range"], s["drops"]),
                          ("humanoid", 14, 5, 170, 50, []))
         self.assertEqual(monster_defs.to_spawn_stats(dict(murloc(), attack="ranged"))["attack_range"], 220)
@@ -107,7 +107,8 @@ class DefinitionTest(unittest.TestCase):
         for bad in ([3, 2], [0, 2], [1, 31], "x", [1]):
             self.assertTrue(check(murloc(level=bad)), bad)
         self.assertEqual(monster_defs.to_spawn_stats(murloc(level=[2, 4]))["level"], [2, 4])
-        self.assertNotIn("level", monster_defs.to_spawn_stats(murloc()))
+        self.assertEqual(monster_defs.to_spawn_stats(murloc())["level"], [1, 1])      # new monsters start at level 1
+        self.assertNotIn("hp", monster_defs.to_spawn_stats(murloc()))             # no raw board-game stats any more
 
 
 class DataFileTest(unittest.TestCase):
@@ -189,15 +190,6 @@ class MonsterInGameTest(unittest.TestCase):
         self.assertEqual(roll_drops(m.drops, m.level, Always()), ["water"])   # nectar only from levels 10-20
         self.assertEqual(roll_drops(m.drops, 15, Always()), ["water", "elven_nectar"])
 
-    def test_without_a_level_range_the_raw_stats_are_used(self):
-        M.unregister([RAIDER]); self.added.remove(RAIDER)
-        self.added += M.register({RAIDER: murloc(hp=4, dmg=2, xp=30)})   # (no "level" in the definition)
-        random.seed(3)
-        world, p = create_world(MAP, saves.blank_character("t", "Fighter", level=5))
-        m = world.spawn_single_world_monster(SpawnPoint(RAIDER, 30, 30))
-        self.assertFalse(m.leveled)
-        self.assertEqual((m.experience, m.max_hp), (30, 4 * 50))
-
     def test_ranges_come_from_the_definition(self):
         from game.engine import ai
         world, p, m = self.spawn(ARCHER)
@@ -220,7 +212,7 @@ class MonsterInGameTest(unittest.TestCase):
         world, p, m = self.spawn(RAIDER)
         ents = make_snapshot(world)["entities"]
         self.assertEqual(next(e for e in ents if e["id"] == m.eid)["art"], {"sheet": "creatures", "col": 6, "row": 2})
-        wolf = next(e for e in ents if e.get("name") == "Grey Wolf")
+        wolf = next(e for e in ents if e.get("name") == M.SPAWN_STATS[ID.GREY_WOLF]["name"])
         self.assertEqual(wolf["art"], M.SPAWN_STATS[ID.GREY_WOLF]["sprite"])    # every monster's picture comes along
 
     def test_every_monster_picture_can_be_drawn(self):
@@ -288,7 +280,7 @@ print(json.dumps(log))
                    "17", "99",                   # armor 17, then 99 is refused
                    "1.5", "",                    # attack speed set, then cleared
                    "2",                          # enrage damage x2
-                   "600", "Grey Wolf, Grey Wolf Alpha",      # hive mind (names or ids)
+                   "600", "5, Grey Wolf Alpha",      # hive mind (names or ids)
                    "2-3",                        # level range
                    "Grey Wolf Chief",            # renamed: the id stays
                    "2.5",                        # buckler drop 2.5%

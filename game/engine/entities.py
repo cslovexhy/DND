@@ -715,7 +715,7 @@ class Monster(Entity):
         self.say = ""      # a message shown over its head (e.g. "Ashardalon took a deep breath..."), "" = none
 
     def hit_damage(self) -> float:
-        """Damage of one attack before modifiers: levelled monsters (map monster_levels) roll
+        """Damage of one attack before modifiers: monsters roll
         round(base x 0.9..1.1) per hit; others hit for exactly base_damage."""
         if getattr(self, "leveled", False):
             import random

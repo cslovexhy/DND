@@ -25,15 +25,18 @@ saves.SAVE_DIR = tempfile.mkdtemp()
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
 
 
-def arena(mob="Human Cultist", n=1, hero_cls="Fighter", hero_level=5):
-    """A hero and `n` monsters of one name from Northshire, aggroed on the hero, the rest of the map removed."""
+def arena(mob=9, n=1, hero_cls="Fighter", hero_level=5):
+    """A hero and `n` monsters of one monster id from Northshire, aggroed on the hero, the rest of the map removed.
+    Monster 9 is given a Poison Dagger kit if the data file doesn't (monster content is edited freely)."""
     random.seed(1)
     world, p = create_world(MAP, saves.blank_character("t", hero_cls, level=hero_level))
     gs = world.game_state
-    mobs = [m for m in gs.monsters if m.name == mob][:n]
+    mobs = [m for m in gs.monsters if m.spawn_type == mob][:n]
     gs.monsters[:] = mobs
     h = p.hero
     for i, m in enumerate(mobs):
+        if mob == 9 and "Poison Dagger" not in m.abilities:
+            world._give_kit(m, ["Poison Dagger"])
         m.x, m.y = h.x + 40, h.y + i * 20
         m.spawn_x, m.spawn_y = m.x, m.y
         aggro_monster(m, h, gs.monsters)
@@ -63,11 +66,6 @@ class LibraryTest(unittest.TestCase):
 
 
 class KitTest(unittest.TestCase):
-    def test_poisoners_have_poison_dagger(self):
-        for key in (9, 2, 8):
-            self.assertEqual(SPAWN_STATS[key]["kit"], ["Poison Dagger"], key)
-            self.assertNotIn("condition", SPAWN_STATS[key])
-
     def test_skill_level_follows_monster_level(self):
         self.assertEqual([monster_skill_level(lv) for lv in (1, 9, 10, 19, 20, 30)], [1, 1, 2, 2, 3, 3])
 
@@ -81,7 +79,7 @@ class KitTest(unittest.TestCase):
         self.assertAlmostEqual(ab.mana_cost, mana_rate(m.level) * ab.cooldown, delta=0.05)
 
     def test_monsters_without_a_kit_have_no_mana(self):
-        world, p, (m,) = arena("Grey Wolf")
+        world, p, (m,) = arena(5)
         self.assertEqual((m.abilities, m.max_mana), ({}, 0))
 
 
@@ -182,7 +180,7 @@ class FireBlastTest(unittest.TestCase):
         self.assertIsNone(casting.monster_turn(world, m))
 
     def test_heroes_fire_blast_still_pulls_the_monster(self):
-        world, p, mobs = arena("Human Cultist", 1, hero_cls="Wizard", hero_level=10)
+        world, p, mobs = arena(9, 1, hero_cls="Wizard", hero_level=10)
         m = mobs[0]
         m.aggro_state = AggroState.IDLE
         m.hate.clear()

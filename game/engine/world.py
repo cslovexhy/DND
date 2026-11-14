@@ -237,22 +237,21 @@ class World:
         wx, wy = self.world_map.get_spawn_world_pos(sp.x, sp.y)
         is_boss = mt.get("boss", False)
         m = Monster(mt["name"], "Monster", wx, wy,
-                    hp=mt["hp"], ac=mt["ac"], speed=mt["speed"],
-                    attack_bonus=mt["atk"], attack_damage=mt["dmg"],
-                    experience=mt["xp"], is_boss=is_boss)
+                    hp=1, ac=mt["ac"], speed=mt["speed"],
+                    attack_bonus=0, attack_damage=0,
+                    experience=0, is_boss=is_boss)
         if self.on_monster_spawned:
             self.on_monster_spawned(m)
         m.skills = dict(mt.get("skills", {}))
         m.unique = mt.get("unique", False)  # one-of-a-kind minion: name shown, but respawns/leashes like a normal mob
         m.category = mt["category"]   # humanoid / beast / demon: decides money drops
         m.drops = mt["drops"]         # this type's drop table (monsters.MONSTER_DROPS, or the map's override)
-        level_range = mt.get("level")
-        m.leveled = level_range is not None
-        if m.leveled:                 # the monster has a level range: HP and XP follow the rolled level
-            m.level = random.randint(level_range[0], level_range[1])
-            m.max_hp = hp_for_level(m.level)
-            m.experience = base_xp_for_level(m.level)
-            m.base_damage = damage_for_level(m.level)   # each hit rolls x0.9..x1.1 (Monster.hit_damage)
+        level_range = mt["level"]
+        m.leveled = True              # every monster has a level: HP, damage and XP follow the rolled one
+        m.level = random.randint(level_range[0], level_range[1])
+        m.max_hp = hp_for_level(m.level)
+        m.experience = base_xp_for_level(m.level)
+        m.base_damage = damage_for_level(m.level)   # each hit rolls x0.9..x1.1 (Monster.hit_damage)
         m.weapon_speed = mt.get("swing", MONSTER_SWING_TIME) * (0.8 if is_boss else 1.0)   # bosses swing faster
         self._give_kit(m, mt.get("kit", ()))
         m.max_hp *= monster_hp_mult(mt)   # per-type HP multiplier (default 1)

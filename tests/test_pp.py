@@ -19,18 +19,18 @@ def world(pp):
 
 
 def base_hp(m):
-    """HP before pp: from the level for monsters with a map level, else the hand-tuned SPAWN_STATS HP."""
+    """HP before pp: from the monster level."""
     stats = SPAWN_STATS[m.spawn_type]
-    hp = hp_for_level(m.level) if m.leveled else stats["hp"] * HP_SCALE
+    hp = hp_for_level(m.level)
     return hp * monster_hp_mult(stats)
 
 
 def base_xp(m):
-    return base_xp_for_level(m.level) if m.leveled else SPAWN_STATS[m.spawn_type]["xp"]
+    return base_xp_for_level(m.level)
 
 
 def base_dmg(m):
-    return damage_for_level(m.level) if m.leveled else SPAWN_STATS[m.spawn_type]["dmg"] * HP_SCALE // 2
+    return damage_for_level(m.level)
 
 
 class PpRulesTest(unittest.TestCase):

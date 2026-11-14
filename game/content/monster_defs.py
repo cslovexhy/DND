@@ -8,17 +8,15 @@ Ids are never reused: next_id keeps counting up even after a monster is deleted.
 {"type": <monster id>, "x": .., "y": ..}. Everything about a monster is defined here, once, for every map: if the
 same monster should be tougher somewhere else or drop other things, make a second monster type (Duplicate).
 
-A definition (only name, sprite and drops have no default):
+A definition (only name, sprite, level and drops have no default):
   name, sprite           "Murloc Raider"; {"sheet": "creatures"|"dungeon", "col", "row", "big"?: true (drawn 1.5x)}
                          or {"file": png, "scale": n} (content/monster_art.py)
-  level                  [min, max] monster level (1-30): each spawn rolls one; it sets HP, damage and XP.
-                         No level: the raw hp / dmg / xp below are used and no level is shown
+  level                  [min, max] monster level (1-30), required: each spawn rolls one; it sets HP, damage and XP
   category               "humanoid" / "beast" / "demon"; humanoids carry money
   attack                 "melee" / "ranged" (ranged ones keep their distance and shoot)
   boss, unique           boss AI + immune to slow/freeze + slow respawn; one-of-a-kind (name shown)
   stealthy               hides when it has not fought for a while (the Demogorgon)
   ac, speed, hp_mult     armor; speed in board units (5 = 75 px/s); max HP multiplier
-  hp, dmg, atk, xp       raw board-game stats, used ONLY when the monster has no level
   swing                  seconds between attacks (default 2.0; bosses 20% faster)
   sense_range            px: how far it notices heroes (default 170)
   attack_range           px: how close it fights from (default 50 melee / 220 ranged)
@@ -42,11 +40,11 @@ ATTACKS = ("melee", "ranged")
 MAX_NAME = 32
 
 DEFAULTS = {"category": "humanoid", "attack": "melee", "boss": False, "unique": False, "ac": 14, "speed": 5,
-            "hp_mult": 1.0, "hp": 2, "dmg": 1, "atk": 8, "xp": 10, "sense_range": 170, "skills": [], "drops": []}
-LIMITS = {"ac": (8, 25), "speed": (1, 12), "hp_mult": (0.1, 20.0), "hp": (1, 50), "dmg": (0, 10), "atk": (1, 20),
-          "xp": (1, 500), "swing": (0.2, 10.0), "sense_range": (30, 1000), "attack_range": (20, 400),
+            "hp_mult": 1.0, "sense_range": 170, "skills": [], "drops": []}
+LIMITS = {"ac": (8, 25), "speed": (1, 12), "hp_mult": (0.1, 20.0),
+          "swing": (0.2, 10.0), "sense_range": (30, 1000), "attack_range": (20, 400),
           "respawn_mult": (0.1, 50.0)}
-INTEGERS = {"ac", "speed", "hp", "dmg", "atk", "xp", "sense_range", "attack_range"}
+INTEGERS = {"ac", "speed", "sense_range", "attack_range"}
 FLAGS = ("boss", "unique", "relentless", "stealthy")
 
 # the HP-triggered boss skills and their settings (engine/skills.py); new ones start from these
@@ -76,7 +74,7 @@ class Definitions(dict):
 
 def new_definition(name):
     """A fresh type with the defaults (picture: the first creature tile)."""
-    return {"name": name, "sprite": {"sheet": "creatures", "col": 0, "row": 0}, **json.loads(json.dumps(DEFAULTS))}
+    return {"name": name, "sprite": {"sheet": "creatures", "col": 0, "row": 0}, "level": [1, 1], **json.loads(json.dumps(DEFAULTS))}
 
 
 def duplicate(d, name):
@@ -126,10 +124,10 @@ def validate(type_id, d, known_skills, known_items):
     if not isinstance(skills, list) or any(s not in known_skills for s in skills) or len(set(skills)) != len(skills):
         errs.append("skills must be a list of known skills (no repeats)")
     lv = d.get("level")
-    if lv is not None and not (isinstance(lv, list) and len(lv) == 2
+    if not (isinstance(lv, list) and len(lv) == 2
                                and all(isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 30 for v in lv)
                                and lv[0] <= lv[1]):
-        errs.append("level must be [min, max] with both 1-30")
+        errs.append("every monster needs a level: [min, max] with both 1-30")
     hm = d.get("hive_mind")
     if hm is not None and not (isinstance(hm, dict) and _number(hm.get("range")) and 50 <= hm["range"] <= 3000
                                and isinstance(hm.get("types"), list)
@@ -165,8 +163,8 @@ def to_spawn_stats(d):
     """The SPAWN_STATS entry (what the game reads) of a definition."""
     def get(key):
         return d.get(key, DEFAULTS.get(key))
-    stats = {"name": d["name"].strip(), "hp": get("hp"), "ac": get("ac"), "speed": get("speed"), "atk": get("atk"),
-             "dmg": get("dmg"), "xp": get("xp"), "category": get("category"),
+    stats = {"name": d["name"].strip(), "ac": get("ac"), "speed": get("speed"), "category": get("category"),
+             "level": list(d["level"]),
              "drops": [tuple(e) for e in d.get("drops", [])], "sprite": json.loads(json.dumps(d["sprite"])),
              "sense_range": get("sense_range"),
              "attack_range": d.get("attack_range", 220 if d.get("attack") == "ranged" else 50)}
@@ -178,8 +176,6 @@ def to_spawn_stats(d):
     for key in ("hp_mult", "swing", "respawn_mult"):
         if key in d and not (key == "hp_mult" and d[key] == 1.0):
             stats[key] = d[key]
-    if d.get("level"):
-        stats["level"] = list(d["level"])
     if d.get("skills"):
         stats["kit"] = list(d["skills"])
     if d.get("hive_mind"):

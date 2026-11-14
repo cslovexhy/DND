@@ -1,10 +1,10 @@
 {
  "version": 3,
- "next_id": 27,
+ "next_id": 29,
  "monsters": [
   {
    "id": 1,
-   "name": "Kobold Dragonshield",
+   "name": "Kobold Vermin",
    "sprite": {
     "sheet": "creatures",
     "col": 9,
@@ -14,21 +14,13 @@
    "attack": "melee",
    "boss": false,
    "unique": false,
-   "ac": 16,
+   "ac": 13,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 1,
-   "dmg": 1,
-   "atk": 7,
-   "xp": 5,
    "sense_range": 150,
    "attack_range": 45,
    "skills": [],
    "drops": [
-    [
-     "health_potion",
-     0.01
-    ],
     [
      "bread",
      0.03
@@ -36,33 +28,11 @@
     [
      "water",
      0.03
-    ],
-    [
-     "roast_chicken",
-     0.01
-    ],
-    [
-     "sushi_plate",
-     0.01
-    ],
-    [
-     "elven_nectar",
-     0.005,
-     10,
-     20
-    ],
-    [
-     "wine",
-     0.01
-    ],
-    [
-     "minor_mana_potion",
-     0.01
     ]
    ],
    "level": [
-    2,
-    4
+    1,
+    2
    ]
   },
   {
@@ -80,10 +50,6 @@
    "ac": 13,
    "speed": 6,
    "hp_mult": 1.0,
-   "hp": 1,
-   "dmg": 0,
-   "atk": 7,
-   "xp": 5,
    "sense_range": 120,
    "attack_range": 40,
    "skills": [
@@ -100,8 +66,8 @@
     ]
    ],
    "level": [
-    2,
-    3
+    5,
+    6
    ]
   },
   {
@@ -119,10 +85,6 @@
    "ac": 15,
    "speed": 4,
    "hp_mult": 1.0,
-   "hp": 2,
-   "dmg": 1,
-   "atk": 9,
-   "xp": 10,
    "sense_range": 180,
    "attack_range": 50,
    "skills": [],
@@ -153,6 +115,10 @@
      10,
      20
     ]
+   ],
+   "level": [
+    10,
+    10
    ]
   },
   {
@@ -170,10 +136,6 @@
    "ac": 13,
    "speed": 4,
    "hp_mult": 1.0,
-   "hp": 1,
-   "dmg": 1,
-   "atk": 6,
-   "xp": 5,
    "sense_range": 220,
    "attack_range": 220,
    "skills": [],
@@ -204,11 +166,15 @@
      10,
      20
     ]
+   ],
+   "level": [
+    8,
+    8
    ]
   },
   {
    "id": 5,
-   "name": "Grey Wolf",
+   "name": "Wolf Cub",
    "sprite": {
     "sheet": "creatures",
     "col": 3,
@@ -218,13 +184,9 @@
    "attack": "melee",
    "boss": false,
    "unique": false,
-   "ac": 14,
+   "ac": 12,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 2,
-   "dmg": 2,
-   "atk": 8,
-   "xp": 10,
    "sense_range": 170,
    "attack_range": 50,
    "skills": [],
@@ -258,10 +220,6 @@
    "ac": 16,
    "speed": 4,
    "hp_mult": 1.0,
-   "hp": 2,
-   "dmg": 1,
-   "atk": 8,
-   "xp": 10,
    "sense_range": 160,
    "attack_range": 50,
    "skills": [],
@@ -292,6 +250,10 @@
      10,
      20
     ]
+   ],
+   "level": [
+    10,
+    10
    ]
   },
   {
@@ -309,10 +271,6 @@
    "ac": 14,
    "speed": 3,
    "hp_mult": 1.0,
-   "hp": 2,
-   "dmg": 1,
-   "atk": 8,
-   "xp": 15,
    "sense_range": 140,
    "attack_range": 60,
    "skills": [],
@@ -325,6 +283,10 @@
      "bread",
      0.01
     ]
+   ],
+   "level": [
+    5,
+    5
    ]
   },
   {
@@ -342,10 +304,6 @@
    "ac": 15,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 2,
-   "dmg": 1,
-   "atk": 7,
-   "xp": 10,
    "sense_range": 180,
    "attack_range": 50,
    "skills": [
@@ -360,11 +318,15 @@
      "bread",
      0.01
     ]
+   ],
+   "level": [
+    7,
+    7
    ]
   },
   {
    "id": 9,
-   "name": "Human Cultist",
+   "name": "Defia Thug",
    "sprite": {
     "sheet": "creatures",
     "col": 7,
@@ -377,15 +339,9 @@
    "ac": 14,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 1,
-   "dmg": 1,
-   "atk": 6,
-   "xp": 5,
    "sense_range": 200,
    "attack_range": 50,
-   "skills": [
-    "Poison Dagger"
-   ],
+   "skills": [],
    "drops": [
     [
      "health_potion",
@@ -404,22 +360,8 @@
      0.01
     ],
     [
-     "sushi_plate",
-     0.01
-    ],
-    [
-     "elven_nectar",
-     0.005,
-     10,
-     20
-    ],
-    [
      "coffee",
      0.01
-    ],
-    [
-     "wine",
-     0.02
     ],
     [
      "minor_mana_potion",
@@ -450,10 +392,6 @@
    "ac": 16,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 1,
-   "dmg": 1,
-   "atk": 11,
-   "xp": 15,
    "sense_range": 170,
    "attack_range": 45,
    "skills": [],
@@ -466,6 +404,10 @@
      "bread",
      0.01
     ]
+   ],
+   "level": [
+    8,
+    8
    ]
   },
   {
@@ -482,10 +424,6 @@
    "ac": 16,
    "speed": 9,
    "hp_mult": 1.0,
-   "hp": 8,
-   "dmg": 3,
-   "atk": 10,
-   "xp": 20,
    "sense_range": 340,
    "attack_range": 50,
    "skills": [],
@@ -507,7 +445,11 @@
      14
     ]
    },
-   "stealthy": true
+   "stealthy": true,
+   "level": [
+    15,
+    15
+   ]
   },
   {
    "id": 12,
@@ -524,10 +466,6 @@
    "ac": 15,
    "speed": 7,
    "hp_mult": 1.0,
-   "hp": 2,
-   "dmg": 2,
-   "atk": 8,
-   "xp": 10,
    "sense_range": 170,
    "attack_range": 50,
    "skills": [],
@@ -540,6 +478,10 @@
      "bread",
      0.01
     ]
+   ],
+   "level": [
+    12,
+    12
    ]
   },
   {
@@ -557,10 +499,6 @@
    "ac": 14,
    "speed": 8,
    "hp_mult": 1.0,
-   "hp": 1,
-   "dmg": 1,
-   "atk": 7,
-   "xp": 5,
    "sense_range": 170,
    "attack_range": 50,
    "skills": [],
@@ -573,6 +511,10 @@
      "bread",
      0.01
     ]
+   ],
+   "level": [
+    10,
+    10
    ]
   },
   {
@@ -591,10 +533,6 @@
    "ac": 18,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 10,
-   "dmg": 3,
-   "atk": 11,
-   "xp": 50,
    "sense_range": 170,
    "attack_range": 50,
    "skills": [],
@@ -625,6 +563,10 @@
      10,
      20
     ]
+   ],
+   "level": [
+    30,
+    30
    ]
   },
   {
@@ -643,10 +585,6 @@
    "ac": 17,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 6,
-   "dmg": 1,
-   "atk": 8,
-   "xp": 25,
    "sense_range": 170,
    "attack_range": 55,
    "skills": [],
@@ -677,6 +615,10 @@
      10,
      20
     ]
+   ],
+   "level": [
+    15,
+    15
    ]
   },
   {
@@ -695,10 +637,6 @@
    "ac": 16,
    "speed": 4,
    "hp_mult": 1.0,
-   "hp": 12,
-   "dmg": 2,
-   "atk": 10,
-   "xp": 50,
    "sense_range": 170,
    "attack_range": 70,
    "skills": [],
@@ -726,7 +664,11 @@
      ],
      "damage_mult": 1.5
     }
-   }
+   },
+   "level": [
+    30,
+    30
+   ]
   },
   {
    "id": 17,
@@ -744,10 +686,6 @@
    "ac": 17,
    "speed": 4,
    "hp_mult": 1.0,
-   "hp": 9,
-   "dmg": 2,
-   "atk": 8,
-   "xp": 40,
    "sense_range": 170,
    "attack_range": 50,
    "skills": [],
@@ -760,6 +698,10 @@
      "bread",
      0.01
     ]
+   ],
+   "level": [
+    20,
+    20
    ]
   },
   {
@@ -778,10 +720,6 @@
    "ac": 15,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 5,
-   "dmg": 1,
-   "atk": 7,
-   "xp": 25,
    "sense_range": 170,
    "attack_range": 50,
    "skills": [],
@@ -812,6 +750,10 @@
      10,
      20
     ]
+   ],
+   "level": [
+    15,
+    15
    ]
   },
   {
@@ -830,10 +772,6 @@
    "ac": 16,
    "speed": 4,
    "hp_mult": 1.0,
-   "hp": 5,
-   "dmg": 1,
-   "atk": 8,
-   "xp": 25,
    "sense_range": 170,
    "attack_range": 50,
    "skills": [],
@@ -864,6 +802,10 @@
      10,
      20
     ]
+   ],
+   "level": [
+    15,
+    15
    ]
   },
   {
@@ -882,10 +824,6 @@
    "ac": 15,
    "speed": 6,
    "hp_mult": 1.0,
-   "hp": 5,
-   "dmg": 2,
-   "atk": 9,
-   "xp": 25,
    "sense_range": 170,
    "attack_range": 55,
    "skills": [],
@@ -894,6 +832,10 @@
      "drumstick",
      0.03
     ]
+   ],
+   "level": [
+    20,
+    20
    ]
   },
   {
@@ -912,10 +854,6 @@
    "ac": 14,
    "speed": 3,
    "hp_mult": 1.0,
-   "hp": 5,
-   "dmg": 2,
-   "atk": 8,
-   "xp": 25,
    "sense_range": 170,
    "attack_range": 60,
    "skills": [],
@@ -928,6 +866,10 @@
      "bread",
      0.01
     ]
+   ],
+   "level": [
+    20,
+    20
    ]
   },
   {
@@ -946,10 +888,6 @@
    "ac": 15,
    "speed": 5,
    "hp_mult": 2,
-   "hp": 4,
-   "dmg": 2,
-   "atk": 8,
-   "xp": 30,
    "sense_range": 170,
    "attack_range": 50,
    "skills": [],
@@ -1018,10 +956,6 @@
    "ac": 14,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 2,
-   "dmg": 1,
-   "atk": 8,
-   "xp": 10,
    "sense_range": 170,
    "attack_range": 50,
    "skills": [
@@ -1048,6 +982,10 @@
      "bread",
      0.01
     ]
+   ],
+   "level": [
+    5,
+    6
    ]
   },
   {
@@ -1065,10 +1003,6 @@
    "ac": 16,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 1,
-   "dmg": 1,
-   "atk": 7,
-   "xp": 5,
    "sense_range": 150,
    "attack_range": 45,
    "skills": [],
@@ -1107,11 +1041,15 @@
      "minor_mana_potion",
      0.01
     ]
+   ],
+   "level": [
+    10,
+    10
    ]
   },
   {
    "id": 25,
-   "name": "Grey Wolf",
+   "name": "Young Grey Wolf",
    "sprite": {
     "sheet": "creatures",
     "col": 3,
@@ -1124,10 +1062,6 @@
    "ac": 14,
    "speed": 5,
    "hp_mult": 1.0,
-   "hp": 2,
-   "dmg": 2,
-   "atk": 8,
-   "xp": 10,
    "sense_range": 170,
    "attack_range": 50,
    "skills": [],
@@ -1139,7 +1073,15 @@
     [
      "minor_mana_potion",
      0.01
+    ],
+    [
+     "axe",
+     0.02
     ]
+   ],
+   "level": [
+    4,
+    6
    ]
   },
   {
@@ -1157,10 +1099,6 @@
    "ac": 13,
    "speed": 6,
    "hp_mult": 1.0,
-   "hp": 1,
-   "dmg": 0,
-   "atk": 7,
-   "xp": 5,
    "sense_range": 120,
    "attack_range": 40,
    "skills": [
@@ -1175,6 +1113,96 @@
      "minor_mana_potion",
      0.01
     ]
+   ],
+   "level": [
+    5,
+    5
+   ]
+  },
+  {
+   "id": 27,
+   "name": "Kobold Worker",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 9,
+    "row": 7
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 13,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "sense_range": 150,
+   "attack_range": 45,
+   "skills": [],
+   "drops": [
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "wooden_sword",
+     0.01
+    ]
+   ],
+   "level": [
+    3,
+    4
+   ]
+  },
+  {
+   "id": 28,
+   "name": "Kobold Tunneler",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 9,
+    "row": 7
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 14,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "sense_range": 150,
+   "attack_range": 45,
+   "skills": [],
+   "drops": [
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "minor_mana_potion",
+     0.01
+    ],
+    [
+     "axe",
+     0.01
+    ]
+   ],
+   "level": [
+    4,
+    4
    ]
   }
  ]

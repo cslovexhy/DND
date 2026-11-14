@@ -56,7 +56,7 @@ def main():
     ac = args.ac if args.ac is not None else base["ac"]
     tuner = Tuner(group, args.level, args.target_time, ac, tuple(range(1, args.seeds + 1)), args.boss,
                   None, args.aim)
-    print(f"Boss {args.boss} (now: AC {base['ac']}, HP {base['hp']}, dmg {base['dmg']} board)   group {group} "
+    print(f"Boss {args.boss} (now: AC {base['ac']}, level {base['level'][0]}-{base['level'][1]})   group {group} "
           f"level {args.level}   target {args.target_time:.0f}s")
 
     if args.eval:
