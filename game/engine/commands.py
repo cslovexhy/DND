@@ -103,6 +103,12 @@ class PickUp:
 
 
 @dataclass
+class Gather:
+    """Gather an item from the map (click it): walk there, then channel 2 s (moving or being hit cancels it)."""
+    node_id: int
+
+
+@dataclass
 class TradeOpen:
     """Start trading with another player (their hero's id): both get a trade window."""
     hero_id: int
@@ -162,7 +168,7 @@ class HoldPosition:
 # --- (de)serialization: commands are plain data, so they can be logged and sent over a wire ---
 _BY_NAME = {cls.__name__: cls for cls in (
     MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion, ToggleAutopilot, ToggleCompanion,
-    CancelChannel, BindLeftSkill, HoldPosition, UseItem, Unequip, PickUp, SetTarget, MoveDir, TradeOpen,
+    CancelChannel, BindLeftSkill, HoldPosition, UseItem, Unequip, PickUp, Gather, SetTarget, MoveDir, TradeOpen,
     TradeOffer, TradeTake, TradeAccept, TradeCancel, Buy, Train)}
 
 

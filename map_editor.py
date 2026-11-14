@@ -127,6 +127,7 @@ class MapData:
             MapLayer("objects", width, height),
         ]
         self.spawns = []  # [{"type": 1, "x": 12, "y": 8}, ...]
+        self.item_spawns = []  # items to gather: [{"item": 8, "x": 3, "y": 4, "respawn": 60, "count": 1}, ...]
         # Fields the editor doesn't edit (npcs, music, zone info, ...) are kept and written back unchanged
         self.extra = {}
 
@@ -134,6 +135,20 @@ class MapData:
         # Remove existing spawn at same position
         self.spawns = [s for s in self.spawns if not (s["x"] == x and s["y"] == y)]
         self.spawns.append({"type": spawn_type, "x": x, "y": y})
+
+    def add_item_spawn(self, item, x, y, respawn=60, count=1):
+        """An item to gather on this tile (replaces the one that was there)."""
+        self.item_spawns = [s for s in self.item_spawns if not (s["x"] == x and s["y"] == y)]
+        sp = {"item": item, "x": x, "y": y, "respawn": respawn}
+        if count != 1:
+            sp["count"] = count
+        self.item_spawns.append(sp)
+
+    def remove_item_spawn(self, x, y):
+        self.item_spawns = [s for s in self.item_spawns if not (s["x"] == x and s["y"] == y)]
+
+    def get_item_spawn_at(self, x, y):
+        return next((s for s in self.item_spawns if s["x"] == x and s["y"] == y), None)
 
     def remove_spawn(self, x, y):
         self.spawns = [s for s in self.spawns if not (s["x"] == x and s["y"] == y)]
@@ -158,7 +173,8 @@ class MapData:
                 }
                 for layer in self.layers
             ],
-            "spawns": self.spawns
+            "spawns": self.spawns,
+            **({"item_spawns": self.item_spawns} if self.item_spawns else {}),
         }
 
     @classmethod
@@ -173,8 +189,9 @@ class MapData:
                 layer.tiles = layer_data["tiles"]
                 m.layers.append(layer)
         m.spawns = data.get("spawns", [])
+        m.item_spawns = data.get("item_spawns", [])
         m.extra = {k: v for k, v in data.items()
-                   if k not in ("width", "height", "tileset", "layers", "spawns", "schema_version")}
+                   if k not in ("width", "height", "tileset", "layers", "spawns", "item_spawns", "schema_version")}
         return m
 
 
@@ -293,6 +310,10 @@ show_walkability = False
 fill_mode = False
 sample_mode = False  # Eyedropper: click tile on canvas to select it
 spawn_mode = False     # When true, palette shows spawn types (monsters) instead of tiles
+spawn_page = "monsters"   # the spawn palette's sub-page: "monsters" or "items" (items to gather: Tab switches)
+item_respawn = 60         # seconds an item spawn placed from now on takes to come back
+spawn_page_buttons = []   # [(rect, page)] of the sub-page tabs (rebuilt every frame)
+item_respawn_rect = pygame.Rect(0, 0, 0, 0)
 location_mode = False  # When true, palette shows location types (hero_start, connections)
 painting = False  # Is left mouse held down?
 erasing = False   # Is right mouse held down?
@@ -312,6 +333,20 @@ LOCATION_TYPES = [
 ] + [{"id": f"connection_{chr(97+i)}", "name": f"Connection {chr(65+i)}", "color": (255, 255, 0)} for i in range(26)]
 
 SPAWN_TYPES = []   # built from the game's monster types (+ custom ones): refresh_spawn_types()
+ITEM_SPAWN_TYPES = []   # the spawn palette's items page: every item of data/items.json (refresh_item_types())
+
+
+def refresh_item_types():
+    """The items page of the spawn palette: every item, by kind then name (the Items screen, I, edits them)."""
+    ITEM_SPAWN_TYPES[:] = [
+        {"id": iid, "name": it["name"], "icon": tuple(it["icon"]), "color": (255, 220, 140)}
+        for iid, it in sorted(items_mod.ITEMS.items(), key=lambda kv: (item_defs.KINDS.index(kv[1]["kind"]),
+                                                                      kv[1]["name"].lower()))]
+
+
+def spawn_list():
+    """What the spawn palette shows now: the monsters page or the items page."""
+    return ITEM_SPAWN_TYPES if spawn_page == "items" else SPAWN_TYPES
 
 
 def refresh_spawn_types():
@@ -329,6 +364,7 @@ monster_art = monster_panel.Art()
 # Combined list for rendering (lookup by id)
 ALL_SPAWN_TYPES = []
 refresh_spawn_types()
+refresh_item_types()
 
 selected_spawn = 0  # Index into active palette (SPAWN_TYPES or LOCATION_TYPES)
 
@@ -362,7 +398,7 @@ def draw_toolbar():
         ("Spawns (3)", "spawns"),
         ("Locations (4)", "locations"),
         ("Monsters (M)", "monsters"),
-        ("Quests & NPCs (Q)", "story"),
+        ("Quests (Q)", "story"),
         ("Items (I)", "items"),
     ]
     for label, action in btn_labels:
@@ -381,7 +417,7 @@ def draw_toolbar():
     if sample_mode:
         mode_text = "SAMPLE MODE — Click a tile to pick it"
     elif spawn_mode:
-        mode_text = f"SPAWN MODE — {SPAWN_TYPES[selected_spawn]['name']}"
+        mode_text = f"SPAWN MODE — {spawn_list()[selected_spawn]['name']}"
     elif location_mode:
         mode_text = f"LOCATION MODE — {LOCATION_TYPES[selected_spawn]['name']}"
     elif placing_npc:
@@ -390,7 +426,9 @@ def draw_toolbar():
     else:
         mode_text = f"Layer: {map_data.layers[current_layer].name} [{current_layer+1}/{len(map_data.layers)}]"
     lt = font.render(mode_text, True, COL_TEXT)
-    screen.blit(lt, (SCREEN_W - lt.get_width() - 10, 12))
+    bar = pygame.Rect(SCREEN_W - lt.get_width() - 20, SCREEN_H - 26, lt.get_width() + 16, 22)   # (bottom right: the
+    pygame.draw.rect(screen, COL_TOOLBAR, bar, border_radius=4)                                # toolbar is full)
+    screen.blit(lt, (bar.x + 8, bar.y + 3))
 
     return buttons
 
@@ -403,25 +441,44 @@ def draw_palette():
 
     if spawn_mode or location_mode:
         # === SPAWN / LOCATION PALETTE ===
-        active_list = SPAWN_TYPES if spawn_mode else LOCATION_TYPES
+        active_list = spawn_list() if spawn_mode else LOCATION_TYPES
         title_text = "Spawn Palette" if spawn_mode else "Location Palette"
         title = font.render(title_text, True, COL_TEXT)
         screen.blit(title, (8, TOOLBAR_H + 5))
 
         # Selected item preview
         sp = active_list[selected_spawn]
-        if sp.get("art"):
+        if sp.get("icon"):
+            screen.blit(monster_art.icon(*sp["icon"], 28), (16, TOOLBAR_H + 31))
+        elif sp.get("art"):
             screen.blit(monster_art.monster(sp["art"], 28), (16, TOOLBAR_H + 31))
         else:
             pygame.draw.circle(screen, sp["color"], (30, TOOLBAR_H + 45), 12)
         name_text = font_sm.render(sp["name"], True, COL_TEXT)
         screen.blit(name_text, (50, TOOLBAR_H + 38))
+        list_top = TOOLBAR_H + 70
         if spawn_mode:
-            hint = font_sm.render("M: edit monster types", True, (150, 150, 150))
-            screen.blit(hint, (8, TOOLBAR_H + 56))
+            # sub-pages (Tab): monsters, or items to gather
+            spawn_page_buttons.clear()
+            tab_w = (PALETTE_W - 24) // 2
+            for k, (page, label) in enumerate((("monsters", "Monsters"), ("items", "Items"))):
+                r = pygame.Rect(8 + k * (tab_w + 8), TOOLBAR_H + 58, tab_w, 20)
+                pygame.draw.rect(screen, (70, 95, 120) if spawn_page == page else (55, 55, 62), r, border_radius=3)
+                screen.blit(font_sm.render(label, True, COL_TEXT), (r.x + 8, r.y + 4))
+                spawn_page_buttons.append((r, page))
+            global item_respawn_rect
+            if spawn_page == "items":
+                item_respawn_rect = pygame.Rect(8, TOOLBAR_H + 82, PALETTE_W - 16, 20)
+                pygame.draw.rect(screen, (55, 55, 62), item_respawn_rect, border_radius=3)
+                screen.blit(font_sm.render(f"Respawn {item_respawn:g}s (click: change)", True,
+                                           (200, 200, 150)), (item_respawn_rect.x + 6, item_respawn_rect.y + 4))
+            else:
+                item_respawn_rect = pygame.Rect(0, 0, 0, 0)
+                screen.blit(font_sm.render("M monsters  I items  Tab page", True, (150, 150, 150)),
+                            (8, TOOLBAR_H + 82))
+            list_top = TOOLBAR_H + 108
 
         # List all types
-        list_top = TOOLBAR_H + 70
         clicked_spawn = None
         for i, sp in enumerate(active_list):
             iy = list_top + i * 26
@@ -433,8 +490,10 @@ def draw_palette():
                 pygame.draw.rect(screen, (70, 90, 70), rect, border_radius=3)
             elif hovered:
                 pygame.draw.rect(screen, (60, 60, 70), rect, border_radius=3)
-            # Picture (monsters) or colour dot (locations)
-            if sp.get("art"):
+            # Picture (monsters, items) or colour dot (locations)
+            if sp.get("icon"):
+                screen.blit(monster_art.icon(*sp["icon"], 20), (12, iy + 2))
+            elif sp.get("art"):
                 screen.blit(monster_art.monster(sp["art"], 20), (12, iy + 2))
             else:
                 pygame.draw.circle(screen, sp["color"], (22, iy + 12), 7)
@@ -598,6 +657,18 @@ def draw_canvas():
         if zoom >= 2.0:
             label = font_sm.render(sp_name[:10], True, (255, 255, 255))
             screen.blit(label, (sx + 2, sy + tile_render_size - 12))
+
+    # Items to gather (the item's picture and its respawn time)
+    for isp in map_data.item_spawns:
+        it = items_mod.ITEMS.get(isp["item"])
+        sx = int(canvas_cx + (isp["x"] * tile_render_size) - cam_x * zoom)
+        sy = int(canvas_cy + (isp["y"] * tile_render_size) - cam_y * zoom)
+        if it is None or not canvas_rect.colliderect(pygame.Rect(sx, sy, tile_render_size, tile_render_size)):
+            continue
+        screen.blit(monster_art.icon(*it["icon"], max(8, tile_render_size)), (sx, sy))
+        pygame.draw.rect(screen, (255, 220, 120), (sx, sy, tile_render_size, tile_render_size), 1)
+        if tile_render_size >= 20:
+            screen.blit(font_sm.render(f"{isp.get('respawn', 60):g}s", True, (255, 235, 160)), (sx, sy - 12))
 
     # NPCs (their picture; the one being placed is outlined)
     for npc in map_data.extra.get("npcs", []):
@@ -817,7 +888,7 @@ def open_story():
 def open_items():
     """The Items screen (I): create / edit / duplicate / delete any item (what it does, its picture, its price)."""
     maps = {name: m for name, m in monster_defs.map_files().items() if name != last_filename}
-    maps[last_filename or "this map"] = {"item_spawns": map_data.extra.get("item_spawns", [])}
+    maps[last_filename or "this map"] = {"item_spawns": map_data.item_spawns}
     quest_list = quests_mod.load_quest_data()["quests"]
 
     def used_by(iid):
@@ -828,6 +899,7 @@ def open_items():
                           title, default, list_files=False, max_len=300 if long else 40),
                       art=monster_art, usage=used_by):
         items_mod.reload(items_mod.DEFS)
+        refresh_item_types()
         print(f"Saved {len(items_mod.DEFS)} item(s) to {item_defs.PATH}")
 
 
@@ -964,6 +1036,9 @@ while running:
                 if location_mode:
                     spawn_mode = False
                     selected_spawn = 0
+            elif event.key == pygame.K_TAB and spawn_mode:
+                spawn_page = "monsters" if spawn_page == "items" else "items"
+                selected_spawn = 0
             elif event.key == pygame.K_ESCAPE:
                 if placing_npc:
                     placing_npc = None
@@ -1024,8 +1099,18 @@ while running:
 
             # Palette click
             if mx < PALETTE_W and my > TOOLBAR_H:
-                # Handled via draw_palette return
-                pass
+                # Handled via draw_palette return (the spawn palette's tabs and respawn box are handled here)
+                if spawn_mode and event.button == 1:
+                    for rect, page in spawn_page_buttons:
+                        if rect.collidepoint(mx, my) and page != spawn_page:
+                            spawn_page, selected_spawn = page, 0
+                    if spawn_page == "items" and item_respawn_rect.collidepoint(mx, my):
+                        raw = text_input_prompt("Respawn seconds for new item spawns:", f"{item_respawn:g}",
+                                                list_files=False)
+                        try:
+                            item_respawn = min(86400, max(1, float(raw))) if raw else item_respawn
+                        except ValueError:
+                            pass
 
             # Canvas interactions
             elif mx >= PALETTE_W and my >= TOOLBAR_H:
@@ -1053,6 +1138,18 @@ while running:
                                 cols_fit = (PALETTE_W - 16) // (palette_tile_size + 2)
                                 palette_scroll = tile_idx // cols_fit
                                 sample_mode = False
+                        elif spawn_mode and spawn_page == "items":
+                            existing = map_data.get_item_spawn_at(tx, ty)
+                            if pygame.key.get_mods() & pygame.KMOD_SHIFT and existing is not None:
+                                raw = text_input_prompt("Respawn seconds of this item spawn:",
+                                                        f"{existing.get('respawn', 60):g}", list_files=False)
+                                try:
+                                    if raw:
+                                        existing["respawn"] = min(86400, max(1, float(raw)))
+                                except ValueError:
+                                    pass
+                            else:
+                                map_data.add_item_spawn(ITEM_SPAWN_TYPES[selected_spawn]["id"], tx, ty, item_respawn)
                         elif spawn_mode:
                             # Place spawn
                             map_data.add_spawn(SPAWN_TYPES[selected_spawn]["id"], tx, ty)
@@ -1084,7 +1181,9 @@ while running:
                 elif event.button == 3:  # Right click
                     tx, ty = screen_to_tile(mx, my)
                     if tx is not None:
-                        if spawn_mode or location_mode:
+                        if spawn_mode and spawn_page == "items":
+                            map_data.remove_item_spawn(tx, ty)
+                        elif spawn_mode or location_mode:
                             # Remove spawn/location
                             map_data.remove_spawn(tx, ty)
                         else:

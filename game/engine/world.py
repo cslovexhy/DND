@@ -35,6 +35,23 @@ from game.engine.trade import Trade
 from game.content import money
 
 
+DEFAULT_ITEM_RESPAWN = 60.0
+
+
+@dataclass
+class ItemNode:
+    """An item lying on the map for gathering (the map's "item_spawns"): anyone can gather it with a 2 s channel; it
+    is gone for everybody until its respawn timer runs out. It never moves or patrols."""
+    node_id: int
+    item: int          # item id (data/items.json)
+    count: int
+    x: float
+    y: float
+    respawn: float     # seconds until it is back
+    available: bool = True
+    timer: float = 0.0
+
+
 @dataclass
 class GroundItem:
     """An item lying on the map (a monster dropped it); anyone can pick it up."""
@@ -74,6 +91,7 @@ class World:
         self.on_npc_spawned = None
         self.npcs = []
         self.ground_items = []     # GroundItem: monster drops waiting to be picked up
+        self.item_nodes = []       # ItemNode: items to gather from the map (item_spawns)
         self.trades = {}           # player_id -> Trade (both traders map to the same one), see engine/trade.py
         self._next_item_id = itertools.count(1)
         # Entity registry (stable ids for commands/network) and command queue
@@ -303,6 +321,26 @@ class World:
             m = self.spawn_single_world_monster(sp)
             if m:
                 self.game_state.monsters.append(m)
+
+    def load_item_nodes(self):
+        """Create the map's gatherable items ("item_spawns": item id, tile x/y, optional count and respawn seconds)."""
+        from game.content.items import ITEMS
+        for sp in self.world_map.data.get("item_spawns", []):
+            if sp.get("item") not in ITEMS:
+                continue                              # an item that was deleted: nothing to gather
+            wx, wy = self.world_map.get_spawn_world_pos(sp["x"], sp["y"])
+            self.item_nodes.append(ItemNode(len(self.item_nodes) + 1, sp["item"], sp.get("count", 1), wx, wy,
+                                            float(sp.get("respawn", DEFAULT_ITEM_RESPAWN))))
+
+    def item_node(self, node_id):
+        return next((n for n in self.item_nodes if n.node_id == node_id), None) if node_id is not None else None
+
+    def update_item_nodes(self, dt):
+        for n in self.item_nodes:
+            if not n.available:
+                n.timer -= dt
+                if n.timer <= 0:
+                    n.available, n.timer = True, 0.0
 
     def load_npcs(self):
         """Create NPCs from map data (each map defines its own NPCs in the JSON)."""
@@ -602,6 +640,7 @@ class World:
         self.process_kills()
         self.process_level_ups()
         self.process_respawns()
+        self.update_item_nodes(dt)
         self.update_projectiles(dt)
         # Expire Wall shield when buff expires (heroes, and monsters shielded by a monster's Wall)
         for e in itertools.chain(self.player_heroes, gs.monsters):

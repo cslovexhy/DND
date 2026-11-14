@@ -13,7 +13,7 @@ from game.engine.ai import AggroState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
                                   ToggleAutopilot, ToggleCompanion, CancelChannel, BindLeftSkill, HoldPosition,
                                   UseItem, Unequip, PickUp, SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake,
-                                  TradeAccept, TradeCancel, Buy, Train)
+                                  TradeAccept, TradeCancel, Buy, Train, Gather)
 from game.engine.inventory import Inventory
 from game.content.items import (ITEMS, HEALTH_POTION, POTION_COOLDOWN, FOOD_DURATION, FOOD_BUFF, FOOD_HOT, DRINK_DURATION,
                                 DRINK_BUFF, DRINK_HOT)
@@ -25,6 +25,8 @@ from game.engine.hero_ai import create_hero_ai
 from game.content.heroes import HERO_CLASSES
 from game.engine.world_map import TILE_SIZE
 from game.content.skill_tree import stealth_upkeep
+
+GATHER_SECS = 2.0       # channel time to gather an item from the map (moving or being hit cancels it)
 
 # a failed cast's reason (engine/casting.py) -> what the player sees
 MESSAGES = {"no target": "No target!", "no line of sight": "No line of sight!", "out of range": "Out of range!",
@@ -61,6 +63,7 @@ class PlayerState:
         self.quests.set_inventory(self.inventory)   # item objectives count what is in the backpack
         self.potion_cooldown = 0.0       # seconds until the next Health Potion
         self.pickup_target = None        # ground item id we're walking to (PickUp)
+        self.gather_target = None        # item node id we're walking to (Gather)
         self.target = None               # WoW-style target (enemy or friendly hero) that hotbar skills use
         self.move_dir = (0, 0)           # WASD direction being held
         # Client choices that affect auto-attack (sent as BindLeftSkill / HoldPosition commands)
@@ -283,6 +286,29 @@ class PlayerState:
             skip.add(g.item_id)                           # behind a wall: don't search for it every frame
         return False
 
+    def _try_gather(self):
+        """Walking to an item node: once in reach start the 2 s gather channel. Nothing is said if it is gone or the
+        backpack is full (no popups): the walk just ends."""
+        node = self.world.item_node(self.gather_target)
+        if node is None or not node.available:
+            self.gather_target = None
+            return
+        hero = self.hero
+        if (node.x - hero.x) ** 2 + (node.y - hero.y) ** 2 > self.PICKUP_RANGE ** 2:
+            return
+        self.gather_target = None
+        self.move_path = []
+        if hero.channel is None and self.inventory.can_add(node.item):
+            actions.start_channel(self.world, hero, "Gather", GATHER_SECS, node, self._finish_gather,
+                                  needs_target=False, interruptible=True)
+
+    def _finish_gather(self, world, hero, node):
+        """The gather channel ran its 2 s: the item goes in the backpack and the node is gone until it respawns."""
+        if not node.available or not self.inventory.add(node.item, node.count):
+            return
+        node.available, node.timer = False, node.respawn
+        world.float_text(hero.x, hero.y - 30, f"+{ITEMS[node.item]['name']}", (255, 220, 140))
+
     def _try_pickup(self):
         """Walking to a ground item: take it once in reach (stop if it is gone or the backpack is full)."""
         item = self.world.ground_item(self.pickup_target)
@@ -340,6 +366,7 @@ class PlayerState:
             self.ambush_target = None
             self.pending_cast = None
             self.pickup_target = None
+            self.gather_target = None
         elif isinstance(cmd, SetTarget):
             self.set_target(cmd.target_id)
         elif isinstance(cmd, MoveDir):
@@ -351,6 +378,7 @@ class PlayerState:
                     self._stop_channel()
                 self.move_path = []
                 self.pickup_target = None
+                self.gather_target = None
                 self.pending_cast = None
                 self.ambush_target = None
         elif isinstance(cmd, UseItem):
@@ -391,11 +419,24 @@ class PlayerState:
             self._try_pickup()
             if self.pickup_target is not None:       # not in reach yet: walk there
                 self.move_path = self._path(hero.x, hero.y, item.x, item.y)
+        elif isinstance(cmd, Gather):
+            node = world.item_node(cmd.node_id)
+            if node is None or not node.available or self.is_companion or hero.channel is not None:
+                return
+            self.gather_target = node.node_id
+            self.pickup_target = None
+            self.selected_target = None
+            self.pending_cast = None
+            self.ambush_target = None
+            self._try_gather()
+            if self.gather_target is not None:           # not in reach yet: walk there
+                self.move_path = self._path(hero.x, hero.y, node.x, node.y)
         elif isinstance(cmd, SelectTarget):
             m = self._live_monster(cmd.target_id)
             if m is None:
                 return
             self.pickup_target = None
+            self.gather_target = None
             self.target = m
             # Click enemy = select + walk to attack range. LOS check — can't target what you can't see
             if not world.check_los(hero.x, hero.y, m.x, m.y):
@@ -543,6 +584,8 @@ class PlayerState:
             self.target = None               # the target died or vanished
         if self.pickup_target is not None:
             self._try_pickup()
+        if self.gather_target is not None:
+            self._try_gather()
         # Stealth upkeep: 1 / 2 / 3 mana per second (Stealth level); it breaks when the mana runs out
         if hero.stealthed:
             stealth = next((a for a in hero.abilities.values() if a.toggle), None)

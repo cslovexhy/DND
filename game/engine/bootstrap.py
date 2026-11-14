@@ -118,4 +118,5 @@ def create_world(map_path, char_data, debug=False, autopilot=False, auto_compani
 
     world.spawn_world_map_monsters()
     world.load_npcs()
+    world.load_item_nodes()
     return world, player

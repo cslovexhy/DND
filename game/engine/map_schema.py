@@ -111,6 +111,20 @@ def validate_map(data, known_spawn_types=None):
             errors.append(f"npc {i}: role must be \"trainer\" (with \"trains\": class) or \"vendor\" "
                           f"(with \"shop\": kind)")
 
+    item_spawns = data.get("item_spawns", [])
+    if not isinstance(item_spawns, list) or len(item_spawns) > MAX_SPAWNS:
+        errors.append(f"item_spawns must be a list (at most {MAX_SPAWNS})")
+        item_spawns = []
+    for i, sp in enumerate(item_spawns):
+        if not (isinstance(sp, dict) and _is_int(sp.get("item"), 1, 10 ** 6)
+                and _is_int(sp.get("x"), 0, w - 1) and _is_int(sp.get("y"), 0, h - 1)
+                and (sp.get("count") is None or _is_int(sp.get("count"), 1, 99))
+                and (sp.get("respawn") is None or (isinstance(sp["respawn"], (int, float))
+                                                   and not isinstance(sp["respawn"], bool)
+                                                   and 1 <= sp["respawn"] <= 86400))):
+            errors.append(f"item spawn {i}: needs an item id, x/y inside the map, optional count 1-99 and "
+                          "respawn 1-86400 seconds")
+
     music = data.get("music", [])
     if not isinstance(music, list) or len(music) > 50:
         errors.append("music must be a list of paths")

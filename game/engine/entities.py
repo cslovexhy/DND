@@ -361,6 +361,10 @@ class Entity:
             return 0
 
         self.was_hit = True  # flag for stealth-reveal logic (any incoming damage)
+        ch = self.channel
+        if ch is not None and ch.data.get("interruptible") and flash:    # being attacked breaks a gather channel
+            self.channel = None
+            self.conditions = [c for c in self.conditions if c.condition != Condition.IMMOBILIZED]
         if source is not None:
             raw_damage = raw_damage * source.damage_mult   # food buff, Demoralized, ... of whoever hits
 

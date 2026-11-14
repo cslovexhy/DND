@@ -39,7 +39,7 @@ from game.net.client import RemoteHost
 from types import SimpleNamespace
 from game.engine.player import PlayerState
 from game.engine.commands import (MoveTo, SelectTarget, Cast, InteractNpc, AmbushTarget, UsePotion,
-                                  ToggleAutopilot, ToggleCompanion, CancelChannel, UseItem, Unequip, PickUp,
+                                  ToggleAutopilot, ToggleCompanion, CancelChannel, UseItem, Unequip, PickUp, Gather,
                                   SetTarget, MoveDir, TradeOpen, TradeOffer, TradeTake, TradeAccept, TradeCancel,
                                   Buy, Train)
 from game.content.items import ITEMS, describe as describe_item
@@ -575,6 +575,16 @@ def get_ground_item_at_screen(sx, sy):
     wx = (sx - WIDTH//2) / cam_zoom + hero.x
     wy = (sy - HEIGHT//2) / cam_zoom + hero.y
     for g in view.ground_items:
+        if abs(g.x - wx) < TILE_SIZE * 0.45 and abs(g.y - wy) < TILE_SIZE * 0.45:
+            return g
+    return None
+
+
+def get_item_node_at_screen(sx, sy):
+    """Item to gather (from the map's item spawns) whose icon is under the cursor."""
+    wx = (sx - WIDTH//2) / cam_zoom + hero.x
+    wy = (sy - HEIGHT//2) / cam_zoom + hero.y
+    for g in view.item_nodes:
         if abs(g.x - wx) < TILE_SIZE * 0.45 and abs(g.y - wy) < TILE_SIZE * 0.45:
             return g
     return None
@@ -1394,6 +1404,10 @@ while running:
             if clicked_item is not None:
                 host.send(PickUp(clicked_item.id))
                 continue
+            clicked_node = get_item_node_at_screen(mx_s, my_s) if clicked_monster is None else None
+            if clicked_node is not None:
+                host.send(Gather(clicked_node.id))
+                continue
             clicked_friend = get_friend_at_screen(mx_s, my_s)
 
             if event.button == 1:      # Left-click: target an enemy / friend, or walk to the ground
@@ -1544,6 +1558,19 @@ while running:
         pygame.draw.ellipse(shadow, (0, 0, 0, 90), shadow.get_rect())
         screen.blit(shadow, (gx, gy + isz - isz // 6))
         screen.blit(item_icon(g.item, isz), (gx, gy + bob))
+
+    # Items to gather: the icon with a soft glow (click it: a 2 s gather)
+    for g in view.item_nodes:
+        isz = max(8, int(TILE_SIZE * 0.7 * cam_zoom))
+        gx = int((g.x - cx) * cam_zoom + WIDTH//2) - isz // 2
+        gy = int((g.y - cy) * cam_zoom + HEIGHT//2) - isz // 2
+        if gx < -isz or gx > WIDTH or gy < -isz or gy > HEIGHT:
+            continue
+        pulse = 0.5 + 0.5 * math.sin(view.game_time * 3 + g.id)
+        glow = pygame.Surface((isz * 2, isz * 2), pygame.SRCALPHA)
+        pygame.draw.circle(glow, (255, 230, 120, int(40 + 50 * pulse)), (isz, isz), isz)
+        screen.blit(glow, (gx - isz // 2, gy - isz // 2))
+        screen.blit(item_icon(g.item, isz), (gx, gy))
 
     # Effects
     for e in effects: e.draw(screen, cx, cy)

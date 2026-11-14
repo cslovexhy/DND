@@ -159,6 +159,7 @@ def make_snapshot(world, player_id=0):
                      "trained": dict(hero.trained) if hero.trained is not None else None},
     }
     ground_items = [{"id": g.item_id, "item": g.item, "x": g.x, "y": g.y} for g in world.ground_items]
+    item_nodes = [{"id": n.node_id, "item": n.item, "x": n.x, "y": n.y} for n in world.item_nodes if n.available]
     hazards = [{"kind": z.kind, "x": z.x, "y": z.y, "radius": z.radius, "elapsed": z.elapsed,
                 "remaining": z.remaining, "duration": z.duration, "cycles": z.cycles, "color": list(z.color)}
                for z in world.hazards]
@@ -173,5 +174,6 @@ def make_snapshot(world, player_id=0):
         "projectiles": projectiles,
         "hazards": hazards,                 # ground zones such as a boss' Deep Breath
         "ground_items": ground_items,       # monster drops anyone can pick up
+        "item_nodes": item_nodes,           # items to gather from the map (only while available)
         "you": you,
     }

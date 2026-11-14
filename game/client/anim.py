@@ -26,7 +26,7 @@ TIMELINES = {
 }
 OFF_HAND = {"chop": "chop_l", "sweep": "chop_l", "thrust": "thrust_l"}
 CHANNEL_HALF_RAISE = 0.15      # a channel's first 15% is the half raise, then raised + glowing until it ends
-NO_POSE_CHANNELS = {"Charge"}  # a dash wind-up, not a spell
+NO_POSE_CHANNELS = {"Charge", "Gather"}  # a dash wind-up / picking something up, not a spell
 
 
 def pose_for(attack=None, channel_progress=None, channel_skill=None):
