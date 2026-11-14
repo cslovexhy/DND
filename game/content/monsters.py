@@ -109,6 +109,45 @@ MONSTER_DROPS = {
 for _key, _stats in SPAWN_STATS.items():
     _stats["drops"] = MONSTER_DROPS[_key]             # KeyError = a new monster type without a drop table
 
+BUILTIN_TYPES = frozenset(SPAWN_STATS)
+
+
+def register_custom(defs):
+    """Add custom monster types (content/monster_defs.py; made in the map editor) to SPAWN_STATS, MONSTER_CATEGORY
+    and MONSTER_DROPS. Invalid ones are skipped with a message. Returns the ids added."""
+    from game.content import monster_defs
+    from game.content.items import ITEMS
+    from game.content.skill_library import SKILLS
+    added = []
+    for tid, d in defs.items():
+        errs = monster_defs.validate(tid, d, SKILLS, ITEMS, BUILTIN_TYPES)
+        if errs:
+            print(f"[MONSTERS] skipping custom monster {tid!r}: {'; '.join(errs)}")
+            continue
+        stats = monster_defs.to_spawn_stats(d)
+        SPAWN_STATS[tid] = stats
+        MONSTER_CATEGORY[tid] = stats["category"]
+        MONSTER_DROPS[tid] = stats["drops"]
+        added.append(tid)
+    return added
+
+
+def unregister_custom(type_ids):
+    """Remove custom types again (tests, the editor reloading the file)."""
+    for tid in type_ids:
+        if tid not in BUILTIN_TYPES:
+            for table in (SPAWN_STATS, MONSTER_CATEGORY, MONSTER_DROPS):
+                table.pop(tid, None)
+
+
+def _load_custom_types():
+    from game.content import monster_defs
+    try:
+        return register_custom(monster_defs.load())
+    except (OSError, ValueError) as e:
+        print(f"[MONSTERS] could not read {monster_defs.CUSTOM_PATH}: {e}")
+        return []
+
 
 def humanoid_money(level, rng):
     """Bronze a humanoid of this level drops: round(max(5, level x 8 - 40) x 0.8..1.2)."""
@@ -179,3 +218,6 @@ def respawn_delay(m):
     """Seconds until a killed monster respawns: RESPAWN_TIME x its "respawn_mult" (default 1, bosses 10)."""
     stats = SPAWN_STATS.get(getattr(m, "spawn_type", None), {})
     return RESPAWN_TIME * stats.get("respawn_mult", BOSS_RESPAWN_MULT if m.is_boss else 1)
+
+
+CUSTOM_TYPES = _load_custom_types()     # data/custom_monsters.json (made in the map editor), if there is one

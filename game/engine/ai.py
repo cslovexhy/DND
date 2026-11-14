@@ -516,7 +516,8 @@ ATTACK_RANGES = {
 def setup_monster_aggro(monster: Monster, nav_dungeon=None):
     """Initialize aggro for a newly spawned monster."""
     sense = SENSE_RANGES.get(monster.name, 170)
-    atk_range = ATTACK_RANGES.get(monster.name, 50)
+    ranged = getattr(monster, "ranged_attack_range", 0) > 0
+    atk_range = ATTACK_RANGES.get(monster.name, 220 if ranged else 50)   # (custom ranged types: archer range)
     monster.attack_range = atk_range
     # relentless / hive_mind may be pre-set on the monster from spawn data.
     relentless = getattr(monster, 'relentless', False)
@@ -560,6 +561,7 @@ def run_monster_ai(monster: Monster, heroes: list[Hero], dt: float,
     # Aggroed: special skills whose HP trigger was reached are queued here and cast by the World
     check_skill_triggers(monster)
 
-    # Aggroed: run behavior
-    ai_fn = ai_boss if monster.is_boss else AI_BEHAVIORS.get(monster.name, ai_melee)   # every boss uses the hate rules
+    # Aggroed: run behavior (every boss uses the hate rules; types without an entry: melee, or ranged if they shoot)
+    default = ai_ranged if getattr(monster, "ranged_attack_range", 0) > 0 else ai_melee
+    ai_fn = ai_boss if monster.is_boss else AI_BEHAVIORS.get(monster.name, default)
     return ai_fn(monster, heroes, dt, collision_fn)

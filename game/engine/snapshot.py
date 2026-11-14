@@ -10,6 +10,7 @@ SNAPSHOT_VERSION = 1
 ATTACK_ANIM_SECS = 0.5        # an attack is sent to clients for this long (its animation is shorter)
 
 from game.engine.ai import is_fighting   # noqa: E402  (pure: no pygame)
+from game.content.monsters import SPAWN_STATS   # noqa: E402
 from game.content.skill_tree import training_options   # noqa: E402
 
 
@@ -34,6 +35,10 @@ def _entity(e, kind, ctl=None):
         d["leveled"] = bool(getattr(e, "leveled", False))   # has a real level (map monster_levels): show "Lv N"
         if e.max_mana:                                       # it casts skills (a kit): the target frame shows its MP
             d["mana"], d["max_mana"] = e.mana, e.max_mana
+        # custom types (map editor): which picture to draw, so co-op players without the file still see it
+        stats = SPAWN_STATS.get(getattr(e, "spawn_type", None)) or {}
+        if stats.get("custom"):
+            d["art"] = dict(stats["sprite"])
     elif kind in ("hero", "ally", "companion"):
         d["class_name"] = e.class_name
         d["mana"], d["max_mana"] = e.mana, e.max_mana

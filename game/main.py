@@ -212,42 +212,27 @@ def load_sprite_file(path, scale=None):
     img = pygame.image.load(path).convert_alpha()
     return pygame.transform.scale(img, (scale, scale))
 
-MONSTER_SPRITES = {
-    "Kobold Dragonshield": get_creature(9, 7),
-    "Snake": get_creature(0, 4),
-    "Orc Smasher": get_creature(1, 1),
-    "Orc Archer": get_creature(0, 1),
-    "Human Cultist": get_creature(7, 6),
-    "Duergar Guard": get_creature(4, 12),
-    "Legion Devil": get_creature(8, 3),
-    "Grey Wolf": get_creature(3, 2),
-    "Grell": get_creature(0, 12),
-    "Gibbering Mouther": get_creature(4, 8),
-    "Demodog": get_creature(2, 10),  # Hellhound (CC0 Tiny Creatures)
-    "Demobat": get_creature(8, 13),  # Bat (CC0 Tiny Creatures)
-    "Vecna": get_creature(6, 9),     # Lich (CC0 Tiny Creatures)
-    # Demogorgon: original art, rendered 200% size so it looms over regular mobs
-    "Demogorgon": load_sprite_file("assets/stranger_things/sprites/demogorgon.png", CHAR_SIZE * 2),
-}
-BOSS_SPRITE = get_creature(9, 7, int(TILE_SIZE * BOSS_SCALE))
-GARRICK_SPRITE = get_creature(7, 6, int(TILE_SIZE * BOSS_SCALE))  # Scaled-up Human Cultist
-VECNA_SPRITE = get_creature(6, 9, int(TILE_SIZE * BOSS_SCALE))    # Scaled-up Lich
+def art_sprite(art):
+    """A sprite from an art reference (content/monster_art.py): a 16 px tile of the creatures or dungeon sheet, or a
+    loose PNG; "big" ones are drawn at boss size."""
+    if "file" in art:
+        return load_sprite_file(art["file"], int(CHAR_SIZE * art.get("scale", 1)))
+    size = int(TILE_SIZE * BOSS_SCALE) if art.get("big") else CHAR_SIZE
+    if art["sheet"] == "dungeon":
+        return pygame.transform.scale(get_dungeon_tile_raw(art["col"], art["row"]), (size, size))
+    return get_creature(art["col"], art["row"], size)
 
-def _boss_creature(col, row):
-    return get_creature(col, row, int(TILE_SIZE * BOSS_SCALE))
 
-# Bosses without an entry here fall back to BOSS_SPRITE (the scaled-up kobold).
-BOSS_SPRITES = {
-    "Ashardalon": _boss_creature(3, 3),
-    "Rage Drake": _boss_creature(8, 7),
-    "Garrick Padfoot": GARRICK_SPRITE,
-    "Vecna": VECNA_SPRITE,
-    "Otyugh": _boss_creature(5, 7),
-    "Bellax": _boss_creature(5, 0),
-    "Meerak": _boss_creature(8, 7),
-    "Karash": _boss_creature(5, 12),
-    "Margrath": _boss_creature(7, 2),
-}
+# Built-in and custom (data/custom_monsters.json) monster types, by monster name. "big" ones (bosses, uniques) go in
+# BOSS_SPRITES, which the client checks first.
+from game.content.monsters import SPAWN_STATS as _SPAWN_STATS   # noqa: E402
+from game.content.monster_art import art_for as _art_for, BOSS_DEFAULT as _BOSS_DEFAULT   # noqa: E402
+MONSTER_SPRITES, BOSS_SPRITES = {}, {}
+for _tid, _stats in _SPAWN_STATS.items():
+    _art = _art_for(_tid, _stats)
+    if _art is not None:
+        (BOSS_SPRITES if _art.get("big") else MONSTER_SPRITES)[_stats["name"]] = art_sprite(_art)
+BOSS_SPRITE = art_sprite(dict(_BOSS_DEFAULT, big=True))     # a boss without art: the scaled-up kobold
 
 # === AUTO MODE (AI playtesting) ===
 # --auto [--hero CLASS_IDX] [--level N] [--map PATH] runs a throwaway hero (level 1 unless --level) with the AI on.

@@ -9,6 +9,7 @@ plus the session inputs  char_data, USE_MAP, auto_mode, SAVING, auto_hero_idx, D
 When the player presses ESC (non-auto mode) `return_to_menu` ends up True.
 """
 import pygame
+import json
 import math
 import random
 import sys
@@ -213,12 +214,18 @@ else:
 MAP_ID = map_id_for(USE_MAP)  # key for per-map quest progress
 
 
+_art_cache = {}   # sprites of custom monster types sent by the host (by their art reference)
+
+
 def _attach_sprite(v):
     """Art for an entity the client just learned about (the simulation never deals with sprites)."""
     if v.kind in ("hero", "ally", "companion"):
         v.sprite = HERO_SPRITES[HERO_CLASS_BY_NAME[v.class_name]["sprite_key"]]
     elif v.kind == "monster":
-        v.sprite = BOSS_SPRITES.get(v.name) or (BOSS_SPRITE if v.is_boss else MONSTER_SPRITES.get(v.name))
+        art = getattr(v, "art", None)       # a custom type the host told us how to draw (we may not have its file)
+        v.sprite = (BOSS_SPRITES.get(v.name) or MONSTER_SPRITES.get(v.name)
+                    or (_art_cache.setdefault(json.dumps(art, sort_keys=True), art_sprite(art)) if art else None)
+                    or (BOSS_SPRITE if v.is_boss else None))
     elif v.kind == "npc" and v.sprite_tile:
         v.sprite = get_dungeon_tile(*v.sprite_tile)
 

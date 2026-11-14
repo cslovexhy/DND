@@ -12,6 +12,8 @@ Controls:
   F: Fill tool toggle
   W: Walkability overlay toggle
   1/2: Switch layers (ground/objects)
+  3: Spawn palette (every monster type the game knows; * = custom)   4: Location markers
+  M: Monster types — create custom monsters (picture, level range on this map, skills, drops, ...)
   Ctrl+S: Save
   Ctrl+O: Load
 """
@@ -25,7 +27,8 @@ from copy import deepcopy
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from game.engine.map_schema import SCHEMA_VERSION, validate_map   # noqa: E402  (pure, no pygame)
 from game.engine.map_patch import patch_diagonal_gaps   # noqa: E402  (pure, no pygame)
-from game.content.monsters import SPAWN_STATS                      # noqa: E402
+from game.content.monsters import SPAWN_STATS, BUILTIN_TYPES      # noqa: E402
+from game.content import monster_defs                               # noqa: E402
 KNOWN_SPAWN_TYPES = set(SPAWN_STATS)
 
 pygame.init()
@@ -67,6 +70,7 @@ clock = pygame.time.Clock()
 
 # Load spritesheet
 sheet_img = pygame.image.load(SPRITESHEET_PATH).convert_alpha()
+from game.editor import monster_panel                               # noqa: E402  (needs the display for images)
 
 font = pygame.font.SysFont("monospace", 13)
 font_sm = pygame.font.SysFont("monospace", 11)
@@ -304,35 +308,28 @@ LOCATION_TYPES = [
     # Connection points (map transitions)
 ] + [{"id": f"connection_{chr(97+i)}", "name": f"Connection {chr(65+i)}", "color": (255, 255, 0)} for i in range(26)]
 
-SPAWN_TYPES = [
-    # Monsters
-    {"id": "kobold_dragonshield", "name": "Kobold Dragonshield", "color": (200, 100, 50)},
-    {"id": "orc_smasher", "name": "Orc Smasher", "color": (150, 180, 50)},
-    {"id": "orc_archer", "name": "Orc Archer", "color": (180, 160, 50)},
-    {"id": "grey_wolf", "name": "Grey Wolf", "color": (139, 90, 43)},
-    {"id": "duergar_guard", "name": "Duergar Guard", "color": (100, 100, 140)},
-    {"id": "gibbering_mouther", "name": "Gibbering Mouther", "color": (180, 80, 180)},
-    {"id": "grell", "name": "Grell", "color": (120, 60, 120)},
-    {"id": "human_cultist", "name": "Human Cultist", "color": (80, 80, 80)},
-    {"id": "legion_devil", "name": "Legion Devil", "color": (200, 50, 50)},
-    {"id": "snake", "name": "Snake", "color": (50, 150, 50)},
-    # Stranger Things (Upside Down)
-    {"id": "demogorgon", "name": "Demogorgon", "color": (150, 30, 34)},
-    {"id": "demodog", "name": "Demodog", "color": (190, 150, 150)},
-    {"id": "demobat", "name": "Demobat", "color": (120, 70, 70)},
-    # Villains/Bosses
-    {"id": "ashardalon", "name": "Ashardalon (Boss)", "color": (255, 0, 0)},
-    {"id": "bellax", "name": "Bellax Gauth (Boss)", "color": (200, 0, 200)},
-    {"id": "meerak", "name": "Meerak (Boss)", "color": (255, 180, 0)},
-    {"id": "karash", "name": "Karash (Boss)", "color": (150, 0, 200)},
-    {"id": "margrath", "name": "Margrath (Boss)", "color": (180, 140, 60)},
-    {"id": "rage_drake", "name": "Rage Drake (Boss)", "color": (200, 80, 0)},
-    {"id": "otyugh", "name": "Otyugh (Boss)", "color": (80, 120, 0)},
-    {"id": "vecna", "name": "Vecna (Boss)", "color": (120, 130, 150)},
-]
+SPAWN_TYPES = []   # built from the game's monster types (+ custom ones): refresh_spawn_types()
+
+
+def refresh_spawn_types():
+    """The spawn palette: every monster type the game knows (game/content/monsters.py) plus the custom ones made in
+    the Monsters screen (M). Rebuilt in place, so code holding SPAWN_TYPES / ALL_SPAWN_TYPES sees the change."""
+    SPAWN_TYPES[:] = monster_panel.spawn_palette(custom_defs)
+    ALL_SPAWN_TYPES[:] = LOCATION_TYPES + SPAWN_TYPES
+    KNOWN_SPAWN_TYPES.clear()
+    KNOWN_SPAWN_TYPES.update(BUILTIN_TYPES | set(custom_defs))
+
+
+try:
+    custom_defs = monster_defs.load()      # data/custom_monsters.json
+except (OSError, ValueError) as e:
+    print(f"Could not read custom monster types: {e}")
+    custom_defs = {}
+monster_art = monster_panel.Art()
 
 # Combined list for rendering (lookup by id)
-ALL_SPAWN_TYPES = LOCATION_TYPES + SPAWN_TYPES
+ALL_SPAWN_TYPES = []
+refresh_spawn_types()
 
 selected_spawn = 0  # Index into active palette (SPAWN_TYPES or LOCATION_TYPES)
 
@@ -365,6 +362,7 @@ def draw_toolbar():
         ("Walkability (W)", "walk"),
         ("Spawns (3)", "spawns"),
         ("Locations (4)", "locations"),
+        ("Monsters (M)", "monsters"),
     ]
     for label, action in btn_labels:
         tw = font.size(label)[0] + 16
@@ -408,9 +406,15 @@ def draw_palette():
 
         # Selected item preview
         sp = active_list[selected_spawn]
-        pygame.draw.circle(screen, sp["color"], (30, TOOLBAR_H + 45), 12)
+        if sp.get("art"):
+            screen.blit(monster_art.monster(sp["art"], 28), (16, TOOLBAR_H + 31))
+        else:
+            pygame.draw.circle(screen, sp["color"], (30, TOOLBAR_H + 45), 12)
         name_text = font_sm.render(sp["name"], True, COL_TEXT)
         screen.blit(name_text, (50, TOOLBAR_H + 38))
+        if spawn_mode:
+            hint = font_sm.render("M: monster types (* = custom)", True, (150, 150, 150))
+            screen.blit(hint, (8, TOOLBAR_H + 56))
 
         # List all types
         list_top = TOOLBAR_H + 70
@@ -425,8 +429,11 @@ def draw_palette():
                 pygame.draw.rect(screen, (70, 90, 70), rect, border_radius=3)
             elif hovered:
                 pygame.draw.rect(screen, (60, 60, 70), rect, border_radius=3)
-            # Color dot
-            pygame.draw.circle(screen, sp["color"], (22, iy + 12), 7)
+            # Picture (monsters) or colour dot (locations)
+            if sp.get("art"):
+                screen.blit(monster_art.monster(sp["art"], 20), (12, iy + 2))
+            else:
+                pygame.draw.circle(screen, sp["color"], (22, iy + 12), 7)
             # Name
             nt = font_sm.render(sp["name"], True, COL_TEXT)
             screen.blit(nt, (36, iy + 5))
@@ -560,10 +567,14 @@ def draw_canvas():
                 sp_color = sp["color"]
                 sp_name = sp["name"]
                 break
-        # Draw colored diamond marker
+        # Draw colored diamond marker (monsters: their picture)
         center_x = sx + tile_render_size // 2
         center_y = sy + tile_render_size // 2
         r = max(6, tile_render_size // 3)
+        sp_art = next((sp.get("art") for sp in ALL_SPAWN_TYPES if sp["id"] == spawn["type"]), None)
+        if sp_art and tile_render_size >= 12:
+            screen.blit(monster_art.monster(sp_art, tile_render_size), (sx, sy))
+            continue
         points = [(center_x, center_y - r), (center_x + r, center_y),
                   (center_x, center_y + r), (center_x - r, center_y)]
         pygame.draw.polygon(screen, sp_color, points)
@@ -646,14 +657,16 @@ def erase_tile(tx, ty):
     return {"layer": current_layer, "x": tx, "y": ty, "old": old, "new": None}
 
 
-def text_input_prompt(title="Filename:", default="", allow_click_select=False):
+def text_input_prompt(title="Filename:", default="", allow_click_select=False, list_files=True):
     """Show a text input dialog in the center of screen. Returns string or None if cancelled.
-    If allow_click_select=True, existing files are clickable to auto-select."""
+    If allow_click_select=True, existing files are clickable to auto-select. list_files=False: a plain prompt (no
+    map files listed)."""
     input_text = default
     cursor_blink = 0
     prompt_font = pygame.font.SysFont("monospace", 18)
     title_font = pygame.font.SysFont("monospace", 14)
-    existing = sorted([f for f in os.listdir(save_dir) if f.endswith(".json")]) if os.path.exists(save_dir) else []
+    existing = (sorted([f for f in os.listdir(save_dir) if f.endswith(".json")])
+                if list_files and os.path.exists(save_dir) else [])
     hovered_file = None
 
     while True:
@@ -710,7 +723,8 @@ def text_input_prompt(title="Filename:", default="", allow_click_select=False):
         txt = prompt_font.render(display_text, True, (255, 255, 255))
         screen.blit(txt, (field_rect.x + 8, field_rect.y + 6))
 
-        hint = font_sm.render("Enter=confirm  ESC=cancel  (.json added auto)", True, (140, 140, 140))
+        hint = font_sm.render("Enter=confirm  ESC=cancel" + ("  (.json added auto)" if list_files else ""),
+                              True, (140, 140, 140))
         screen.blit(hint, (box_x + 20, box_y + 85))
 
         if existing:
@@ -761,6 +775,26 @@ def message_box(title, lines):
                     (box_x + 20, box_y + box_h - 28))
         pygame.display.flip()
         clock.tick(30)
+
+
+def open_monster_types():
+    """The Monsters screen (M): create / edit custom monster types and every type's level range on this map."""
+    levels = map_data.extra.setdefault("monster_levels", {})
+    saved = monster_panel.run(screen, clock, custom_defs, levels,
+                              ask=lambda title, default: text_input_prompt(title, default, list_files=False))
+    if saved:
+        live = set(BUILTIN_TYPES) | set(custom_defs)
+        map_data.spawns = [s for s in map_data.spawns          # deleted custom types leave the map too
+                           if s["type"] in live or s["type"] in {t["id"] for t in LOCATION_TYPES}]
+        for tid in [t for t in levels if t not in live]:
+            del levels[tid]
+        print(f"Saved {len(custom_defs)} custom monster type(s) to {monster_defs.CUSTOM_PATH} "
+              "(save the map too, to keep its level ranges)")
+    if not levels:
+        map_data.extra.pop("monster_levels", None)
+    refresh_spawn_types()
+    global selected_spawn
+    selected_spawn = min(selected_spawn, len(SPAWN_TYPES) - 1)
 
 
 last_filename = ""
@@ -876,6 +910,8 @@ while running:
                     selected_spawn = 0
             elif event.key == pygame.K_ESCAPE:
                 running = False
+            elif event.key == pygame.K_m:
+                open_monster_types()
             elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
                 zoom = min(max_zoom, zoom + 0.5)
             elif event.key == pygame.K_MINUS:
@@ -915,6 +951,8 @@ while running:
                         if location_mode:
                             spawn_mode = False
                             selected_spawn = 0
+                    elif action == "monsters":
+                        open_monster_types()
                     break
 
             # Palette click
