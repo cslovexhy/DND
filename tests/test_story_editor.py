@@ -84,8 +84,9 @@ class QuestDataTest(unittest.TestCase):
         self.assertEqual((log.quests["a"].turn_in, log.quests["a"].reward_npc), ("deputy_willem", "deputy_willem"))
 
     def test_the_real_quest_file_is_valid(self):
+        from game.content import items
         self.assertEqual(quests.validate_quest_data(quests.load_quest_data(), set(quests.npc_directory(refresh=True)),
-                                                    set(monster_defs.load())), [])
+                                                    set(monster_defs.load()), set(items.ITEMS)), [])
 
     def test_npc_ids_are_unique_across_maps(self):
         seen = {}
