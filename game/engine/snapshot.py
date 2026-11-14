@@ -11,6 +11,7 @@ ATTACK_ANIM_SECS = 0.5        # an attack is sent to clients for this long (its 
 
 from game.engine.ai import is_fighting   # noqa: E402  (pure: no pygame)
 from game.content.monsters import SPAWN_STATS   # noqa: E402
+from game import quests   # noqa: E402
 from game.content.skill_tree import training_options   # noqa: E402
 
 
@@ -81,7 +82,7 @@ def _food(hero):
 def quest_info(q):
     """Static description of a quest (for dialogue panels)."""
     return {"quest_id": q.quest_id, "title": q.title, "description": q.description,
-            "objectives": [dict(o) for o in q.objectives],
+            "objectives": [dict(o, target=quests.monster_label(o["monster"])) for o in q.objectives],
             "rewards_xp": q.rewards_xp, "rewards_gold": q.rewards_gold}
 
 

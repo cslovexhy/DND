@@ -7336,252 +7336,252 @@
   ],
   "spawns": [
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 6,
       "y": 28
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 3,
       "y": 28
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 1,
       "y": 25
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 4,
       "y": 23
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 6,
       "y": 25
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 9,
       "y": 26
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 9,
       "y": 29
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 8,
       "y": 22
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 7,
       "y": 19
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 4,
       "y": 19
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 11,
       "y": 21
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 11,
       "y": 24
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 11,
       "y": 17
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 7,
       "y": 15
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 14,
       "y": 20
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 15,
       "y": 23
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 14,
       "y": 26
     },
     {
-      "type": "grey_wolf",
+      "type": 25,
       "x": 13,
       "y": 28
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 8,
       "y": 11
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 10,
       "y": 13
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 13,
       "y": 13
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 13,
       "y": 11
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 16,
       "y": 11
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 18,
       "y": 13
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 18,
       "y": 16
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 19,
       "y": 9
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 15,
       "y": 8
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 11,
       "y": 8
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 8,
       "y": 7
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 11,
       "y": 5
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 14,
       "y": 6
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 17,
       "y": 5
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 21,
       "y": 4
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 15,
       "y": 4
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 16,
       "y": 3
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 17,
       "y": 3
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 20,
       "y": 2
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 22,
       "y": 7
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 22,
       "y": 10
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 24,
       "x": 21,
       "y": 12
     },
     {
-      "type": "snake",
+      "type": 26,
       "x": 25,
       "y": 4
     },
     {
-      "type": "snake",
+      "type": 26,
       "x": 29,
       "y": 5
     },
     {
-      "type": "snake",
+      "type": 26,
       "x": 33,
       "y": 3
     },
     {
-      "type": "snake",
+      "type": 26,
       "x": 36,
       "y": 5
     },
     {
-      "type": "snake",
+      "type": 26,
       "x": 35,
       "y": 8
     },
     {
-      "type": "snake",
+      "type": 26,
       "x": 32,
       "y": 8
     },
     {
-      "type": "snake",
+      "type": 26,
       "x": 28,
       "y": 8
     },
     {
-      "type": "snake",
+      "type": 26,
       "x": 37,
       "y": 12
     },
     {
-      "type": "snake",
+      "type": 26,
       "x": 33,
       "y": 12
     },
     {
-      "type": "snake",
+      "type": 26,
       "x": 30,
       "y": 10
     },

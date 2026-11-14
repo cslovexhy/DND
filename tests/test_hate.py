@@ -13,7 +13,7 @@ MAP = "data/maps/bossTestRoom.json"
 DT = 1 / 30
 
 
-def room(second_class="Fighter", boss_type="ashardalon"):
+def room(second_class="Fighter", boss_type=16):
     """A bossTestRoom world holding only one boss; two players standing next to it (boss idle, far from them)."""
     random.seed(3)
     world, p0 = create_world(MAP, saves.blank_character("tank", "Fighter", level=30))

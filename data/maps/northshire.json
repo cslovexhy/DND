@@ -128,28 +128,6 @@
       "shop": "armor"
     }
   ],
-  "monster_levels": {
-    "human_cultist": [
-      3,
-      4
-    ],
-    "kobold_dragonshield": [
-      2,
-      4
-    ],
-    "grey_wolf": [
-      1,
-      2
-    ],
-    "snake": [
-      2,
-      3
-    ],
-    "garrick_padfoot": [
-      5,
-      5
-    ]
-  },
   "schema_version": 1,
   "width": 80,
   "height": 60,
@@ -29208,227 +29186,227 @@
   ],
   "spawns": [
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 6,
       "y": 28
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 3,
       "y": 28
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 1,
       "y": 25
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 4,
       "y": 23
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 6,
       "y": 25
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 9,
       "y": 26
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 9,
       "y": 29
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 8,
       "y": 22
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 7,
       "y": 19
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 4,
       "y": 19
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 11,
       "y": 21
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 11,
       "y": 24
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 11,
       "y": 17
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 7,
       "y": 15
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 14,
       "y": 20
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 15,
       "y": 23
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 14,
       "y": 26
     },
     {
-      "type": "grey_wolf",
+      "type": 5,
       "x": 13,
       "y": 28
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 8,
       "y": 11
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 16,
       "y": 11
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 18,
       "y": 13
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 18,
       "y": 16
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 19,
       "y": 9
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 15,
       "y": 8
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 11,
       "y": 8
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 8,
       "y": 7
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 11,
       "y": 5
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 14,
       "y": 6
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 17,
       "y": 5
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 21,
       "y": 4
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 16,
       "y": 3
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 17,
       "y": 3
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 22,
       "y": 7
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 22,
       "y": 10
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 21,
       "y": 12
     },
     {
-      "type": "snake",
+      "type": 2,
       "x": 25,
       "y": 4
     },
     {
-      "type": "snake",
+      "type": 2,
       "x": 29,
       "y": 5
     },
     {
-      "type": "snake",
+      "type": 2,
       "x": 33,
       "y": 3
     },
     {
-      "type": "snake",
+      "type": 2,
       "x": 36,
       "y": 5
     },
     {
-      "type": "snake",
+      "type": 2,
       "x": 35,
       "y": 8
     },
     {
-      "type": "snake",
+      "type": 2,
       "x": 32,
       "y": 8
     },
     {
-      "type": "snake",
+      "type": 2,
       "x": 28,
       "y": 8
     },
     {
-      "type": "snake",
+      "type": 2,
       "x": 37,
       "y": 12
     },
     {
-      "type": "snake",
+      "type": 2,
       "x": 33,
       "y": 12
     },
     {
-      "type": "snake",
+      "type": 2,
       "x": 30,
       "y": 10
     },
@@ -29438,332 +29416,332 @@
       "y": 24
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 58,
       "y": 15
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 57,
       "y": 17
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 60,
       "y": 17
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 55,
       "y": 19
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 58,
       "y": 20
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 61,
       "y": 19
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 54,
       "y": 22
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 57,
       "y": 22
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 60,
       "y": 22
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 58,
       "y": 25
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 55,
       "y": 25
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 53,
       "y": 27
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 56,
       "y": 28
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 59,
       "y": 28
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 61,
       "y": 25
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 63,
       "y": 23
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 64,
       "y": 20
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 63,
       "y": 17
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 65,
       "y": 15
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 67,
       "y": 17
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 67,
       "y": 20
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 70,
       "y": 21
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 70,
       "y": 22
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 70,
       "y": 23
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 70,
       "y": 27
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 70,
       "y": 28
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 67,
       "y": 28
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 64,
       "y": 27
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 61,
       "y": 29
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 52,
       "y": 30
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 55,
       "y": 31
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 58,
       "y": 32
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 62,
       "y": 32
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 65,
       "y": 31
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 64,
       "y": 36
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 61,
       "y": 36
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 59,
       "y": 38
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 59,
       "y": 40
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 58,
       "y": 43
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 54,
       "y": 44
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 50,
       "y": 40
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 50,
       "y": 37
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 50,
       "y": 43
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 53,
       "y": 35
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 56,
       "y": 35
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 48,
       "y": 32
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 50,
       "y": 32
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 55,
       "y": 47
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 57,
       "y": 45
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 62,
       "y": 42
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 62,
       "y": 39
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 70,
       "y": 29
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 47,
       "y": 41
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 53,
       "y": 38
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 55,
       "y": 38
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 57,
       "y": 37
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 57,
       "y": 40
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 55,
       "y": 40
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 53,
       "y": 40
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 53,
       "y": 42
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 56,
       "y": 42
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 59,
       "y": 21
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 14,
       "y": 11
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 7,
       "y": 13
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 14,
       "y": 13
     },
     {
-      "type": "kobold_dragonshield",
+      "type": 1,
       "x": 11,
       "y": 13
     },
@@ -29773,17 +29751,17 @@
       "y": 27
     },
     {
-      "type": "garrick_padfoot",
+      "type": 22,
       "x": 69,
       "y": 17
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 68,
       "y": 16
     },
     {
-      "type": "human_cultist",
+      "type": 9,
       "x": 70,
       "y": 16
     }

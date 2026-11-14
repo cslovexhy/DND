@@ -18,8 +18,8 @@
       "description": "Your first task is one of cleansing. A clan of kobolds have infested the woods to the north. Go there and fight the kobold vermin you find. Reduce their numbers so that we may one day drive them from Northshire.",
       "objectives": [
         {
-          "target": "Kobold Dragonshield",
-          "count": 10
+          "count": 10,
+          "monster": 1
         }
       ],
       "rewards_xp": 250,
@@ -36,8 +36,8 @@
       "description": "My scouts tell me that the kobold infestation is larger than we had thought. A group of kobold workers has camped near the Echo Ridge Mine to the north. Go to the mine and remove them. We know there are at least ten.",
       "objectives": [
         {
-          "target": "Kobold Dragonshield",
-          "count": 10
+          "count": 10,
+          "monster": 1
         }
       ],
       "rewards_xp": 350,
@@ -54,8 +54,8 @@
       "description": "Your previous investigations are proof that the Echo Ridge Mine needs purging. Return to the mine and help clear it of kobolds. Waste no time. The longer the kobolds are left unmolested in the mine, the deeper a foothold they gain in Northshire.",
       "objectives": [
         {
-          "target": "Kobold Dragonshield",
-          "count": 12
+          "count": 12,
+          "monster": 1
         }
       ],
       "rewards_xp": 450,
@@ -72,8 +72,8 @@
       "description": "I hate those nasty timber wolves! But I sure like eating wolf steaks. Bring me tough wolf meat and I will exchange it for something you'll find useful. Tough wolf meat is gathered from hunting the timber wolves and young wolves wandering the Northshire countryside.",
       "objectives": [
         {
-          "target": "Grey Wolf",
-          "count": 8
+          "count": 8,
+          "monster": 5
         }
       ],
       "rewards_xp": 250,
@@ -90,8 +90,8 @@
       "description": "Recently, a new group of thieves has been hanging around Northshire. They call themselves the Defias Brotherhood, and have been seen across the river to the east. I don't know what they're up to, but I'm sure it's not good! Bring me the bandanas they wear, and I'll reward you with a weapon.",
       "objectives": [
         {
-          "target": "Human Cultist",
-          "count": 12
+          "count": 12,
+          "monster": 9
         }
       ],
       "rewards_xp": 375,
@@ -108,8 +108,8 @@
       "description": "The Defias have a leader in this area by the name of Garrick Padfoot. Kill him and bring me his head so we can send a message to those thieves that Northshire will not fall to their kind.",
       "objectives": [
         {
-          "target": "Garrick Padfoot",
-          "count": 1
+          "count": 1,
+          "monster": 22
         }
       ],
       "rewards_xp": 450,
@@ -126,8 +126,8 @@
       "description": "I was working in the vineyard behind the abbey when those wretched Defias thugs ran me off! I left behind a whole bushel of grapes. Could you go get them for me? You'll need to fight through those bandits to reach them.",
       "objectives": [
         {
-          "target": "Human Cultist",
-          "count": 8
+          "count": 8,
+          "monster": 9
         }
       ],
       "rewards_xp": 350,

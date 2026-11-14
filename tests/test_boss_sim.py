@@ -25,7 +25,7 @@ class BossStatsTest(unittest.TestCase):
         self.assertEqual({h.level for h in world.game_state.heroes}, {5})
 
     def test_other_boss_type_can_be_put_in_the_room(self):
-        world, boss = build_fight(("Fighter",), 3, BossStats(15, 1, 5), seed=1, boss_type="otyugh")
+        world, boss = build_fight(("Fighter",), 3, BossStats(15, 1, 5), seed=1, boss_type=21)
         self.assertEqual(boss.name, "Otyugh")
         self.assertEqual(len(world.game_state.monsters), 1)
 

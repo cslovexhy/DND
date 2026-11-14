@@ -75,7 +75,7 @@ class Assessment:
 
 
 class Tuner:
-    def __init__(self, group, level, target_time=120.0, ac=16, seeds=(1, 2, 3), boss_type="ashardalon",
+    def __init__(self, group, level, target_time=120.0, ac=16, seeds=(1, 2, 3), boss_type=16,
                  boss_attrs=None, aim=0.95):
         self.group = tuple(group)
         self.level = level

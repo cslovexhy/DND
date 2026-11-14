@@ -83,7 +83,7 @@ def validate_map(data, known_spawn_types=None):
         spawns = []
     has_start = False
     for i, sp in enumerate(spawns):
-        if not (isinstance(sp, dict) and isinstance(sp.get("type"), str) and len(sp["type"]) <= MAX_TEXT
+        if not (isinstance(sp, dict) and (_is_int(sp.get("type"), 1, 10**6) or (isinstance(sp.get("type"), str) and len(sp["type"]) <= MAX_TEXT))
                 and _is_int(sp.get("x"), 0, w - 1) and _is_int(sp.get("y"), 0, h - 1)):
             errors.append(f"spawn {i}: needs a type and x/y inside the map")
             continue
@@ -110,15 +110,6 @@ def validate_map(data, known_spawn_types=None):
                   or (n["role"] == "vendor" and isinstance(n.get("shop"), str) and len(n["shop"]) <= MAX_TEXT)):
             errors.append(f"npc {i}: role must be \"trainer\" (with \"trains\": class) or \"vendor\" "
                           f"(with \"shop\": kind)")
-
-    levels = data.get("monster_levels", {})
-    if not isinstance(levels, dict) or len(levels) > 200:
-        errors.append("monster_levels must be an object of spawn type -> [min, max]")
-        levels = {}
-    for kind, rng in levels.items():
-        if not (isinstance(kind, str) and len(kind) <= MAX_TEXT and isinstance(rng, list) and len(rng) == 2
-                and _is_int(rng[0], 1, 30) and _is_int(rng[1], 1, 30) and rng[0] <= rng[1]):
-            errors.append(f"monster_levels[{kind!r}] must be [min, max] levels 1..30")
 
     music = data.get("music", [])
     if not isinstance(music, list) or len(music) > 50:

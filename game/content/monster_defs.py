@@ -1,27 +1,34 @@
 """Monster definitions (pure; no pygame): the ONE place every monster type is defined, in data/monsters.json
-({"version": 2, "monsters": {type_id: definition}}). The map editor's Monsters screen creates, edits and deletes them;
-content/monsters.py loads the file into the tables the game uses (SPAWN_STATS, MONSTER_CATEGORY, MONSTER_DROPS).
+({"version": 3, "next_id": n, "monsters": [{"id": 7, ...definition...}, ...]}). The map editor's Monsters screen
+creates, edits and deletes them; content/monsters.py loads the file into the tables the game uses (SPAWN_STATS,
+MONSTER_CATEGORY, MONSTER_DROPS).
+
+A monster's ID is a permanent number (maps, quests and hive minds refer to it); its NAME can be changed freely.
+Ids are never reused: next_id keeps counting up even after a monster is deleted. A map's spawn point is
+{"type": <monster id>, "x": .., "y": ..}. Everything about a monster is defined here, once, for every map: if the
+same monster should be tougher somewhere else or drop other things, make a second monster type (Duplicate).
 
 A definition (only name, sprite and drops have no default):
   name, sprite           "Murloc Raider"; {"sheet": "creatures"|"dungeon", "col", "row", "big"?: true (drawn 1.5x)}
                          or {"file": png, "scale": n} (content/monster_art.py)
+  level                  [min, max] monster level (1-30): each spawn rolls one; it sets HP, damage and XP.
+                         No level: the raw hp / dmg / xp below are used and no level is shown
   category               "humanoid" / "beast" / "demon"; humanoids carry money
   attack                 "melee" / "ranged" (ranged ones keep their distance and shoot)
   boss, unique           boss AI + immune to slow/freeze + slow respawn; one-of-a-kind (name shown)
+  stealthy               hides when it has not fought for a while (the Demogorgon)
   ac, speed, hp_mult     armor; speed in board units (5 = 75 px/s); max HP multiplier
-  hp, dmg, atk, xp       raw board-game stats, used ONLY on maps that give the monster no level range
+  hp, dmg, atk, xp       raw board-game stats, used ONLY when the monster has no level
   swing                  seconds between attacks (default 2.0; bosses 20% faster)
   sense_range            px: how far it notices heroes (default 170)
   attack_range           px: how close it fights from (default 50 melee / 220 ranged)
   respawn_mult           x the 60 s respawn time (default 1; bosses 10)
   relentless             never gives up the chase
-  hive_mind              {"range": px, "types": [type ids]} aggros when one of those is attacked in range
+  hive_mind              {"range": px, "types": [monster ids]} aggros when one of those is attacked in range
   skills                 castable skills the AI uses (content/skill_library.py)
   boss_skills            HP-triggered boss skills: {"deep_breath": {...}, "enrage": {...}} (engine/skills.py)
   drops                  [[item, chance 0-1], [item, chance, min monster level, max monster level]]: this type's own
                          list, nothing is shared or inherited
-
-A monster's LEVEL (which sets its HP, damage and XP) is per map: the map's "monster_levels" {type_id: [min, max]}.
 """
 import json
 import os
@@ -29,7 +36,7 @@ import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PATH = os.path.join(ROOT, "data", "monsters.json")
-VERSION = 2
+VERSION = 3
 CATEGORIES = ("humanoid", "beast", "demon")
 ATTACKS = ("melee", "ranged")
 MAX_NAME = 32
@@ -40,13 +47,31 @@ LIMITS = {"ac": (8, 25), "speed": (1, 12), "hp_mult": (0.1, 20.0), "hp": (1, 50)
           "xp": (1, 500), "swing": (0.2, 10.0), "sense_range": (30, 1000), "attack_range": (20, 400),
           "respawn_mult": (0.1, 50.0)}
 INTEGERS = {"ac", "speed", "hp", "dmg", "atk", "xp", "sense_range", "attack_range"}
-FLAGS = ("boss", "unique", "relentless")
+FLAGS = ("boss", "unique", "relentless", "stealthy")
 
 # the HP-triggered boss skills and their settings (engine/skills.py); new ones start from these
 BOSS_SKILL_DEFAULTS = {
     "deep_breath": {"radius": 200, "duration": 3.0, "cycles": 3, "dps": 100, "windup": 1.5, "at_hp_pct": [0.5, 0.2]},
     "enrage": {"at_hp_pct": [0.5], "damage_mult": 1.5},
 }
+
+
+class Definitions(dict):
+    """{monster id: definition} that also remembers the next id to hand out (ids are never reused)."""
+    next_id = 1
+
+    def add(self, definition):
+        """Add a new monster; returns its new id."""
+        mid = self.next_id
+        self[mid] = definition
+        self.next_id = mid + 1
+        return mid
+
+    def take(self, other):
+        """Become a copy of `other` (the editor's Done)."""
+        self.clear()
+        self.update(other)
+        self.next_id = other.next_id
 
 
 def new_definition(name):
@@ -61,15 +86,6 @@ def duplicate(d, name):
     return c
 
 
-def type_id_for(name, taken):
-    """A type id from a name ("Murloc Raider" -> "murloc_raider"), unique among `taken`."""
-    base = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "monster"
-    tid, n = base, 2
-    while tid in taken:
-        tid, n = f"{base}_{n}", n + 1
-    return tid
-
-
 def _number(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
@@ -78,8 +94,8 @@ def validate(type_id, d, known_skills, known_items):
     """Problems with one definition (empty list = fine)."""
     from game.content.monster_art import SHEET_SIZE
     errs = []
-    if not re.fullmatch(r"[a-z0-9_]{1,40}", str(type_id)):
-        errs.append("id must be lowercase letters, digits and _")
+    if not (isinstance(type_id, int) and not isinstance(type_id, bool) and type_id >= 1):
+        errs.append("id must be a whole number from 1")
     if not isinstance(d, dict):
         return errs + ["definition must be an object"]
     name = d.get("name")
@@ -109,11 +125,16 @@ def validate(type_id, d, known_skills, known_items):
     skills = d.get("skills", [])
     if not isinstance(skills, list) or any(s not in known_skills for s in skills) or len(set(skills)) != len(skills):
         errs.append("skills must be a list of known skills (no repeats)")
+    lv = d.get("level")
+    if lv is not None and not (isinstance(lv, list) and len(lv) == 2
+                               and all(isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 30 for v in lv)
+                               and lv[0] <= lv[1]):
+        errs.append("level must be [min, max] with both 1-30")
     hm = d.get("hive_mind")
     if hm is not None and not (isinstance(hm, dict) and _number(hm.get("range")) and 50 <= hm["range"] <= 3000
                                and isinstance(hm.get("types"), list)
-                               and all(isinstance(t, str) for t in hm["types"])):
-        errs.append("hive_mind must be {\"range\": 50-3000, \"types\": [type ids]}")
+                               and all(isinstance(t, int) and not isinstance(t, bool) for t in hm["types"])):
+        errs.append("hive_mind must be {\"range\": 50-3000, \"types\": [monster ids]}")
     bs = d.get("boss_skills", {})
     if not isinstance(bs, dict) or any(k not in BOSS_SKILL_DEFAULTS or not isinstance(v, dict) for k, v in bs.items()):
         errs.append("boss_skills must be a subset of " + ", ".join(BOSS_SKILL_DEFAULTS))
@@ -157,6 +178,8 @@ def to_spawn_stats(d):
     for key in ("hp_mult", "swing", "respawn_mult"):
         if key in d and not (key == "hp_mult" and d[key] == 1.0):
             stats[key] = d[key]
+    if d.get("level"):
+        stats["level"] = list(d["level"])
     if d.get("skills"):
         stats["kit"] = list(d["skills"])
     if d.get("hive_mind"):
@@ -168,19 +191,32 @@ def to_spawn_stats(d):
 
 
 def load(path=PATH):
-    """{type_id: definition} from the file. Raises OSError / ValueError if it is missing or malformed."""
+    """The definitions as Definitions {id: definition}. Raises OSError / ValueError if the file is missing or
+    malformed."""
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    if not isinstance(data, dict) or not isinstance(data.get("monsters"), dict):
-        raise ValueError(f"{path}: expected {{\"version\": {VERSION}, \"monsters\": {{...}}}}")
-    return data["monsters"]
+    if not (isinstance(data, dict) and data.get("version") == VERSION and isinstance(data.get("monsters"), list)):
+        raise ValueError(f"{path}: expected {{\"version\": {VERSION}, \"next_id\": n, \"monsters\": [...]}}")
+    defs = Definitions()
+    for entry in data["monsters"]:
+        if not (isinstance(entry, dict) and isinstance(entry.get("id"), int) and not isinstance(entry["id"], bool)):
+            raise ValueError(f"{path}: every monster needs a whole-number \"id\"")
+        entry = dict(entry)
+        mid = entry.pop("id")
+        if mid in defs:
+            raise ValueError(f"{path}: id {mid} is used twice")
+        defs[mid] = entry
+    defs.next_id = max([data.get("next_id", 1)] + [m + 1 for m in defs])
+    return defs
 
 
 def save(defs, path=PATH):
-    """Write the file (types keep their order)."""
+    """Write the file (monsters keep their order)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    next_id = max([getattr(defs, "next_id", 1)] + [m + 1 for m in defs])
     with open(path, "w", encoding="utf-8") as f:
-        json.dump({"version": VERSION, "monsters": defs}, f, indent=1)
+        json.dump({"version": VERSION, "next_id": next_id,
+                   "monsters": [{"id": mid, **d} for mid, d in defs.items()]}, f, indent=1)
         f.write("\n")
 
 
@@ -198,7 +234,6 @@ def map_files(maps_dir=None):
     return out
 
 
-def maps_using(type_id, maps):
-    """Names of the maps (from map_files) that spawn this type or give it a level range."""
-    return [name for name, m in maps.items()
-            if any(s.get("type") == type_id for s in m.get("spawns", [])) or type_id in m.get("monster_levels", {})]
+def maps_using(monster_id, maps):
+    """Names of the maps (from map_files) that spawn this monster."""
+    return [name for name, m in maps.items() if any(s.get("type") == monster_id for s in m.get("spawns", []))]

@@ -75,7 +75,7 @@ def score_of(result: FightResult, target_time: float) -> float:
     return 1.0 + result.hp_left_frac
 
 
-def build_fight(classes, level, boss_stats: BossStats, seed, boss_type="ashardalon", boss_attrs=None,
+def build_fight(classes, level, boss_stats: BossStats, seed, boss_type=16, boss_attrs=None,
                 as_companions=False):
     """A ready-to-step world: `classes` (one hero each, all on autopilot, `level`) and one boss with `boss_stats`.
     as_companions: only classes[0] is a joined player; the others are summoned as AI companions of that player."""
@@ -112,7 +112,7 @@ def build_fight(classes, level, boss_stats: BossStats, seed, boss_type="ashardal
     return world, boss
 
 
-def run_fight(classes, level, boss_stats: BossStats, seed=1, target_time=120.0, boss_type="ashardalon",
+def run_fight(classes, level, boss_stats: BossStats, seed=1, target_time=120.0, boss_type=16,
               boss_attrs=None, as_companions=False) -> FightResult:
     with contextlib.redirect_stdout(io.StringIO()):          # the hero AIs print debug lines; keep the output clean
         return _run_fight(classes, level, boss_stats, seed, target_time, boss_type, boss_attrs, as_companions)

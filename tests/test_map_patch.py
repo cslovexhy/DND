@@ -56,7 +56,7 @@ class PatchTest(unittest.TestCase):
         m = make_map(["#.", ".#"], spawns=[("hero_start", 0, 1)])
         patched, _ = patch_diagonal_gaps(m)
         self.assertEqual(patched, [(1, 0)])
-        m = make_map(["#.", ".#"], spawns=[("hero_start", 0, 1), ("snake", 1, 0)])
+        m = make_map(["#.", ".#"], spawns=[("hero_start", 0, 1), (2, 1, 0)])
         patched, unfixable = patch_diagonal_gaps(m)
         self.assertEqual((patched, unfixable), ([], [(0, 0)]))   # reported, not patched
 

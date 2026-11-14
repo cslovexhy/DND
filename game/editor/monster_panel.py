@@ -4,13 +4,13 @@ All monsters live in data/monsters.json (content/monster_defs.py) and are edited
   left    every monster type (button: only the ones on the map you are editing), "+ New", "Duplicate", "Delete"
   right   the selected type: name, picture (any tile of the creature / dungeon sheets), category, melee or ranged,
           boss / unique / relentless, armor, speed, HP multiplier, sense and attack range, attack speed, respawn,
-          raw HP / damage / XP (used only on maps with no level range for it), its LEVEL RANGE ON THIS MAP, hive mind,
+          LEVEL RANGE (sets its HP / damage / XP; empty = the raw numbers), raw HP / damage / XP, hive mind,
           boss skills, the skills it casts, and its drops
   drops   every monster has its own handpicked list (item, chance, optional monster-level range); nothing is
           shared. "Drops table" shows every monster x every item at once and edits a chance with one click.
 
-Done saves data/monsters.json; Esc discards everything done in this screen. Level ranges are part of the MAP (its
-"monster_levels"): save the map with Ctrl+S too.
+Every monster has a permanent numeric id (the maps and quests refer to it); only its name can change. Done saves
+data/monsters.json; Esc discards everything done in this screen.
 
 Everything is driven by click(pos, button) and draw(surface, font, big); text input goes through the ask(title,
 default) callback the editor passes in, so tests can drive the panel without a real window.
@@ -30,13 +30,14 @@ BG, PANEL, LINE, TEXT, DIM, GOLD, RED, GREEN = ((25, 25, 30), (45, 45, 52), (90,
 
 # (label, key, kind, help). kinds: levels / text / cycle / toggle / flag-on-sprite / number
 FIELDS = [
-    ("Level on map", "levels", "levels", "Sets its HP, damage and XP on THIS map (e.g. 3-5). Saved with the map (Ctrl+S)."),
+    ("Level", "level", "levels", "Level range, e.g. 3-5: sets its HP, damage and XP. Empty = use the raw numbers."),
     ("Name", "name", "text", "Shown over the monster."),
     ("Category", "category", "cycle", "Humanoids carry money (bronze) when killed."),
     ("Attack", "attack", "cycle", "Ranged monsters keep their distance and shoot."),
     ("Boss", "boss", "toggle", "Boss AI (hate rules), immune to slow and freeze, long respawn."),
     ("Unique", "unique", "toggle", "One of a kind: its name is shown."),
     ("Relentless", "relentless", "toggle", "Never gives up the chase."),
+    ("Stealthy", "stealthy", "toggle", "Invisible to heroes until close (the Demogorgon trick)."),
     ("Big picture", "big", "bigflag", "Draw the picture 1.5x bigger (bosses and uniques)."),
     ("Armor (AC)", "ac", "number", "Reduces damage taken: (AC-10) / (AC-10+12)."),
     ("Speed", "speed", "number", "Board units: 5 = 75 px/s (heroes 75-90)."),
@@ -45,9 +46,9 @@ FIELDS = [
     ("Attack range", "attack_range", "number", "px it fights from. Empty = 50 melee / 220 ranged."),
     ("Attack speed", "swing", "number", "Seconds between attacks. Empty = 2.0 (bosses 20% faster)."),
     ("Respawn x", "respawn_mult", "number", "x 60 s. Empty = 1 (bosses 10)."),
-    ("Raw HP", "hp", "number", "Board-game HP (x50). ONLY used on maps that give it no level range."),
-    ("Raw damage", "dmg", "number", "Board-game damage. ONLY used on maps that give it no level range."),
-    ("Raw XP", "xp", "number", "Kill XP. ONLY used on maps that give it no level range."),
+    ("Raw HP", "hp", "number", "Board-game HP (x50). Only used when no level range is set."),
+    ("Raw damage", "dmg", "number", "Board-game damage. Only used when no level range is set."),
+    ("Raw XP", "xp", "number", "Kill XP. Only used when no level range is set."),
 ]
 OPTIONAL = {"swing", "respawn_mult", "attack_range"}        # empty = default (the key is removed)
 FLOATS = {"hp_mult", "swing", "respawn_mult"}
@@ -108,12 +109,11 @@ class MonsterPanel:
     LIST_W = 300
     ROW = 26
 
-    def __init__(self, defs, monster_levels, ask, map_types=lambda: set(), usage=lambda tid: [], art=None,
+    def __init__(self, defs, ask, map_types=lambda: set(), usage=lambda tid: [], art=None,
                  path=monster_defs.PATH):
-        """defs: {type_id: definition} (edited in place); monster_levels: the map's {type_id: [min, max]} (edited in
-        place); ask(title, default) -> str or None: a text prompt; map_types() -> the type ids the open map spawns;
+        """defs: monster_defs.Definitions {id: definition} (edited in place); ask(title, default) -> str or None: a text prompt; map_types() -> the type ids the open map spawns;
         usage(type_id) -> names of the maps that use it (deleting is refused while there are any)."""
-        self.defs, self.levels, self.ask = defs, monster_levels, ask
+        self.defs, self.ask = defs, ask
         self.map_types, self.usage = map_types, usage
         self.art, self.path = art or Art(), path
         self.selected = next(iter(defs), None)
@@ -129,7 +129,7 @@ class MonsterPanel:
     def shown(self):
         types = sorted(self.defs, key=lambda t: self.defs[t].get("name", t).lower())
         if self.only_map:
-            on = set(self.map_types()) | set(self.levels)
+            on = set(self.map_types())
             types = [t for t in types if t in on]
         return types
 
@@ -194,8 +194,7 @@ class MonsterPanel:
         name = self.ask("New monster name:", "")
         if not name or not name.strip():
             return
-        tid = monster_defs.type_id_for(name, set(self.defs))
-        self.defs[tid] = monster_defs.new_definition(name.strip()[:monster_defs.MAX_NAME])
+        tid = self.defs.add(monster_defs.new_definition(name.strip()[:monster_defs.MAX_NAME]))
         self.selected, self.mode = tid, "sprite"        # pick its picture straight away
         self._say(f"Created {name.strip()}. Pick a picture.")
 
@@ -205,8 +204,7 @@ class MonsterPanel:
         name = self.ask("Name of the copy:", f"{self.d['name']} 2")
         if not name or not name.strip():
             return
-        tid = monster_defs.type_id_for(name, set(self.defs))
-        self.defs[tid] = monster_defs.duplicate(self.d, name.strip()[:monster_defs.MAX_NAME])
+        tid = self.defs.add(monster_defs.duplicate(self.d, name.strip()[:monster_defs.MAX_NAME]))
         self.selected = tid
         self._say(f"Copied. {name.strip()} has its own copy of the drops: change them in its drop list.")
 
@@ -215,12 +213,11 @@ class MonsterPanel:
             return
         maps = self.usage(self.selected)
         if maps:
-            self._say(f"{self.d['name']} is used by: {', '.join(maps)}. Remove its spawns / level range there first.",
+            self._say(f"{self.d['name']} is used by: {', '.join(maps)}. Remove its spawns there first.",
                       False)
             return
         name = self.d["name"]
         del self.defs[self.selected]
-        self.levels.pop(self.selected, None)
         self.selected = next(iter(self.shown()), None) or next(iter(self.defs), None)
         self._say(f"Deleted {name}")
 
@@ -275,8 +272,8 @@ class MonsterPanel:
             d[key] = v
 
     def _edit_levels(self, tid):
-        cur = self.levels.get(tid)
-        raw = self.ask("Level range on this map, e.g. 3-5 (empty = none):", f"{cur[0]}-{cur[1]}" if cur else "")
+        cur = self.defs[tid].get("level")
+        raw = self.ask("Level range, e.g. 3-5 (empty = none, use the raw numbers):", f"{cur[0]}-{cur[1]}" if cur else "")
         if raw is None:
             return
         try:
@@ -285,9 +282,9 @@ class MonsterPanel:
             self._say(f"Levels must look like 3-5 (1-30): {raw}", False)
             return
         if rng is None:
-            self.levels.pop(tid, None)
+            self.defs[tid].pop("level", None)
         else:
-            self.levels[tid] = rng
+            self.defs[tid]["level"] = rng
 
     def _do_hive(self, _, button):
         d = self.d
@@ -298,13 +295,22 @@ class MonsterPanel:
         if not raw.strip():
             d.pop("hive_mind", None)
             return
-        types = self.ask("Aggros when any of these types is attacked (type ids, comma separated):",
-                         ",".join(cur["types"]) if cur else self.selected)
+        types = self.ask("Aggros when any of these monsters is attacked (ids or names, comma separated):",
+                         ",".join(str(t) for t in cur["types"]) if cur else str(self.selected))
         if types is None:
             return
         try:
-            d["hive_mind"] = {"range": float(raw) if "." in raw else int(raw),
-                              "types": [t.strip() for t in types.split(",") if t.strip()]}
+            ids = []
+            for t in (t.strip() for t in types.split(",") if t.strip()):
+                if t.isdigit():
+                    ids.append(int(t))
+                    continue
+                found = [i for i, m in self.defs.items() if m.get("name", "").lower() == t.lower()]
+                if not found:
+                    self._say(f"No monster called {t}", False)
+                    return
+                ids.append(found[0])
+            d["hive_mind"] = {"range": float(raw) if "." in raw else int(raw), "types": ids}
         except ValueError:
             self._say(f"Not a number: {raw}", False)
 
@@ -496,7 +502,7 @@ class MonsterPanel:
         y0, rows = 166, (H - 176) // self.ROW
         types = self.shown()
         self.list_scroll = min(self.list_scroll, max(0, len(types) - rows))
-        on_map = set(self.map_types()) | set(self.levels)
+        on_map = set(self.map_types())
         for i, tid in enumerate(types[self.list_scroll:self.list_scroll + rows]):
             y = y0 + i * self.ROW
             r = pygame.Rect(8, y, self.LIST_W - 16, self.ROW - 2)
@@ -504,8 +510,8 @@ class MonsterPanel:
                 pygame.draw.rect(surf, (70, 90, 70), r, border_radius=3)
             d = self.defs[tid]
             surf.blit(self.art.monster(d.get("sprite"), 20), (14, y + 2))
-            lv = self.levels.get(tid)
-            label = d.get("name", tid) + (f"  L{lv[0]}-{lv[1]}" if lv else "")
+            lv = d.get("level")
+            label = f"{d.get('name', tid)} #{tid}" + (f"  L{lv[0]}-{lv[1]}" if lv else "")
             surf.blit(font.render(label, True, TEXT if tid in on_map else DIM), (40, y + 5))
             self._hit(r, "select", tid)
         if len(types) > rows:
@@ -515,7 +521,7 @@ class MonsterPanel:
     def _draw_details(self, surf, font, big, x, W, H):
         d, tid = self.d, self.selected
         surf.blit(big.render(d["name"], True, GOLD), (x, 10))
-        surf.blit(font.render(f"id: {tid}   (bright in the list = on this map)", True, DIM), (x, 38))
+        surf.blit(font.render(f"id #{tid}   (bright in the list = on this map)", True, DIM), (x, 38))
         pic = pygame.Rect(W - 150, 12, 128, 128)
         pygame.draw.rect(surf, PANEL, pic, border_radius=6)
         surf.blit(self.art.monster(d.get("sprite"), 112), (pic.x + 8, pic.y + 8))
@@ -526,7 +532,7 @@ class MonsterPanel:
             fx, fy = x + (i // per_col) * COL_W, 66 + (i % per_col) * 30
             surf.blit(font.render(label, True, DIM), (fx, fy + 6))
             if kind == "levels":
-                lv = self.levels.get(tid)
+                lv = d.get("level")
                 text, active = (f"{lv[0]} - {lv[1]}" if lv else "not set"), bool(lv)
             elif kind == "bigflag":
                 text = "yes" if d["sprite"].get("big") else "no"
@@ -544,7 +550,7 @@ class MonsterPanel:
         hm = d.get("hive_mind")
         surf.blit(font.render("Hive mind", True, DIM), (x, y + 6))
         self._box(surf, font, (x + 112, y, 520, 26),
-                  f"{hm['range']} px: {', '.join(hm['types'])}" if hm else "off", "hive", None, bool(hm),
+                  f"{hm['range']} px: {', '.join(self.defs[t]['name'] if t in self.defs else '#' + str(t) for t in hm['types'])}" if hm else "off", "hive", None, bool(hm),
                   "Aggros (with its allies) when any listed type is attacked within this range.")
         y += 34
         # boss skills
@@ -680,13 +686,13 @@ class MonsterPanel:
                       (x, top + rows * 24 + 6))
 
 
-def run(screen, clock, defs, monster_levels, ask, map_types=lambda: set(), usage=lambda tid: [],
+def run(screen, clock, defs, ask, map_types=lambda: set(), usage=lambda tid: [],
         path=monster_defs.PATH):
     """The Monsters screen as a modal loop (the map editor's M key). Works on copies: Done saves `path` and copies
-    the edits back into `defs` / `monster_levels` (returns True); Esc drops them (False)."""
+    the edits back into `defs` (returns True); Esc drops them (False)."""
     font = pygame.font.SysFont("monospace", 13)
     big = pygame.font.SysFont("monospace", 18, bold=True)
-    panel = MonsterPanel(copy.deepcopy(defs), copy.deepcopy(monster_levels), ask, map_types, usage, path=path)
+    panel = MonsterPanel(copy.deepcopy(defs), ask, map_types, usage, path=path)
     while not panel.done:
         for event in pygame.event.get():
             if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
@@ -704,8 +710,5 @@ def run(screen, clock, defs, monster_levels, ask, map_types=lambda: set(), usage
         panel.draw(screen, font, big)
         pygame.display.flip()
         clock.tick(30)
-    defs.clear()
-    defs.update(panel.defs)
-    monster_levels.clear()
-    monster_levels.update(panel.levels)
+    defs.take(panel.defs)
     return True

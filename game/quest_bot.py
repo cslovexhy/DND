@@ -41,12 +41,12 @@ class QuestBot:
         return None
 
     def quest_targets(self):
-        """Monster names the active quests still need."""
+        """Monster ids the active quests still need."""
         need = set()
         for q in self.player.quests.active_objects():
             for obj in q.objectives:
-                if q.progress.get(obj["target"], 0) < obj["count"]:
-                    need.add(obj["target"])
+                if q.progress.get(obj["monster"], 0) < obj["count"]:
+                    need.add(obj["monster"])
         return need
 
     # --- one step ---
@@ -63,4 +63,4 @@ class QuestBot:
             return
         p.ai_enabled = True
         need = self.quest_targets()
-        p.hero_ai.target_filter = (lambda m: m.name in need) if need else None
+        p.hero_ai.target_filter = (lambda m: getattr(m, "spawn_type", None) in need) if need else None

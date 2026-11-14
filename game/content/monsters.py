@@ -13,10 +13,10 @@ BOSS_RESPAWN_MULT = 10  # bosses take 10x as long (600s) unless SPAWN_STATS sets
 
 HUMANOID, BEAST, DEMON = "humanoid", "beast", "demon"
 
-SPAWN_STATS = {}         # type id -> what the game reads (content/monster_defs.to_spawn_stats), loaded below
-MONSTER_CATEGORY = {}    # type id -> humanoid / beast / demon (loot rules: only humanoids carry money)
-MONSTER_DROPS = {}       # type id -> that type's own drop list: (item, chance) or (item, chance, min_lv, max_lv)
-DEFINITIONS = {}         # type id -> the definition as stored in data/monsters.json
+SPAWN_STATS = {}         # monster id -> what the game reads (content/monster_defs.to_spawn_stats), loaded below
+MONSTER_CATEGORY = {}    # monster id -> humanoid / beast / demon (loot rules: only humanoids carry money)
+MONSTER_DROPS = {}       # monster id -> its own drop list: (item, chance) or (item, chance, min_lv, max_lv)
+DEFINITIONS = {}         # monster id -> the definition as stored in data/monsters.json
 
 
 def register(defs):
@@ -58,16 +58,21 @@ def _load_definitions():
 _load_definitions()      # data/monsters.json: every monster type, edited in the map editor (M)
 
 
+def monster_name(monster_id):
+    """The current name of a monster type (names can be edited; ids never change)."""
+    return SPAWN_STATS.get(monster_id, {}).get("name", f"monster #{monster_id}")
+
+
 def humanoid_money(level, rng):
     """Bronze a humanoid of this level drops: round(max(5, level x 8 - 40) x 0.8..1.2)."""
     return int(round(max(5, level * 8 - 40) * rng.uniform(0.8, 1.2)))
 
 
 # --- Monster levels ---------------------------------------------------------------------------------------------
-# A map may give spawn types a level range:  "monster_levels": {"human_cultist": [3, 4], ...}  (data/maps/*.json).
-# Each spawned monster rolls a level in that range; the level alone sets its HP and the XP it is worth (the
-# SPAWN_STATS "hp" is not used, so a higher-level monster always has more HP). AC, damage and speed stay
-# hand-tuned in SPAWN_STATS. Spawn types without a level keep their hand-tuned HP and XP.
+# A monster definition may carry a level range ("level": [3, 4], data/monsters.json); the same on every map (a monster
+# that must be tougher elsewhere is a second monster type). Each spawned monster rolls a level in that range; the
+# level alone sets its HP and the XP it is worth (the raw "hp" is not used, so a higher-level monster always has more
+# HP). AC, damage and speed stay hand-tuned in the definition. Monsters without a level keep their raw HP and XP.
 MONSTER_HP_LEVEL_1 = 50     # real HP of a level-1 monster
 MONSTER_HP_PER_LEVEL = 25   # + per level above 1: same growth as a hero's default (progression.DEFAULT_GROWTH["hp"])
 XP_PER_MONSTER_LEVEL = 10   # base XP = monster level x 10

@@ -64,7 +64,7 @@ class LibraryTest(unittest.TestCase):
 
 class KitTest(unittest.TestCase):
     def test_poisoners_have_poison_dagger(self):
-        for key in ("human_cultist", "snake", "grell"):
+        for key in (9, 2, 8):
             self.assertEqual(SPAWN_STATS[key]["kit"], ["Poison Dagger"], key)
             self.assertNotIn("condition", SPAWN_STATS[key])
 

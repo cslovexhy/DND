@@ -331,7 +331,7 @@ class DropTest(unittest.TestCase):
     def test_map_spawn_can_override_the_drop_table(self):
         random.seed(2)
         world, p = create_world(MAP, saves.blank_character("t", "Fighter", level=10))
-        sp = next(m.spawn_point for m in world.game_state.monsters if m.spawn_type == "grey_wolf")
+        sp = next(m.spawn_point for m in world.game_state.monsters if m.spawn_type == 5)
         sp.stats = {"drops": [("wine", 1.0)]}
         m = world.spawn_single_world_monster(sp)
         self.assertEqual(m.drops, [("wine", 1.0)])

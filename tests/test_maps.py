@@ -17,7 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def tiny_map():
     return {"width": 3, "height": 2,
             "layers": [{"name": "ground", "tiles": [[{"col": 1, "row": 2}, None, None], [None, None, None]]}],
-            "spawns": [{"type": "hero_start", "x": 0, "y": 0}, {"type": "snake", "x": 2, "y": 1}]}
+            "spawns": [{"type": "hero_start", "x": 0, "y": 0}, {"type": 2, "x": 2, "y": 1}]}
 
 
 class MapSchemaTest(unittest.TestCase):
@@ -40,7 +40,7 @@ class MapSchemaTest(unittest.TestCase):
             "huge": lambda m: m.update(width=10 ** 6),
             "rows": lambda m: m["layers"][0]["tiles"].pop(),
             "cell": lambda m: m["layers"][0]["tiles"][0].__setitem__(0, {"col": "x", "row": 0}),
-            "spawn_oob": lambda m: m["spawns"].append({"type": "snake", "x": 99, "y": 0}),
+            "spawn_oob": lambda m: m["spawns"].append({"type": 2, "x": 99, "y": 0}),
             "no_start": lambda m: m.__setitem__("spawns", []),
             "music_abs": lambda m: m.__setitem__("music", ["/etc/passwd"]),
             "music_up": lambda m: m.__setitem__("music", ["assets/music/../../secret.mp3"]),

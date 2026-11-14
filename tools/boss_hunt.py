@@ -17,7 +17,7 @@ sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-ap.add_argument("--boss", default="ashardalon")
+ap.add_argument("--boss", type=int, default=16)
 ap.add_argument("--classes", default="Fighter,Paladin,Cleric,Rogue,Wizard")
 ap.add_argument("--level", type=int, default=10)
 ap.add_argument("--ac", type=float, default=16)

@@ -22,7 +22,7 @@ class MapTile:
 @dataclass
 class SpawnPoint:
     """An entity spawn position."""
-    type: str  # "hero_start", "kobold_dragonshield", etc.
+    type: object  # a monster id (int) or a marker: "hero_start", "chest", ...
     x: int     # tile x
     y: int     # tile y
     # Optional per-spawn overrides of SPAWN_STATS entries (board units: "hp", "ac", "dmg", ...), set in the map

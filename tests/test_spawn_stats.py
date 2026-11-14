@@ -20,7 +20,7 @@ class SpawnStatsTest(unittest.TestCase):
 
     def test_other_maps_keep_shared_stats(self):
         boss = boss_of("data/maps/haycock.json")
-        self.assertEqual(boss.max_hp, SPAWN_STATS["ashardalon"]["hp"] * 50)
+        self.assertEqual(boss.max_hp, SPAWN_STATS[16]["hp"] * 50)
 
 
 if __name__ == "__main__":

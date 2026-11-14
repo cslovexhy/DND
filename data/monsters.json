@@ -1,7 +1,9 @@
 {
- "version": 2,
- "monsters": {
-  "kobold_dragonshield": {
+ "version": 3,
+ "next_id": 27,
+ "monsters": [
+  {
+   "id": 1,
    "name": "Kobold Dragonshield",
    "sprite": {
     "sheet": "creatures",
@@ -57,9 +59,14 @@
      "minor_mana_potion",
      0.01
     ]
+   ],
+   "level": [
+    2,
+    4
    ]
   },
-  "snake": {
+  {
+   "id": 2,
    "name": "Snake",
    "sprite": {
     "sheet": "creatures",
@@ -91,9 +98,14 @@
      "minor_mana_potion",
      0.01
     ]
+   ],
+   "level": [
+    2,
+    3
    ]
   },
-  "orc_smasher": {
+  {
+   "id": 3,
    "name": "Orc Smasher",
    "sprite": {
     "sheet": "creatures",
@@ -143,7 +155,8 @@
     ]
    ]
   },
-  "orc_archer": {
+  {
+   "id": 4,
    "name": "Orc Archer",
    "sprite": {
     "sheet": "creatures",
@@ -193,7 +206,8 @@
     ]
    ]
   },
-  "grey_wolf": {
+  {
+   "id": 5,
    "name": "Grey Wolf",
    "sprite": {
     "sheet": "creatures",
@@ -223,9 +237,14 @@
      "minor_mana_potion",
      0.01
     ]
+   ],
+   "level": [
+    1,
+    2
    ]
   },
-  "duergar_guard": {
+  {
+   "id": 6,
    "name": "Duergar Guard",
    "sprite": {
     "sheet": "creatures",
@@ -275,7 +294,8 @@
     ]
    ]
   },
-  "gibbering_mouther": {
+  {
+   "id": 7,
    "name": "Gibbering Mouther",
    "sprite": {
     "sheet": "creatures",
@@ -307,7 +327,8 @@
     ]
    ]
   },
-  "grell": {
+  {
+   "id": 8,
    "name": "Grell",
    "sprite": {
     "sheet": "creatures",
@@ -341,7 +362,8 @@
     ]
    ]
   },
-  "human_cultist": {
+  {
+   "id": 9,
    "name": "Human Cultist",
    "sprite": {
     "sheet": "creatures",
@@ -407,9 +429,14 @@
      "mana_potion",
      0.005
     ]
+   ],
+   "level": [
+    3,
+    4
    ]
   },
-  "legion_devil": {
+  {
+   "id": 10,
    "name": "Legion Devil",
    "sprite": {
     "sheet": "creatures",
@@ -441,7 +468,8 @@
     ]
    ]
   },
-  "demogorgon": {
+  {
+   "id": 11,
    "name": "Demogorgon",
    "sprite": {
     "file": "assets/stranger_things/sprites/demogorgon.png",
@@ -475,12 +503,14 @@
    "hive_mind": {
     "range": 1000,
     "types": [
-     "demogorgon",
-     "vecna"
+     11,
+     14
     ]
-   }
+   },
+   "stealthy": true
   },
-  "demodog": {
+  {
+   "id": 12,
    "name": "Demodog",
    "sprite": {
     "sheet": "creatures",
@@ -512,7 +542,8 @@
     ]
    ]
   },
-  "demobat": {
+  {
+   "id": 13,
    "name": "Demobat",
    "sprite": {
     "sheet": "creatures",
@@ -544,7 +575,8 @@
     ]
    ]
   },
-  "vecna": {
+  {
+   "id": 14,
    "name": "Vecna",
    "sprite": {
     "sheet": "creatures",
@@ -595,7 +627,8 @@
     ]
    ]
   },
-  "meerak": {
+  {
+   "id": 15,
    "name": "Meerak",
    "sprite": {
     "sheet": "creatures",
@@ -646,7 +679,8 @@
     ]
    ]
   },
-  "ashardalon": {
+  {
+   "id": 16,
    "name": "Ashardalon",
    "sprite": {
     "sheet": "creatures",
@@ -694,7 +728,8 @@
     }
    }
   },
-  "bellax": {
+  {
+   "id": 17,
    "name": "Bellax",
    "sprite": {
     "sheet": "creatures",
@@ -727,7 +762,8 @@
     ]
    ]
   },
-  "karash": {
+  {
+   "id": 18,
    "name": "Karash",
    "sprite": {
     "sheet": "creatures",
@@ -778,7 +814,8 @@
     ]
    ]
   },
-  "margrath": {
+  {
+   "id": 19,
    "name": "Margrath",
    "sprite": {
     "sheet": "creatures",
@@ -829,7 +866,8 @@
     ]
    ]
   },
-  "rage_drake": {
+  {
+   "id": 20,
    "name": "Rage Drake",
    "sprite": {
     "sheet": "creatures",
@@ -858,7 +896,8 @@
     ]
    ]
   },
-  "otyugh": {
+  {
+   "id": 21,
    "name": "Otyugh",
    "sprite": {
     "sheet": "creatures",
@@ -891,7 +930,8 @@
     ]
    ]
   },
-  "garrick_padfoot": {
+  {
+   "id": 22,
    "name": "Garrick Padfoot",
    "sprite": {
     "sheet": "creatures",
@@ -957,9 +997,14 @@
      0.03
     ]
    ],
-   "respawn_mult": 3
+   "respawn_mult": 3,
+   "level": [
+    5,
+    5
+   ]
   },
-  "defia_thief": {
+  {
+   "id": 23,
    "name": "Defia Thief",
    "sprite": {
     "col": 4,
@@ -1004,6 +1049,133 @@
      0.01
     ]
    ]
+  },
+  {
+   "id": 24,
+   "name": "Kobold Dragonshield",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 9,
+    "row": 7
+   },
+   "category": "humanoid",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 16,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 1,
+   "dmg": 1,
+   "atk": 7,
+   "xp": 5,
+   "sense_range": 150,
+   "attack_range": 45,
+   "skills": [],
+   "drops": [
+    [
+     "health_potion",
+     0.01
+    ],
+    [
+     "bread",
+     0.03
+    ],
+    [
+     "water",
+     0.03
+    ],
+    [
+     "roast_chicken",
+     0.01
+    ],
+    [
+     "sushi_plate",
+     0.01
+    ],
+    [
+     "elven_nectar",
+     0.005,
+     10,
+     20
+    ],
+    [
+     "wine",
+     0.01
+    ],
+    [
+     "minor_mana_potion",
+     0.01
+    ]
+   ]
+  },
+  {
+   "id": 25,
+   "name": "Grey Wolf",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 3,
+    "row": 2
+   },
+   "category": "beast",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 14,
+   "speed": 5,
+   "hp_mult": 1.0,
+   "hp": 2,
+   "dmg": 2,
+   "atk": 8,
+   "xp": 10,
+   "sense_range": 170,
+   "attack_range": 50,
+   "skills": [],
+   "drops": [
+    [
+     "drumstick",
+     0.03
+    ],
+    [
+     "minor_mana_potion",
+     0.01
+    ]
+   ]
+  },
+  {
+   "id": 26,
+   "name": "Snake",
+   "sprite": {
+    "sheet": "creatures",
+    "col": 0,
+    "row": 4
+   },
+   "category": "beast",
+   "attack": "melee",
+   "boss": false,
+   "unique": false,
+   "ac": 13,
+   "speed": 6,
+   "hp_mult": 1.0,
+   "hp": 1,
+   "dmg": 0,
+   "atk": 7,
+   "xp": 5,
+   "sense_range": 120,
+   "attack_range": 40,
+   "skills": [
+    "Poison Dagger"
+   ],
+   "drops": [
+    [
+     "drumstick",
+     0.03
+    ],
+    [
+     "minor_mana_potion",
+     0.01
+    ]
+   ]
   }
- }
+ ]
 }

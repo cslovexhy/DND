@@ -122,7 +122,7 @@ class MapData:
             MapLayer("ground", width, height),
             MapLayer("objects", width, height),
         ]
-        self.spawns = []  # [{"type": "kobold_dragonshield", "x": 12, "y": 8}, ...]
+        self.spawns = []  # [{"type": 1, "x": 12, "y": 8}, ...]
         # Fields the editor doesn't edit (npcs, music, zone info, ...) are kept and written back unchanged
         self.extra = {}
 
@@ -576,7 +576,7 @@ def draw_canvas():
         pygame.draw.polygon(screen, (255, 255, 255), points, 1)
         # Show letter on connection points and "H" on hero_start (always visible)
         spawn_id = spawn["type"]
-        if spawn_id.startswith("connection_"):
+        if isinstance(spawn_id, str) and spawn_id.startswith("connection_"):
             letter = spawn_id[-1].upper()
             letter_surf = font_sm.render(letter, True, (0, 0, 0))
             lr = letter_surf.get_rect(center=(center_x, center_y))
@@ -773,9 +773,7 @@ def message_box(title, lines):
 
 
 def open_monster_types():
-    """The Monsters screen (M): create / edit / duplicate / delete any monster type, and every type's level range on
-    this map."""
-    levels = map_data.extra.setdefault("monster_levels", {})
+    """The Monsters screen (M): create / edit / duplicate / delete any monster type (levels and drops included)."""
     other_maps = {name: m for name, m in monster_defs.map_files().items() if name != last_filename}
 
     def on_this_map():
@@ -785,14 +783,12 @@ def open_monster_types():
         names = monster_defs.maps_using(tid, other_maps)
         return (["this map"] if tid in on_this_map() else []) + names
 
-    saved = monster_panel.run(screen, clock, defs, levels,
+    saved = monster_panel.run(screen, clock, defs,
                               ask=lambda title, default: text_input_prompt(title, default, list_files=False),
                               map_types=on_this_map, usage=used_by)
     if saved:
         print(f"Saved {len(defs)} monster type(s) to {monster_defs.PATH} "
-              "(save the map too, to keep its level ranges)")
-    if not levels:
-        map_data.extra.pop("monster_levels", None)
+              )
     refresh_spawn_types()
     global selected_spawn
     selected_spawn = min(selected_spawn, len(SPAWN_TYPES) - 1)

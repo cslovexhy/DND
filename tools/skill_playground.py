@@ -60,9 +60,8 @@ def build_map(mob_type, mob_level, kits, path):
         data = json.load(f)
     spawns = [{"type": "hero_start", "x": HERO_TILE[0], "y": HERO_TILE[1]}]
     for (x, y), kit in zip(MOB_TILES, kits):
-        spawns.append({"type": mob_type, "x": x, "y": y, "stats": {"kit": list(kit)}})
+        spawns.append({"type": mob_type, "x": x, "y": y, "stats": {"kit": list(kit), "level": [mob_level, mob_level]}})
     data["spawns"] = spawns
-    data["monster_levels"] = {mob_type: [mob_level, mob_level]}
     with open(path, "w") as f:
         json.dump(data, f)
     return path
@@ -225,7 +224,7 @@ def main(argv=None):
     ap.add_argument("--skill", help="one skill (2 monsters for support skills)")
     ap.add_argument("--kit", help="comma-separated skills for one monster (overrides --skill)")
     ap.add_argument("--mobs", type=int, choices=(1, 2), help="number of monsters (default 1, 2 for support skills)")
-    ap.add_argument("--mob", default="human_cultist", help="spawn type (content/monsters.py SPAWN_STATS key)")
+    ap.add_argument("--mob", type=int, default=9, help="monster id (data/monsters.json; 9 = Human Cultist)")
     ap.add_argument("--mob-level", type=int, default=5)
     ap.add_argument("--hero", default="Fighter", choices=[c["class"] for c in HERO_CLASSES])
     ap.add_argument("--hero-level", type=int, default=5)

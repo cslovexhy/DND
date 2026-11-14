@@ -2,7 +2,7 @@
 """Tune (or just test) boss stats against a party on autopilot, in bossTestRoom. Runs ONLY the boss simulation.
 
   # find stats: Ashardalon vs all five classes at level 10, 2 minutes
-  PYTHONPATH=. .venv/bin/python3 tools/boss_tuner.py --boss ashardalon --level 10 --target-time 120
+  PYTHONPATH=. .venv/bin/python3 tools/boss_tuner.py --boss 16 --level 10 --target-time 120
 
   # try specific stats (board units: hp, dmg) and see how the full group and every weaker group do
   PYTHONPATH=. .venv/bin/python3 tools/boss_tuner.py --eval 700,12 --ac 16
@@ -35,7 +35,7 @@ def describe(tuner, a, seeds):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--boss", default="ashardalon", help="spawn type to fight (default ashardalon)")
+    ap.add_argument("--boss", type=int, default=16, help="monster id to fight (default 16 = Ashardalon)")
     ap.add_argument("--group", default=",".join(PARTY_CLASSES), help="comma-separated classes (default: all five)")
     ap.add_argument("--level", type=int, default=10)
     ap.add_argument("--target-time", type=float, default=120.0, help="seconds from first aggro (default 120)")

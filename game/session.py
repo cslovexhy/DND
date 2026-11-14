@@ -470,7 +470,7 @@ class QuestPopupPanel:
             panel_surf.blit(obj_header, (self.padding, y))
             y += 16
             for obj in self.quest.objectives:
-                obj_text = f"  • Kill {obj['count']} {obj['target']}"
+                obj_text = f"  • Kill {obj['count']} {obj.get('target', obj['monster'])}"
                 obj_surf = font.render(obj_text, True, (220, 220, 220))
                 panel_surf.blit(obj_surf, (self.padding, y))
                 y += 16

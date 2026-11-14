@@ -60,16 +60,16 @@ class QuestTest(unittest.TestCase):
         self.assertEqual(log.available_for_npc("marshal_mcbride", 1), ["kobold_camp_cleanup"])
         self.assertFalse(log.accept("kobold_camp_cleanup"))
         for _ in range(4):
-            log.record_kill("Kobold Dragonshield")
+            log.record_kill(1)
         state = json.loads(json.dumps(log.to_state()))
-        self.assertEqual(state["progress"]["kobold_camp_cleanup"], {"Kobold Dragonshield": 4})
+        self.assertEqual(state["progress"]["kobold_camp_cleanup"], {"1": 4})
 
         fresh = load_quest_log("northshire")
         fresh.load_state(state)
         self.assertEqual(fresh.active, ["kobold_camp_cleanup"])
-        self.assertEqual(fresh.quests["kobold_camp_cleanup"].progress["Kobold Dragonshield"], 4)
+        self.assertEqual(fresh.quests["kobold_camp_cleanup"].progress[1], 4)
         for _ in range(6):
-            fresh.record_kill("Kobold Dragonshield")
+            fresh.record_kill(1)
         self.assertEqual(fresh.turn_ins_for_npc("marshal_mcbride"), ["kobold_camp_cleanup"])
 
     def test_progress_is_per_log_and_other_maps_have_no_quests(self):
@@ -78,14 +78,20 @@ class QuestTest(unittest.TestCase):
         self.assertEqual(b.completed, [])
         self.assertEqual(load_quest_log("goldshire").quests, {})
 
+    def test_old_saves_keyed_by_monster_name_still_load(self):
+        log = load_quest_log("northshire")
+        log.load_state({"active": ["kobold_camp_cleanup"],
+                        "progress": {"kobold_camp_cleanup": {"Kobold Dragonshield": 2}}})
+        self.assertEqual(log.quests["kobold_camp_cleanup"].progress, {1: 2})
+
     def test_garrick_bounty_requires_killing_garrick(self):
         log = load_quest_log("northshire")
         log.load_state({"completed": ["a_threat_within", "brotherhood_of_thieves"]})
         self.assertFalse(log.accept("bounty_on_garrick_padfoot"))
         for _ in range(20):
-            log.record_kill("Human Cultist")
+            log.record_kill(9)
         self.assertEqual(log.turn_ins_for_npc("deputy_willem"), [])
-        log.record_kill("Garrick Padfoot")
+        log.record_kill(22)
         self.assertEqual(log.turn_ins_for_npc("deputy_willem"), ["bounty_on_garrick_padfoot"])
 
     def test_level_requirement(self):

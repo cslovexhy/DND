@@ -16,10 +16,13 @@ MAP = "data/maps/northshire.json"
 saves.SAVE_DIR = tempfile.mkdtemp()
 
 def map_levels():
-    """The level ranges the map file gives each monster type (the content is edited in the map editor, so the
-    tests read it instead of pinning numbers)."""
+    """The level range of every leveled monster type that Northshire spawns (the content is edited in the map
+    editor, so the tests read it instead of pinning numbers)."""
+    from game.content import monster_defs
+    defs = monster_defs.load()
     with open(MAP) as f:
-        return json.load(f).get("monster_levels", {})
+        used = {sp["type"] for sp in json.load(f)["spawns"] if isinstance(sp["type"], int)}
+    return {t: defs[t]["level"] for t in used if "level" in defs[t]}
 
 
 def northshire(level=1, seed=1):
@@ -133,14 +136,21 @@ class MonsterLevelTest(unittest.TestCase):
             self.assertEqual(m.experience, SPAWN_STATS[m.spawn_type]["xp"])
             self.assertEqual(m.max_hp, SPAWN_STATS[m.spawn_type]["hp"] * HP_SCALE)
 
-    def test_bad_monster_levels_are_rejected(self):
+    def test_bad_definition_levels_are_rejected(self):
+        from game.content import monster_defs
+        from game.content.items import ITEMS
+        from game.content.skill_library import SKILLS
+        d = copy.deepcopy(monster_defs.load()[2])
+        self.assertEqual(monster_defs.validate(2, d, SKILLS, ITEMS), [])
+        for bad in ([3, 2], [0, 2], "x", [1], [1, 31]):
+            d["level"] = bad
+            self.assertTrue(monster_defs.validate(2, d, SKILLS, ITEMS), bad)
+
+    def test_maps_do_not_carry_levels(self):
         with open(MAP) as f:
             data = json.load(f)
+        data["monster_levels"] = {}
         self.assertEqual(validate_map(data)[0], [])
-        for bad in ({"snake": [3, 2]}, {"snake": [0, 2]}, {"snake": "x"}, []):
-            d = copy.deepcopy(data)
-            d["monster_levels"] = bad
-            self.assertTrue(validate_map(d)[0], bad)
 
 
 if __name__ == "__main__":

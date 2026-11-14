@@ -14,6 +14,34 @@ import os
 
 QUEST_DIR = os.path.join("data", "quests")
 
+# Saves written before monsters had numeric ids keyed kill progress by monster name.
+LEGACY_NAME_IDS = {
+    "Kobold Dragonshield": 1, "Snake": 2, "Orc Smasher": 3, "Orc Archer": 4, "Grey Wolf": 5,
+    "Duergar Guard": 6, "Gibbering Mouther": 7, "Grell": 8, "Human Cultist": 9, "Legion Devil": 10,
+    "Demogorgon": 11, "Demodog": 12, "Demobat": 13, "Vecna": 14, "Meerak": 15, "Ashardalon": 16,
+    "Bellax": 17, "Karash": 18, "Margrath": 19, "Rage Drake": 20, "Otyugh": 21,
+    "Garrick Padfoot": 22,
+}
+
+
+def _progress_key(key):
+    """A saved progress key (JSON: str) -> monster id (int); old name keys are migrated."""
+    if isinstance(key, int):
+        return key
+    key = str(key)
+    if key.lstrip("-").isdigit():
+        return int(key)
+    return LEGACY_NAME_IDS.get(key)
+
+
+def monster_label(monster_id):
+    """Current display name of a monster id (falls back to '#id')."""
+    try:
+        from game.content import monsters
+        return monsters.monster_name(monster_id)
+    except Exception:
+        return f"#{monster_id}"
+
 
 class Quest:
     """A quest definition plus its runtime state for one character."""
@@ -23,33 +51,33 @@ class Quest:
         self.quest_id = quest_id
         self.title = title
         self.description = description
-        self.objectives = objectives  # list of {"target": "Monster Name", "count": N}
+        self.objectives = objectives  # list of {"monster": monster_id, "count": N}
         self.rewards_xp = rewards_xp
         self.rewards_gold = rewards_gold
         self.npc_id = npc_id  # which NPC offers/accepts this quest
         self.level_req = level_req  # minimum hero level to accept
         self.prerequisites = prerequisites or []  # quest_ids that must be turned in first
         # Runtime state
-        self.progress = {}  # {"Monster Name": kills_so_far}
+        self.progress = {}  # {monster_id: kills_so_far}
         self.accepted = False
         self.completed = False  # objectives met
         self.turned_in = False  # rewards claimed
 
     def is_complete(self):
-        return all(self.progress.get(o["target"], 0) >= o["count"] for o in self.objectives)
+        return all(self.progress.get(o["monster"], 0) >= o["count"] for o in self.objectives)
 
-    def record_kill(self, monster_name):
+    def record_kill(self, monster_id):
         """Record a kill. Returns True if this kill progressed the quest."""
         for obj in self.objectives:
-            if obj["target"] == monster_name:
-                current = self.progress.get(obj["target"], 0)
+            if obj["monster"] == monster_id:
+                current = self.progress.get(obj["monster"], 0)
                 if current < obj["count"]:
-                    self.progress[obj["target"]] = current + 1
+                    self.progress[obj["monster"]] = current + 1
                     return True
         return False
 
     def get_progress_text(self):
-        return "  ".join(f"{o['target']}: {self.progress.get(o['target'], 0)}/{o['count']}"
+        return "  ".join(f"{monster_label(o['monster'])}: {self.progress.get(o['monster'], 0)}/{o['count']}"
                          for o in self.objectives)
 
 
@@ -132,11 +160,11 @@ class QuestLog:
         self.active.remove(qid)
         return q
 
-    def record_kill(self, monster_name):
+    def record_kill(self, monster_id):
         """Credit a kill to every active quest. Returns [(quest, just_completed)] for quests that progressed."""
         results = []
         for q in self.active_objects():
-            if q.accepted and not q.turned_in and q.record_kill(monster_name):
+            if q.accepted and not q.turned_in and q.record_kill(monster_id):
                 just_done = q.is_complete() and not q.completed
                 if just_done:
                     q.completed = True
@@ -148,7 +176,8 @@ class QuestLog:
         return {
             "completed": list(self.completed),
             "active": list(self.active),
-            "progress": {qid: dict(self.quests[qid].progress) for qid in self.active if qid in self.quests},
+            "progress": {qid: {str(k): v for k, v in self.quests[qid].progress.items()}
+                         for qid in self.active if qid in self.quests},
         }
 
     def load_state(self, state):
@@ -163,7 +192,11 @@ class QuestLog:
             q = self.quests.get(qid)
             if q and qid not in self.completed and qid not in self.active:
                 q.accepted = True
-                q.progress = dict(state.get("progress", {}).get(qid, {}))
+                q.progress = {}
+                for key, n in state.get("progress", {}).get(qid, {}).items():
+                    mid = _progress_key(key)
+                    if mid is not None:
+                        q.progress[mid] = n
                 q.completed = q.is_complete()
                 self.active.append(qid)
 

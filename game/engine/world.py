@@ -246,9 +246,9 @@ class World:
         m.unique = mt.get("unique", False)  # one-of-a-kind minion: name shown, but respawns/leashes like a normal mob
         m.category = mt["category"]   # humanoid / beast / demon: decides money drops
         m.drops = mt["drops"]         # this type's drop table (monsters.MONSTER_DROPS, or the map's override)
-        level_range = self.world_map.data.get("monster_levels", {}).get(sp.type)
+        level_range = mt.get("level")
         m.leveled = level_range is not None
-        if m.leveled:                 # this map gives the type a level range: HP and XP follow the rolled level
+        if m.leveled:                 # the monster has a level range: HP and XP follow the rolled level
             m.level = random.randint(level_range[0], level_range[1])
             m.max_hp = hp_for_level(m.level)
             m.experience = base_xp_for_level(m.level)
@@ -265,7 +265,8 @@ class World:
             m.relentless = True  # never leash-resets aggro (set before setup_monster_aggro)
         if mt.get("hive_mind"):
             m.hive_mind = mt["hive_mind"]  # (range, [spawn_types]) — type-filtered aggro share
-        m.spawn_type = sp.type  # spawn-type key (e.g. "demogorgon") for hive_mind matching
+        m.spawn_type = sp.type  # the monster's id: for hive_mind matching and quest kills
+        m.stealthy = bool(mt.get("stealthy"))
         m.sense_range = mt.get("sense_range", 170)   # how far it notices heroes (the definition's)
         m.def_attack_range = mt.get("attack_range")  # px it fights from (None: 50 melee / 220 ranged)
         # Track spawn origin for respawn system
@@ -450,7 +451,7 @@ class World:
             if getattr(hero, 'chill_visual', 0.0) > 0:
                 hero.chill_visual = max(0.0, hero.chill_visual - dt)
         for m in gs.monsters:
-            if not m.alive or m.name != "Demogorgon":
+            if not m.alive or not getattr(m, "stealthy", False):
                 continue
 
             # 1) Auto-stealth based purely on time since last attack.
@@ -504,7 +505,7 @@ class World:
                         loot = f" +{money.format_short(coins)}" if coins else ""
                         self.float_text(m.x, m.y + 10, f"+{xp}xp{loot}", GOLD)
                     # Quest kill tracking
-                    for aq, just_completed in player.quests.record_kill(m.name):
+                    for aq, just_completed in player.quests.record_kill(getattr(m, "spawn_type", None)):
                         self.float_text(hero.x, hero.y - 50, aq.get_progress_text(), (200, 200, 255))
                         if just_completed:
                             self.events.append(QuestReady(aq.title, player.player_id))
@@ -681,8 +682,8 @@ class World:
                                 "BLOCK" if blocked else f"{result[2]:.0f}", BLOCK_COLOR if blocked else HP_RED)
                 if result[0] == "attack" and not blocked:
                     abilities.poison_on_hit(self, m, hit_hero)   # an armed Poison Dagger rides on this hit
-                # Demogorgon reveals when it attacks; stealth timer restarts from now.
-                if m.name == "Demogorgon":
+                # a stealthy monster (the Demogorgon) reveals itself when it attacks; its stealth timer restarts
+                if getattr(m, "stealthy", False):
                     m._last_attack_time = gs.game_time
                     m.stealthed = False
             elif result and result[0] == "ranged_attack_projectile":

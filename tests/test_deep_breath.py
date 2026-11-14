@@ -50,7 +50,7 @@ class SkillDataTest(unittest.TestCase):
         self.assertEqual(boss.skills["deep_breath"],
                          {"radius": 200, "duration": 3.0, "cycles": 3, "dps": 100, "windup": 1.5,
                           "at_hp_pct": (0.5, 0.2)})
-        other = world.spawn_single_world_monster(type(boss.spawn_point)("otyugh", 20, 15))
+        other = world.spawn_single_world_monster(type(boss.spawn_point)(21, 20, 15))
         self.assertEqual(other.skills, {})
 
 
